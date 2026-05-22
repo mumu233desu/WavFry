@@ -1,0 +1,9 @@
+runs/
+checkpoints/
+manifests/*.csv
+__pycache__/
+*.pt
+*.ckpt
+*.zip
+*.onnx
+.venv/

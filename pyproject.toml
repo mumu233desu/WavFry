@@ -1,0 +1,38 @@
+[project]
+name = "wavfry"
+version = "0.1.0"
+description = "WavLM-based Creaky Voice Detection"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "pandas<3.0",
+    "pyyaml>=6.0.1",
+    "scikit-learn>=1.4.0",
+    "seaborn>=0.13.0",
+    "tensorboard>=2.16.0",
+    "tgt>=1.5",
+    "torch==2.6.0+cu124",
+    "torchaudio==2.6.0+cu124",
+    "tqdm>=4.66.0",
+    "transformers>=4.40.0"
+]
+
+[project.optional-dependencies]
+onnx-export = [
+    "onnx>=1.16.0",
+    "onnxruntime-directml>=1.24.4",
+    "onnxsim>=0.4.36"
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
