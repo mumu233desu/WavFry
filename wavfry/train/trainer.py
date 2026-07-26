@@ -98,32 +98,70 @@ class Trainer:
             },
         ]
         
-        return optim.AdamW(optimizer_grouped_parameters)
+        optimizer_type = self.config['training'].get('optimizer', 'adamw_fp32')
+        if optimizer_type == 'adamw_8bit':
+            import bitsandbytes as bnb
+            print("[INFO] Using 8-bit AdamW optimizer (bitsandbytes)")
+            return bnb.optim.AdamW8bit(optimizer_grouped_parameters)
+        elif optimizer_type == 'adamw_fp32':
+            return optim.AdamW(optimizer_grouped_parameters)
+        else:
+            raise ValueError(f"Unknown optimizer type: {optimizer_type}")
         
     def create_scheduler(self):
         import math
         warmup_steps = self.config['training']['warmup_steps']
         total_steps = self.total_steps
-        min_lr_ratio = self.config['training'].get('min_lr_ratio', 0.0)
+        min_lr_ratio = self.config['training'].get('min_lr_ratio', 0.05)
         lr_schedule = self.config['training'].get('lr_schedule', 'cosine')
 
+        # Ablation check
+        use_cosine_restart = self.config['training'].get('ablation', {}).get('use_cosine_restart', True)
+        if lr_schedule == 'cosine_restart' and not use_cosine_restart:
+            lr_schedule = 'cosine'
+
         def lr_lambda(current_step: int) -> float:
-            # Phase 1: Linear warmup
             if current_step < warmup_steps:
                 return float(current_step) / float(max(1, warmup_steps))
             
-            # Phase 2: Schedule-dependent decay
             if lr_schedule == 'none':
                 return 1.0
                 
             if lr_schedule == 'linear':
-                # Linear decay from 1.0 to min_lr_ratio
                 progress = (current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
                 return max(min_lr_ratio, 1.0 - progress * (1.0 - min_lr_ratio))
+                
+            if lr_schedule == 'cosine_restart':
+                aug_cfg = self.config.get('augmentation', {})
+                if not aug_cfg:
+                    aug_cfg = self.config.get('data', {}).get('augmentation', {})
+                aug_schedule_power = aug_cfg.get('schedule_power', 2.0)
+                restart_aug_threshold = self.config['training'].get('restart_aug_threshold', 0.11)
+                restart_lr_ratio = self.config['training'].get('restart_lr_ratio', 0.45)
+                restart_warmup_steps = self.config['training'].get('restart_warmup_steps', 100)
+                
+                restart_progress = restart_aug_threshold ** (1.0 / aug_schedule_power)
+                restart_step = round(restart_progress * total_steps)
+                restart_step = min(restart_step, total_steps - 1)
+                
+                if current_step < restart_step:
+                    progress = (current_step - warmup_steps) / float(max(1, restart_step - warmup_steps))
+                    cosine_val = 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+                    return max(min_lr_ratio, min_lr_ratio + (1.0 - min_lr_ratio) * cosine_val)
+                
+                phase2_step = current_step - restart_step
+                phase2_total = total_steps - restart_step
+                
+                if phase2_step < restart_warmup_steps:
+                    return min_lr_ratio + (restart_lr_ratio - min_lr_ratio) * phase2_step / restart_warmup_steps
+                
+                phase2_progress = (phase2_step - restart_warmup_steps) / float(max(1, phase2_total - restart_warmup_steps))
+                cosine_val = 0.5 * (1.0 + math.cos(math.pi * min(1.0, phase2_progress)))
+                return max(min_lr_ratio, min_lr_ratio + (restart_lr_ratio - min_lr_ratio) * cosine_val)
+            
             else:  # 'cosine' (default)
                 progress = (current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
                 cosine_val = 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
-                # Scale cosine from [0,1] to [min_lr_ratio, 1.0]
                 return max(min_lr_ratio, min_lr_ratio + (1.0 - min_lr_ratio) * cosine_val)
 
         return optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
@@ -390,7 +428,7 @@ class Trainer:
             # 201 evenly-spaced thresholds from 0.01 to 0.99
             thresholds = [round(t, 3) for t in np.linspace(0.01, 0.99, 201).tolist()]
 
-        probs = torch.sigmoid(logits).cpu().numpy()
+        probs = torch.sigmoid(logits).cpu().float().numpy()
         labels_np = labels.cpu().numpy().astype(np.int32)
 
         best_t, best_f1 = 0.5, 0.0
@@ -519,7 +557,9 @@ class Trainer:
         checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         
         # Load model weights (handle delta or full)
-        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        result = self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        if result.missing_keys:
+            print(f"[INFO] Missing keys (will use initialization): {result.missing_keys}")
         
         # Load optimizer and scheduler
         if 'optimizer_state_dict' in checkpoint:

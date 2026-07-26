@@ -2,7 +2,7 @@
 # Inherits from _defaults.yaml (manually here for simplicity in the test)
 
 data:
-  annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U0055]
+  annotated_speakers: [U0046, U1001, U2013, U1089, U2002, U2004, U0055]
   audio_dirs:
     en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
     zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
@@ -13,10 +13,13 @@ data:
   creaky_tier_name: creaky
   context_padding_ms: 50
   min_duration_ms: 40
-  val_speakers: [U2002]
+  val_speakers: [sampled]
   audio_formats: [wav, flac]
   num_workers: 0
   pin_memory: false
+  sampler:
+    enabled: true
+    anchor_speakers_per_batch: 2
 
 model:
   backbone: microsoft/wavlm-base-plus
@@ -26,23 +29,31 @@ model:
   head_hidden_dim: 64
 
 training:
+  optimizer: adamw_fp32
   epochs: 1
   batch_size: 32
   gradient_accumulation_steps: 1
   backbone_lr: 1.0e-5
   head_lr: 1.0e-4
-  warmup_steps: 5           # smoketest 中 total_steps 极小，需缩小 warmup
-  lr_schedule: cosine
-  min_lr_ratio: 0.0         # smoketest 无需 eta_min
+  warmup_steps: 1           # smoketest 中 total_steps 极小，需缩小 warmup
+  lr_schedule: cosine_restart
+  min_lr_ratio: 0.05
+  restart_aug_threshold: 0.11
+  restart_lr_ratio: 0.45
+  restart_warmup_steps: 1
   grad_clip: 1.0
   loss: focal
   seed: 42
   mixed_precision: no # Disable for smoketest safety
   gradient_checkpointing: false
+  ablation:
+    use_cosine_restart: false
+    use_positional_encoding: true
+    pos_embed_dim: 32
 
 eval:
-  primary_metric: f1
-  early_stopping_patience: 1
+  primary_metric: auc_pr
+  early_stopping_patience: 0
 
 tensorboard:
   log_dir: runs/smoketest
@@ -53,3 +64,22 @@ tensorboard:
 checkpoint:
   dir: R:/checkpoints/smoketest
   save_mode: delta
+  keep_best_count: 1
+
+augmentation:
+  enabled: true
+  aug_order: noise_first
+  schedule_power: 2.0
+  denoising:
+    enabled: true
+    prob: 0.5
+    atten_lim_db_start: 0.0
+    atten_lim_db_end: 15.0
+  noise:
+    enabled: true
+    prob: 0.5
+    type: white
+    pink_low_cutoff_hz: 10.0
+    snr_db_start: 40.0
+    snr_db_end: 20.0
+

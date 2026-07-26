@@ -242,7 +242,7 @@ def main():
             waveforms, lengths = waveforms.to(device), lengths.to(device)
             
             logits = model(waveforms, lengths)
-            probs = torch.sigmoid(logits).cpu().numpy()
+            probs = torch.sigmoid(logits).cpu().float().numpy()
             
             for prob, idx in zip(probs, indices):
                 seg_info = all_segments[idx]

@@ -8,7 +8,7 @@ def compute_metrics(logits, labels, threshold=0.5):
     logits: torch.Tensor of shape [B]
     labels: torch.Tensor of shape [B]
     """
-    probs = torch.sigmoid(logits).detach().cpu().numpy()
+    probs = torch.sigmoid(logits).detach().cpu().float().numpy()
     preds = (probs >= threshold).astype(np.int32)
     labels_np = labels.detach().cpu().numpy().astype(np.int32)
     

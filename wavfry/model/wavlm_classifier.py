@@ -33,6 +33,11 @@ class WavFryClassifier(nn.Module):
         
         if 'attn' in self.pooling_mode:
             self.attention_head = nn.Linear(self.hidden_dim, 1)
+            self.use_pos_encoding = config['training'].get('ablation', {}).get('use_positional_encoding', False)
+            if self.use_pos_encoding:
+                self.pos_dim = config['training'].get('ablation', {}).get('pos_embed_dim', 32)
+                self.pos_scorer = nn.Linear(self.pos_dim, 1, bias=False)
+                nn.init.zeros_(self.pos_scorer.weight)
         
         # Classification Head
         head_hidden = config['model'].get('head_hidden_dim', 256)
@@ -106,6 +111,19 @@ class WavFryClassifier(nn.Module):
             # 2. Attention-weighted Pooling
             # Compute scores: [B, T, 1] -> [B, T]
             attn_scores = self.attention_head(x).squeeze(-1)
+            
+            if hasattr(self, 'use_pos_encoding') and self.use_pos_encoding:
+                max_T = x.size(1)
+                # Create relative positions 0.0 to 1.0 (shape: [B, T])
+                positions = torch.arange(max_T, device=x.device, dtype=x.dtype).unsqueeze(0).expand(x.size(0), -1)
+                # Avoid division by zero when out_lengths is 1: out_lengths - 1 clamped to min=1
+                rel_pos = (positions / (out_lengths.unsqueeze(1).float() - 1).clamp(min=1)).clamp(0.0, 1.0)
+                rel_pos = rel_pos.masked_fill(~bool_mask, 0.0)  # padding 帧归零
+                
+                pos_emb = self._sinusoidal_pos_encoding(rel_pos, self.pos_dim)  # [B, T, D_pos]
+                pos_bias = self.pos_scorer(pos_emb).squeeze(-1)                  # [B, T]
+                attn_scores = attn_scores + pos_bias  # 叠加，不破坏声学特征
+                
             # Mask padding frames with -1e9 for softmax
             # Use a value compatible with FP16/Half
             attn_scores = attn_scores.masked_fill(~bool_mask, -1e4)
@@ -140,3 +158,11 @@ class WavFryClassifier(nn.Module):
             
         logits = self.head(x_final).squeeze(-1) # [B]
         return logits
+
+    @staticmethod
+    def _sinusoidal_pos_encoding(pos: torch.Tensor, d_model: int) -> torch.Tensor:
+        """pos: [B, T] in [0,1]; returns [B, T, d_model]. No learnable parameters."""
+        i = torch.arange(d_model // 2, device=pos.device, dtype=pos.dtype)
+        freq = 1.0 / (10000.0 ** (2.0 * i / d_model))
+        angles = pos.unsqueeze(-1) * freq          # [B, T, d_model//2]
+        return torch.cat([angles.sin(), angles.cos()], dim=-1)  # [B, T, d_model]

@@ -12,6 +12,28 @@ manual_annotation = __import__('04_creaky_tools.src.manual_annotation', fromlist
 load_annotations = manual_annotation.load_annotations
 annotation_storage_path = manual_annotation.annotation_storage_path
 
+def _build_batch_lookup(sampling_state_path: Path) -> dict:
+    """Return a dict mapping file_key -> batch_id (int) from sampling_state.json."""
+    lookup = {}
+    if not sampling_state_path.exists():
+        print(f"[manifest] WARNING: sampling_state.json not found at {sampling_state_path}. batch_id will be NaN for all sampled files.")
+        return lookup
+    try:
+        import json as _json
+        with open(sampling_state_path, 'r', encoding='utf-8') as f:
+            state = _json.load(f)
+        for batch in state.get('batches', []):
+            batch_id = int(batch.get('batch_id', 0))
+            for file_entry in batch.get('files', []):
+                fk = file_entry.get('file_key')
+                if fk:
+                    lookup[fk] = batch_id
+        print(f"[manifest] Loaded batch lookup: {len(lookup)} file_keys across {len(state.get('batches', []))} batches.")
+    except Exception as e:
+        print(f"[manifest] WARNING: Failed to load sampling_state.json: {e}")
+    return lookup
+
+
 def build_manifest(config):
     speakers = config['data']['annotated_speakers']
     audio_dirs = config['data']['audio_dirs']
@@ -22,6 +44,10 @@ def build_manifest(config):
     anno_path = annotation_storage_path(Path(tg_dirs['en']))
     print(f"Loading annotations from {anno_path}...")
     all_annotations = load_annotations(anno_path)
+    
+    # Build batch_id lookup from sampling_state.json (sibling folder 04_creaky_tools)
+    sampling_state_path = Path(__file__).resolve().parents[3] / '04_creaky_tools' / '_annotation_sampling' / 'sampling_state.json'
+    batch_lookup = _build_batch_lookup(sampling_state_path)
     
     records = []
     files_with_annotations = all_annotations.get('files', {})
@@ -39,8 +65,10 @@ def build_manifest(config):
         # If parts[4] is ZH-CN, speaker is parts[5]
         # Let's try to find speaker ID by looking for the one starting with U
         speaker_id = next((p for p in parts if p.startswith('U')), None)
-        if not speaker_id or speaker_id not in speakers:
+        if not speaker_id:
             continue
+            
+        annotation_type = "full" if speaker_id in speakers else "sampled"
             
         language_code = parts[3] # EN or ZH
         lang_key = 'en' if language_code == 'EN' else 'zh'
@@ -74,6 +102,9 @@ def build_manifest(config):
             if (end_s - start_s) * 1000 < config['data']['min_duration_ms']:
                 continue
                 
+            # Determine batch_id: sampled files have a batch, full-speaker files do not
+            batch_id = batch_lookup.get(file_key, None)  # None for full-speaker data
+            
             records.append({
                 'file_key': file_key,
                 'audio_path': str(audio_path),
@@ -83,7 +114,9 @@ def build_manifest(config):
                 'phone': phone,
                 'speaker_id': speaker_id,
                 'language': lang_key,
-                'label': 1 if label == 'creaky' else 0
+                'label': 1 if label == 'creaky' else 0,
+                'annotation_type': annotation_type,
+                'batch_id': batch_id  # int (1 or 2) for sampled files, None for full-speaker files
             })
             
     df = pd.DataFrame(records)

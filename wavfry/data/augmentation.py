@@ -3,6 +3,51 @@ import torchaudio
 import numpy as np
 from pathlib import Path
 
+def generate_pink_noise(B, T, device, dtype, low_cutoff_hz=10.0, sample_rate=16000):
+    """
+    Generates pink noise in the frequency domain with 1/f amplitude scaling,
+    exactly zero DC offset, and a zero-phase 2nd-order Butterworth-like high-pass filter.
+    Returns a tensor of shape [B, T] with unit variance (std = 1.0).
+    """
+    num_freqs = T // 2 + 1
+    
+    # Generate complex Gaussian noise in frequency domain
+    real = torch.randn(B, num_freqs, device=device, dtype=dtype)
+    imag = torch.randn(B, num_freqs, device=device, dtype=dtype)
+    spectrum = torch.complex(real, imag)
+    
+    # Frequency scaling: power spectrum S(f) ~ 1/f -> amplitude A(f) ~ 1/sqrt(f)
+    # The frequencies are 0, 1, 2, ..., num_freqs - 1
+    k = torch.arange(1, num_freqs, device=device, dtype=dtype)
+    
+    pink_scale = 1.0 / torch.sqrt(k)
+    
+    # Define weights vector
+    weights = torch.zeros(num_freqs, device=device, dtype=dtype)
+    
+    if low_cutoff_hz > 0:
+        # Butterworth 2nd-order high-pass filter response in frequency domain:
+        # H_gain = f^2 / (f^2 + f_c^2)
+        bin_c = (low_cutoff_hz * T) / sample_rate
+        hp_gain = (k ** 2) / (k ** 2 + bin_c ** 2)
+        weights[1:] = pink_scale * hp_gain
+    else:
+        weights[1:] = pink_scale
+        
+    # Apply weights across the spectrum
+    # weights[0] is exactly 0.0 -> guarantees absolute zero DC offset!
+    spectrum = spectrum * weights.unsqueeze(0)
+    
+    # Convert back to time domain
+    noise = torch.fft.irfft(spectrum, n=T)
+    
+    # Normalize noise to unit power (variance = 1.0) per sample
+    # so it matches white noise characteristics and scales correctly with SNR db
+    noise_std = torch.sqrt(torch.mean(noise ** 2, dim=1, keepdim=True) + 1e-9)
+    noise = noise / noise_std
+    
+    return noise
+
 class AudioAugmentor:
     """
     GPU-accelerated Curriculum Audio Augmentor.
@@ -150,7 +195,7 @@ class AudioAugmentor:
         return torch.cat(enhanced_list, dim=0)
 
     def add_noise(self, waveforms, epoch, prob, device):
-        """Add Gaussian noise to batch."""
+        """Add Gaussian or Pink noise to batch."""
         if not self.noise_cfg.get('enabled', False):
             return waveforms
             
@@ -166,7 +211,12 @@ class AudioAugmentor:
         if mask.sum() == 0:
             return waveforms
             
-        noise = torch.randn_like(waveforms)
+        noise_type = self.noise_cfg.get('type', 'white')
+        if noise_type == 'pink':
+            low_cutoff = self.noise_cfg.get('pink_low_cutoff_hz', 10.0)
+            noise = generate_pink_noise(B, T, device, waveforms.dtype, low_cutoff_hz=low_cutoff, sample_rate=16000)
+        else:
+            noise = torch.randn_like(waveforms)
         
         # Calculate power
         signal_pwr = torch.mean(waveforms**2, dim=1, keepdim=True)

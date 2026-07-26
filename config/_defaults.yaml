@@ -14,13 +14,16 @@ data:
   context_padding_ms: 30
   min_duration_ms: 30
   # Set to a list of speaker IDs for fixed validation, or 'loocv' for Leave-One-Speaker-Out
-  val_speakers: []
+  val_speakers: [sampled]
   audio_formats: [wav, flac]
   # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
   # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
   num_workers: auto
   pin_memory: true                   # GPU 训练时加速 Host→Device 传输
   prefetch_factor: 2                 # num_workers>0 时生效
+  sampler:
+    enabled: false                 # false = 退回到纯 shuffle（baseline 对照）
+    anchor_speakers_per_batch: 2   # 每 batch 抽几个 anchor speaker
 
 # ── 模型 ──────────────────────────────────────────────
 model:
@@ -34,9 +37,10 @@ model:
 
 # ── 训练 ──────────────────────────────────────────────
 training:
-  epochs: 13
-  batch_size: 64
-  gradient_accumulation_steps: 1     # 有效 batch = batch_size × accumulation
+  optimizer: adamw_8bit              # adamw_fp32 | adamw_8bit
+  epochs: 25
+  batch_size: 32
+  gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation
                                      # 显存不足时设 2/4，等效扩大 batch
   backbone_lr: 1.0e-5                # 微调层 LR（远小于 head）
   head_lr: 1.0e-4                    # 分类头 + scalar mix LR
@@ -52,8 +56,17 @@ training:
   # 梯度检查点：显著降低显存，轻微降低速度，Colab/8GB 显存建议开启
   gradient_checkpointing: false
   # ── 学习率调度 ──────────────────────────────────────
-  lr_schedule: cosine       # cosine（推荐）| linear | none（仅预热，保持当前行为）
-  min_lr_ratio: 0.05        # 余弦退火终点 = base_lr × min_lr_ratio，防止衰减到 0
+  lr_schedule: cosine     # cosine | cosine_restart | linear | none
+  min_lr_ratio: 0.05              # 余弦退火终点 = base_lr × min_lr_ratio，防止衰减到 0
+  # ── 余弦热重启参数（仅 cosine_restart 时生效）──
+  restart_aug_threshold: 0.11     # 触发重启的数据增强强度阈值（自动推算 epoch）
+  restart_lr_ratio: 0.45          # 重启后 LR 恢复到峰值的比例（保守值 0.35~0.5）
+  restart_warmup_steps: 100       # 重启后约 1 epoch 的平滑爬升
+  # ── 消融测试与消融开关 ──
+  ablation:
+    use_cosine_restart: false         # false = 退回到标准 cosine
+    use_positional_encoding: true    # false = 禁用位置编码
+    pos_embed_dim: 32                # 位置编码维度
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: mean_attn    # mean | mean_topk (L2-proxy) | mean_attn (learnable)
   topk_ratio: 0.2           # Top-K 取帧比例
@@ -62,7 +75,7 @@ training:
 # ── 评估 ──────────────────────────────────────────────
 eval:
   primary_metric: auc_pr        # auc_pr（推荐）| f1 — 决定 early-stopping 和最优 ckpt 判断依据
-  early_stopping_patience: 4  # 设为 0 以禁用，确保跑完完整的余弦退火曲线
+  early_stopping_patience: 3  # 连续 3 个 epoch 验证集指标不上升则早停
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
@@ -76,7 +89,7 @@ tensorboard:
 checkpoint:
   dir: R:/checkpoints/
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
-  keep_best_count: 3                 # 每个 speaker 只保留指标最好的 N 个 ckpt
+  keep_best_count: 1                 # 每个 speaker 只保留指标最好的 N 个 ckpt
 
 # ── 推理 ──────────────────────────────────────────────
 inference:
@@ -110,6 +123,8 @@ augmentation:
   noise:
     enabled: true             # 加噪增强开关
     prob: 0.5                 # 每个样本应用加噪的概率
+    type: pink                # noise type: white | pink
+    pink_low_cutoff_hz: 10.0  # pink noise low cutoff frequency to prevent DC / sub-bass drift
     # SNR 随 epoch 按幂次曲线下降（SNR 越低 = 噪声越多）
     snr_db_start: 40.0        # epoch 1 时（几乎听不出噪声）
     snr_db_end: 20.0          # 最终 epoch 时（明显但不严重）
