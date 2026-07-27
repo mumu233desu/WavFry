@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-26T12:44:48.067310+00:00",
+  "parameters": {
+    "language": "en",
+    "speakers": [
+      "U1001"
+    ],
+    "audio_dir": "E:\\Corpus\\CS-Dialogue\\data\\short_wav\\WAVE\\01_en_dereverb",
+    "textgrid_dir": "E:\\Corpus\\CS-Dialogue\\data\\short_wav\\WAVE\\02_en_mfa_aligned",
+    "tier": "phones",
+    "rms_threshold": 0.008,
+    "min_duration_ms": 30.0,
+    "include_voiceless": true,
+    "dry_run": true
+  },
+  "files_matched": 84,
+  "files_processed": 84,
+  "files_failed": 0,
+  "sp_intervals_found": 541,
+  "sp_non_creaky": 499,
+  "sp_uncertain": 42,
+  "voiceless_candidates": 803,
+  "voiceless_written": 0,
+  "skipped_too_short": 2,
+  "skipped_existing": 2,
+  "invalid_rms": 0,
+  "would_write": 1342,
+  "written": 0,
+  "rms_distribution": {
+    "p25": 0.0012392627630794537,
+    "p50": 0.001773449244567126,
+    "p75": 0.002897598828939521,
+    "p90": 0.005916950752444975
+  },
+  "inventory_counts": {
+    "silence": 541,
+    "sonorant": 853,
+    "unknown": 15,
+    "voiced_obs": 443,
+    "voiceless_obs": 805,
+    "vowel": 1548
+  },
+  "unknown_intervals": 15,
+  "unknown_top_labels": {
+    "spn": 15
+  },
+  "annotation_shards_changed": 0,
+  "annotation_backup": null,
+  "migration": {
+    "moved": 1,
+    "merged": 0,
+    "conflicts": [],
+    "changed_file_keys": [
+      "F_23_Sichuan_EN_ZH-CN_U1001_S0_363"
+    ]
+  },
+  "conflicts": [],
+  "errors": []
+}

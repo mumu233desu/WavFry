@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-26T12:42:34.790667+00:00",
+  "parameters": {
+    "language": "zh",
+    "speakers": [
+      "U1001"
+    ],
+    "audio_dir": "E:\\Corpus\\CS-Dialogue\\data\\short_wav\\WAVE\\11_zh_dereverb",
+    "textgrid_dir": "E:\\Corpus\\CS-Dialogue\\data\\short_wav\\WAVE\\12_zh_mfa_aligned",
+    "tier": "phones",
+    "rms_threshold": 0.008,
+    "min_duration_ms": 30.0,
+    "include_voiceless": false,
+    "dry_run": true
+  },
+  "files_matched": 122,
+  "files_processed": 122,
+  "files_failed": 0,
+  "sp_intervals_found": 1113,
+  "sp_non_creaky": 0,
+  "sp_uncertain": 0,
+  "voiceless_candidates": 0,
+  "voiceless_written": 0,
+  "skipped_too_short": 0,
+  "skipped_existing": 0,
+  "invalid_rms": 0,
+  "would_write": 0,
+  "written": 0,
+  "rms_distribution": {
+    "p25": null,
+    "p50": null,
+    "p75": null,
+    "p90": null
+  },
+  "inventory_counts": {
+    "silence": 1113,
+    "unknown": 12819
+  },
+  "unknown_intervals": 12819,
+  "unknown_top_labels": {
+    "spn": 1393,
+    "n": 911,
+    "j": 908,
+    "w": 618,
+    "t": 558,
+    "a˥˩": 451,
+    "ʂ": 430,
+    "tɕ": 397,
+    "ŋ": 384,
+    "x": 368,
+    "ʐ̩˥˩": 347,
+    "ow˥˩": 336,
+    "i˥˩": 311,
+    "o˨˩˦": 308,
+    "o˥˩": 275,
+    "k": 252,
+    "i˨˩˦": 214,
+    "p": 207,
+    "a˧˥": 187,
+    "ʈʂ": 185
+  },
+  "annotation_shards_changed": 0,
+  "annotation_backup": null,
+  "migration": {
+    "moved": 0,
+    "merged": 0,
+    "conflicts": [],
+    "changed_file_keys": []
+  },
+  "conflicts": [],
+  "errors": []
+}
