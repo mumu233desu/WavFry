@@ -5,13 +5,32 @@ from torch.utils.data import Dataset
 import platform
 from pathlib import Path
 
+from .continuous_non_creaky_sampling import ContinuousNonCreakyWindowGenerator
+
+
 class CreakyVowelDataset(Dataset):
-    def __init__(self, df, context_padding_ms=50, target_sr=16000, lowpass_cfg=None):
-        self.df = df
+    def __init__(
+        self,
+        df,
+        context_padding_ms=50,
+        target_sr=16000,
+        lowpass_cfg=None,
+        continuous_non_creaky_cfg=None,
+        seed=42,
+        fold_index=0,
+    ):
+        self.base_df = df.reset_index(drop=True)
         self.context_padding_ms = context_padding_ms
         self.target_sr = target_sr
         self.resamplers = {} # Cache resamplers by source sample rate
         self.current_epoch = 1
+        self.continuous_non_creaky = ContinuousNonCreakyWindowGenerator(
+            self.base_df,
+            continuous_non_creaky_cfg,
+            seed=seed,
+            fold_index=fold_index,
+        )
+        self.df = self._build_epoch_df(self.current_epoch)
         
         # Lowpass filter config (deterministic, applied to ALL samples)
         self.lowpass_cfg = lowpass_cfg or {}
@@ -19,8 +38,21 @@ class CreakyVowelDataset(Dataset):
         self.lowpass_cutoff  = self.lowpass_cfg.get('cutoff_hz', 3000.0)
         self.lowpass_Q       = self.lowpass_cfg.get('Q', 0.707)
 
+    def _build_epoch_df(self, epoch: int):
+        generated_df = self.continuous_non_creaky.generate(epoch)
+        if generated_df.empty:
+            return self.base_df.copy()
+
+        # Preserve all original rows and add deterministic epoch-specific views.
+        combined = pd.concat([self.base_df, generated_df], ignore_index=True, sort=False)
+        return combined.sample(
+            frac=1.0,
+            random_state=self.continuous_non_creaky.shuffle_seed_for_epoch(epoch),
+        ).reset_index(drop=True)
+
     def set_epoch(self, epoch: int):
-        self.current_epoch = epoch
+        self.current_epoch = int(epoch)
+        self.df = self._build_epoch_df(self.current_epoch)
 
     def __len__(self):
         return len(self.df)
@@ -35,8 +67,12 @@ class CreakyVowelDataset(Dataset):
         end_s = row['end_s']
         label = row['label']
 
-        # Add context padding
-        padding_s = self.context_padding_ms / 1000.0
+        # Generated continuous windows are already expanded inside a verified
+        # non-creaky run, so they intentionally receive no external context.
+        row_padding_ms = row.get('context_padding_ms', self.context_padding_ms)
+        if pd.isna(row_padding_ms):
+            row_padding_ms = self.context_padding_ms
+        padding_s = float(row_padding_ms) / 1000.0
         start_with_padding = max(0, start_s - padding_s)
         
         import time

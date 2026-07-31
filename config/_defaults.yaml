@@ -4,7 +4,7 @@
 data:
   annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
   include_languages: [en]
-  training_phone_types: [vowel, voiceless_obs, silence]
+  training_phone_types: [vowel, voiceless_obs, silence, sonorant]  # 可选: vowel | voiceless_obs | silence | sonorant | voiced_obs
   audio_dirs:
     en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
     zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
@@ -26,6 +26,17 @@ data:
   sampler:
     enabled: false                 # false = 退回到纯 shuffle（baseline 对照）
     anchor_speakers_per_batch: 2   # 每 batch 抽几个 anchor speaker
+  # 每个 epoch 额外生成连续且全部确认 non-creaky 的随机窗口。
+  continuous_non_creaky_sampling:
+    enabled: false
+    extra_sample_ratio: 0.08
+    min_duration_ms: 150
+    target_duration_ms: 300
+    max_duration_ms: 800
+    max_intervals: 4
+    max_sp_duration_ms: 200
+    max_sp_ratio: 0.35
+    allow_sp_only: false
 
 # ── 模型 ──────────────────────────────────────────────
 model:

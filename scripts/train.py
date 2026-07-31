@@ -50,9 +50,12 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
 
     lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     train_ds = dataset_mod.CreakyVowelDataset(
-        train_df, 
+        train_df,
         context_padding_ms=config['data']['context_padding_ms'],
-        lowpass_cfg=lowpass_cfg
+        lowpass_cfg=lowpass_cfg,
+        continuous_non_creaky_cfg=config['data'].get('continuous_non_creaky_sampling', {}),
+        seed=config['training'].get('seed', 42),
+        fold_index=fold_idx,
     )
     val_ds = dataset_mod.CreakyVowelDataset(
         val_df, 
@@ -72,6 +75,8 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             batch_size=config['training']['batch_size'],
             anchor_speakers=active_anchors,
             anchor_speakers_per_batch=sampler_cfg.get('anchor_speakers_per_batch', 2),
+            seed=config['training'].get('seed', 42) + fold_idx,
+            dataset=train_ds,
         )
         train_loader = DataLoader(
             train_ds, 

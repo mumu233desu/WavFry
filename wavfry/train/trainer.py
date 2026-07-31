@@ -167,10 +167,13 @@ class Trainer:
         return optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
     def train_epoch(self, epoch):
-        # Notify dataset of current epoch
+        # Rebuild deterministic epoch-specific samples before the loader iterates.
         if hasattr(self.train_loader.dataset, 'set_epoch'):
             self.train_loader.dataset.set_epoch(epoch)
-            
+        batch_sampler = getattr(self.train_loader, 'batch_sampler', None)
+        if hasattr(batch_sampler, 'set_epoch'):
+            batch_sampler.set_epoch(epoch)
+
         self.model.train()
         total_loss = 0
         all_logits = []

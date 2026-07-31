@@ -19,67 +19,67 @@ class GroupedBatchSampler(Sampler[List[int]]):
         anchor_speakers_per_batch: int = 2,  # 每个 batch 抽几个 anchor speaker
         drop_last: bool = False,
         seed: int = 42,
+        dataset=None,
     ):
         self.df = df.reset_index(drop=True)
+        self.dataset = dataset
         self.batch_size = batch_size
         self.anchor_speakers = anchor_speakers
         self.anchor_speakers_per_batch = anchor_speakers_per_batch
+        if self.anchor_speakers_per_batch < 1:
+            raise ValueError("anchor_speakers_per_batch must be >= 1")
         self.drop_last = drop_last
         self.seed = seed
-        self.epoch = 0
-        
-        # Calculate anchor_slots and random_slots
-        n_anchor = int((self.df['speaker_id'].isin(anchor_speakers)).sum())
-        n_total = len(self.df)
-        
-        computed_slots = round(batch_size * n_anchor / max(n_total, 1))
-        # Lower bound: each anchor speaker needs at least 1 creaky + 1 non-creaky
-        self.anchor_slots = max(
-            anchor_speakers_per_batch * 2,
-            computed_slots
+        self.epoch = 1
+        self._refresh_index()
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch explicitly so resumed runs reproduce the same batches."""
+        self.epoch = int(epoch)
+
+    def _refresh_index(self) -> None:
+        """Rebuild index pools after epoch-specific dataset rows are generated."""
+        if self.dataset is not None:
+            self.df = self.dataset.df.reset_index(drop=True)
+
+        n_anchor = int((self.df['speaker_id'].isin(self.anchor_speakers)).sum())
+        computed_slots = round(self.batch_size * n_anchor / max(len(self.df), 1))
+        self.anchor_slots = min(
+            max(self.anchor_speakers_per_batch * 2, computed_slots),
+            self.batch_size,
         )
-        # Ensure anchor_slots doesn't exceed batch_size
-        self.anchor_slots = min(self.anchor_slots, batch_size)
-        self.random_slots = batch_size - self.anchor_slots
-        
-        # Preprocessing: Group by speaker_id and label
-        self.anchor_buckets = {}
-        for spk in anchor_speakers:
-            self.anchor_buckets[spk] = {0: [], 1: []}
-            
+        self.random_slots = self.batch_size - self.anchor_slots
+
+        self.anchor_buckets = {
+            speaker: {0: [], 1: []} for speaker in self.anchor_speakers
+        }
         for idx, row in self.df.iterrows():
-            spk = row['speaker_id']
-            lbl = int(row['label'])
-            if spk in anchor_speakers:
-                if lbl in [0, 1]:
-                    self.anchor_buckets[spk][lbl].append(idx)
-                    
-        # Filter active anchor speakers that actually have both creaky and non-creaky samples
+            speaker = row['speaker_id']
+            label = int(row['label'])
+            if speaker in self.anchor_buckets and label in {0, 1}:
+                self.anchor_buckets[speaker][label].append(idx)
+
         self.active_anchor_speakers = [
-            spk for spk in anchor_speakers
-            if len(self.anchor_buckets[spk][0]) > 0 and len(self.anchor_buckets[spk][1]) > 0
+            speaker
+            for speaker in self.anchor_speakers
+            if self.anchor_buckets[speaker][0] and self.anchor_buckets[speaker][1]
         ]
-        
-        # Determine random pool base
         sampled_indices = [
-            idx for idx, row in self.df.iterrows()
-            if row['speaker_id'] not in anchor_speakers
+            idx
+            for idx, row in self.df.iterrows()
+            if row['speaker_id'] not in self.anchor_speakers
         ]
-        
-        # Calculate expected number of batches per epoch
-        self.total_batches = len(self.df) // batch_size if drop_last else math.ceil(len(self.df) / batch_size)
+        self.total_batches = (
+            len(self.df) // self.batch_size
+            if self.drop_last
+            else math.ceil(len(self.df) / self.batch_size)
+        )
         needed_random = self.total_batches * self.random_slots
-        
-        if len(sampled_indices) < needed_random:
-            # Fallback to including all data if sampled data is scarce
-            if len(sampled_indices) > 0:
-                print(
-                    f"[WARNING] Insufficient sampled data ({len(sampled_indices)} samples) "
-                    f"for {needed_random} random slots. Populating random pool with all data."
-                )
-            self.random_pool_base = list(range(len(self.df)))
-        else:
-            self.random_pool_base = sampled_indices
+        self.random_pool_base = (
+            list(range(len(self.df)))
+            if len(sampled_indices) < needed_random
+            else sampled_indices
+        )
             
     def _draw_anchor_samples(self, speaker: str, label: int, n: int, rng: random.Random) -> List[int]:
         bucket = self.anchor_buckets[speaker][label]
@@ -97,10 +97,10 @@ class GroupedBatchSampler(Sampler[List[int]]):
         return samples
 
     def __iter__(self) -> Iterator[List[int]]:
-        # Initialize RNG with seed + epoch to ensure variety but reproducibility
+        self._refresh_index()
+        # Epoch is set by Trainer, making resume deterministic.
         rng = random.Random(self.seed + self.epoch)
-        self.epoch += 1
-        
+
         # Shuffle the random pool base for this epoch
         random_pool = list(self.random_pool_base)
         rng.shuffle(random_pool)
@@ -148,4 +148,7 @@ class GroupedBatchSampler(Sampler[List[int]]):
             yield batch
             
     def __len__(self) -> int:
+        if self.dataset is not None:
+            sample_count = len(self.dataset)
+            return sample_count // self.batch_size if self.drop_last else math.ceil(sample_count / self.batch_size)
         return self.total_batches
