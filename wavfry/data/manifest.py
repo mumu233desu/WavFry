@@ -285,8 +285,8 @@ def _print_manifest_stats(df: pd.DataFrame, report: dict[str, Any]) -> None:
 def build_manifest(config: dict[str, Any]) -> pd.DataFrame:
     """Build and return the training DataFrame.
 
-    Configuration defaults intentionally restrict phase one to English vowel,
-    voiceless-obstruent, and silence intervals.
+    The default configuration includes English vowel, voiceless-obstruent,
+    silence, and sonorant intervals; callers may select any known phone types.
     """
 
     data_config = config.get("data", {})

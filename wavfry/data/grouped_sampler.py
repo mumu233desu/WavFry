@@ -64,6 +64,11 @@ class GroupedBatchSampler(Sampler[List[int]]):
             for speaker in self.anchor_speakers
             if self.anchor_buckets[speaker][0] and self.anchor_buckets[speaker][1]
         ]
+        if not self.active_anchor_speakers:
+            # No balanced anchor pair can be formed; safely degrade to shuffled data.
+            self.anchor_slots = 0
+            self.random_slots = self.batch_size
+
         sampled_indices = [
             idx
             for idx, row in self.df.iterrows()
@@ -80,6 +85,8 @@ class GroupedBatchSampler(Sampler[List[int]]):
             if len(sampled_indices) < needed_random
             else sampled_indices
         )
+        if self.total_batches > 0 and not self.random_pool_base and not self.active_anchor_speakers:
+            raise ValueError("GroupedBatchSampler has no usable training samples")
             
     def _draw_anchor_samples(self, speaker: str, label: int, n: int, rng: random.Random) -> List[int]:
         bucket = self.anchor_buckets[speaker][label]
@@ -132,6 +139,10 @@ class GroupedBatchSampler(Sampler[List[int]]):
             # 2. Fill the remaining slots from the random pool
             needed_random = self.batch_size - len(batch)
             if needed_random > 0:
+                if not random_pool:
+                    raise RuntimeError(
+                        "GroupedBatchSampler cannot fill the batch: random pool is empty"
+                    )
                 drawn_random = []
                 while len(drawn_random) < needed_random:
                     if random_pointer >= len(random_pool):

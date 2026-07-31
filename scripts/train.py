@@ -87,10 +87,16 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             prefetch_factor=prefetch_factor
         )
     else:
+        from wavfry.data.epoch_sampler import EpochShuffleSampler
+        epoch_sampler = EpochShuffleSampler(
+            train_ds,
+            seed=config['training'].get('seed', 42),
+            fold_index=fold_idx,
+        )
         train_loader = DataLoader(
-            train_ds, 
-            batch_size=config['training']['batch_size'], 
-            shuffle=True, 
+            train_ds,
+            batch_size=config['training']['batch_size'],
+            sampler=epoch_sampler,
             num_workers=num_workers,
             collate_fn=dataset_mod.collate_fn,
             pin_memory=config['data']['pin_memory'],

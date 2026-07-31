@@ -33,6 +33,7 @@ data:
     min_duration_ms: 150
     target_duration_ms: 300
     max_duration_ms: 800
+    min_intervals: 1
     max_intervals: 4
     max_sp_duration_ms: 200
     max_sp_ratio: 0.35

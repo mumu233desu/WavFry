@@ -21,6 +21,7 @@ class ContinuousNonCreakySamplingConfig:
     min_duration_ms: float = 150.0
     target_duration_ms: float = 300.0
     max_duration_ms: float = 800.0
+    min_intervals: int = 1
     max_intervals: int = 4
     max_sp_duration_ms: float = 200.0
     max_sp_ratio: float = 0.35
@@ -35,6 +36,7 @@ class ContinuousNonCreakySamplingConfig:
             min_duration_ms=float(values.get("min_duration_ms", 150.0)),
             target_duration_ms=float(values.get("target_duration_ms", 300.0)),
             max_duration_ms=float(values.get("max_duration_ms", 800.0)),
+            min_intervals=int(values.get("min_intervals", 1)),
             max_intervals=int(values.get("max_intervals", 4)),
             max_sp_duration_ms=float(values.get("max_sp_duration_ms", 200.0)),
             max_sp_ratio=float(values.get("max_sp_ratio", 0.35)),
@@ -52,8 +54,10 @@ class ContinuousNonCreakySamplingConfig:
             raise ValueError(
                 "Expected min_duration_ms <= target_duration_ms <= max_duration_ms"
             )
-        if self.max_intervals < 2:
-            raise ValueError("max_intervals must be >= 2")
+        if self.min_intervals < 1:
+            raise ValueError("min_intervals must be >= 1")
+        if self.max_intervals < self.min_intervals:
+            raise ValueError("max_intervals must be >= min_intervals")
         if self.max_sp_duration_ms < 0.0:
             raise ValueError("max_sp_duration_ms must be >= 0")
         if not 0.0 <= self.max_sp_ratio <= 1.0:
@@ -76,6 +80,11 @@ class ContinuousNonCreakyWindowGenerator:
         self.seed = int(seed)
         self.fold_index = int(fold_index)
         self.runs = self._build_runs() if self.config.enabled else []
+        self.last_generation_stats: dict[str, int] = {
+            "requested": 0,
+            "generated": 0,
+            "failed_attempts": 0,
+        }
 
     @property
     def extra_sample_count(self) -> int:
@@ -101,12 +110,12 @@ class ContinuousNonCreakyWindowGenerator:
                 gap_s = float(row["start_s"]) - float(previous["end_s"])
                 is_contiguous = abs(gap_s) <= _INTERNAL_BOUNDARY_TOLERANCE_S
                 if not same_file or not is_contiguous:
-                    if len(current) >= 2:
+                    if len(current) >= self.config.min_intervals:
                         runs.append(current)
                     current = []
             current.append(row)
 
-        if len(current) >= 2:
+        if len(current) >= self.config.min_intervals:
             runs.append(current)
         return runs
 
@@ -127,6 +136,11 @@ class ContinuousNonCreakyWindowGenerator:
         """Generate the configured number of windows for one fold and epoch."""
 
         count = self.extra_sample_count
+        self.last_generation_stats = {
+            "requested": count,
+            "generated": 0,
+            "failed_attempts": 0,
+        }
         if count <= 0:
             return self.base_df.iloc[0:0].copy()
 
@@ -141,11 +155,21 @@ class ContinuousNonCreakyWindowGenerator:
             if sampled is not None:
                 rows.append(sampled)
 
+        self.last_generation_stats = {
+            "requested": count,
+            "generated": len(rows),
+            "failed_attempts": attempts - len(rows),
+        }
+        message = (
+            f"requested={count}, generated={len(rows)}, "
+            f"failed_attempts={attempts - len(rows)}, eligible_runs={len(self.runs)}"
+        )
         if len(rows) < count:
-            print(
-                "[ContinuousNonCreaky] WARNING: generated "
-                f"{len(rows)}/{count} requested windows after {attempts} attempts."
+            raise RuntimeError(
+                "Continuous non-creaky sampling could not satisfy the configured ratio: "
+                + message
             )
+        print(f"[ContinuousNonCreaky] {message}.")
         return pd.DataFrame(rows)
 
     def _sample_window(
@@ -153,8 +177,11 @@ class ContinuousNonCreakyWindowGenerator:
         run: list[dict[str, Any]],
         rng: np.random.Generator,
     ) -> dict[str, Any] | None:
-        boundary_index = int(rng.integers(1, len(run)))
-        boundary_s = float(run[boundary_index]["start_s"])
+        if len(run) == 1:
+            boundary_s = float(run[0]["start_s"])
+        else:
+            boundary_index = int(rng.integers(1, len(run)))
+            boundary_s = float(run[boundary_index]["start_s"])
         run_start_s = float(run[0]["start_s"])
         run_end_s = float(run[-1]["end_s"])
         run_duration_s = run_end_s - run_start_s
@@ -173,9 +200,13 @@ class ContinuousNonCreakyWindowGenerator:
             max(drawn_duration_s, self.config.target_duration_ms / 1000.0),
             max_duration_s,
         )
-        epsilon = min(_INTERNAL_BOUNDARY_TOLERANCE_S, window_duration_s / 10.0)
-        start_low = max(run_start_s, boundary_s - window_duration_s + epsilon)
-        start_high = min(boundary_s - epsilon, run_end_s - window_duration_s)
+        if len(run) == 1:
+            start_low = run_start_s
+            start_high = run_end_s - window_duration_s
+        else:
+            epsilon = min(_INTERNAL_BOUNDARY_TOLERANCE_S, window_duration_s / 10.0)
+            start_low = max(run_start_s, boundary_s - window_duration_s + epsilon)
+            start_high = min(boundary_s - epsilon, run_end_s - window_duration_s)
         if start_high + _INTERNAL_BOUNDARY_TOLERANCE_S < start_low:
             return None
 
@@ -192,7 +223,7 @@ class ContinuousNonCreakyWindowGenerator:
             - max(start_s, float(interval["start_s"]))
             > _INTERNAL_BOUNDARY_TOLERANCE_S
         ]
-        if len(overlapping) < 2 or len(overlapping) > self.config.max_intervals:
+        if not self.config.min_intervals <= len(overlapping) <= self.config.max_intervals:
             return None
 
         sp_duration_s = sum(

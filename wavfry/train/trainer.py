@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import os
+import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 import io
@@ -173,6 +174,9 @@ class Trainer:
         batch_sampler = getattr(self.train_loader, 'batch_sampler', None)
         if hasattr(batch_sampler, 'set_epoch'):
             batch_sampler.set_epoch(epoch)
+        sampler = getattr(self.train_loader, 'sampler', None)
+        if hasattr(sampler, 'set_epoch'):
+            sampler.set_epoch(epoch)
 
         self.model.train()
         total_loss = 0
@@ -499,7 +503,13 @@ class Trainer:
             'auc_pr': auc_pr,
             # best_threshold / threshold_f1 are injected later by _update_checkpoint_threshold
             'metrics': metrics_to_save,
-            'config': self.config
+            'config': self.config,
+            'rng_state': {
+                'python': random.getstate(),
+                'numpy': np.random.get_state(),
+                'torch': torch.get_rng_state(),
+                'cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            },
         }
         
         # For non-delta mode, we always want the optimizer to allow resuming from any checkpoint
@@ -569,5 +579,13 @@ class Trainer:
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'scheduler_state_dict' in checkpoint:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-            
+
+        rng_state = checkpoint.get('rng_state')
+        if rng_state:
+            random.setstate(rng_state['python'])
+            np.random.set_state(rng_state['numpy'])
+            torch.set_rng_state(rng_state['torch'])
+            if torch.cuda.is_available() and rng_state.get('cuda') is not None:
+                torch.cuda.set_rng_state_all(rng_state['cuda'])
+
         return checkpoint['epoch']
