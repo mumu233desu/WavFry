@@ -1,168 +1,229 @@
+from __future__ import annotations
+
+from typing import Any
+
 import torch
 import torch.nn as nn
 from transformers import WavLMModel
 
+
 class WavFryClassifier(nn.Module):
-    def __init__(self, config, wavlm_instance=None):
+    """WavLM classifier supporting the original segment and block paradigms."""
+
+    def __init__(self, config: dict[str, Any], wavlm_instance=None):
         super().__init__()
-        self.backbone_name = config['model']['backbone']
-        
-        if wavlm_instance is not None:
-            self.wavlm = wavlm_instance
-        else:
-            # Set output_hidden_states=True in config before loading or use it in forward
-            self.wavlm = WavLMModel.from_pretrained(self.backbone_name)
-        
-        # Disable internal masking/SpecAugment which causes issues with very short segments
+        self.backbone_name = config["model"]["backbone"]
+        self.wavlm = wavlm_instance or WavLMModel.from_pretrained(self.backbone_name)
         self.wavlm.config.apply_spec_augment = False
         self.wavlm.config.mask_time_prob = 0.0
         self.wavlm.config.mask_feature_prob = 0.0
-        
-        # Hidden dimension
+
         self.hidden_dim = self.wavlm.config.hidden_size
         self.num_layers = self.wavlm.config.num_hidden_layers
-        
-        # Scalar Mix
-        self.use_scalar_mix = config['model'].get('use_scalar_mix', True)
+        self.use_scalar_mix = config["model"].get("use_scalar_mix", True)
         if self.use_scalar_mix:
-            # num_layers + 1 because hidden_states includes the input embedding (Layer 0)
             self.scalar_mix_weights = nn.Parameter(torch.zeros(self.num_layers + 1))
-            
-        # Pooling parameters
-        self.pooling_mode = config['training'].get('pooling_mode', 'mean')
-        
-        if 'attn' in self.pooling_mode:
+
+        training_cfg = config["training"]
+        self.pooling_mode = training_cfg.get("pooling_mode", "mean")
+        self.topk_ratio = float(training_cfg.get("topk_ratio", 0.2))
+        self.topk_min_frames = int(training_cfg.get("topk_min_frames", 3))
+        self.use_pos_encoding = training_cfg.get("ablation", {}).get("use_positional_encoding", False)
+        self.pos_dim = int(training_cfg.get("ablation", {}).get("pos_embed_dim", 32))
+        if "attn" in self.pooling_mode:
             self.attention_head = nn.Linear(self.hidden_dim, 1)
-            self.use_pos_encoding = config['training'].get('ablation', {}).get('use_positional_encoding', False)
             if self.use_pos_encoding:
-                self.pos_dim = config['training'].get('ablation', {}).get('pos_embed_dim', 32)
                 self.pos_scorer = nn.Linear(self.pos_dim, 1, bias=False)
                 nn.init.zeros_(self.pos_scorer.weight)
-        
-        # Classification Head
-        head_hidden = config['model'].get('head_hidden_dim', 256)
-        dropout = config['model'].get('dropout', 0.1)
-        
-        in_features = self.hidden_dim * 2 if 'mean' in self.pooling_mode and ('topk' in self.pooling_mode or 'attn' in self.pooling_mode) else self.hidden_dim
-        
+
+        head_hidden = config["model"].get("head_hidden_dim", 256)
+        dropout = config["model"].get("dropout", 0.1)
+        in_features = self.hidden_dim * 2 if "mean" in self.pooling_mode and (
+            "topk" in self.pooling_mode or "attn" in self.pooling_mode
+        ) else self.hidden_dim
         self.head = nn.Sequential(
             nn.Linear(in_features, head_hidden),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(head_hidden, 1)
+            nn.Linear(head_hidden, 1),
         )
-        
-        # Freeze layers
+
+        self.boundary_trim_frames = max(
+            0, int(training_cfg.get("block", {}).get("boundary_trim_frames", 0))
+        )
+        frame_cfg = training_cfg.get("frame_head", {})
+        self.frame_head_enabled = bool(frame_cfg.get("enabled", False))
+        if self.frame_head_enabled:
+            self.frame_head = nn.Sequential(
+                nn.LayerNorm(self.hidden_dim),
+                nn.Linear(self.hidden_dim, 1),
+            )
+            if frame_cfg.get("mil_mode", "lse") == "lse_mean":
+                self.frame_mil_fusion = nn.Linear(2, 1)
+
         self.freeze_layers(config)
-        
-        # Gradient Checkpointing
-        if config['training'].get('gradient_checkpointing', False):
+        if training_cfg.get("gradient_checkpointing", False):
             self.wavlm.gradient_checkpointing_enable()
-        
-    def freeze_layers(self, config):
-        # 1. First, freeze the entire WavLM model (including encoder, feature_extractor, projections, etc.)
+
+    def freeze_layers(self, config: dict[str, Any]) -> None:
         for param in self.wavlm.parameters():
             param.requires_grad = False
-            
-        fine_tune_layers = config['model'].get('fine_tune_layers', '4-8')
-        
-        if fine_tune_layers == 'all':
+        fine_tune_layers = config["model"].get("fine_tune_layers", "4-8")
+        if fine_tune_layers == "all":
             trainable_indices = list(range(self.num_layers))
-        elif fine_tune_layers == 'none':
+        elif fine_tune_layers == "none":
             trainable_indices = []
+        elif isinstance(fine_tune_layers, str):
+            start, end = map(int, fine_tune_layers.split("-"))
+            trainable_indices = list(range(start, end + 1))
         else:
-            if isinstance(fine_tune_layers, str):
-                start, end = map(int, fine_tune_layers.split('-'))
-                trainable_indices = list(range(start, end + 1))
-            else:
-                trainable_indices = fine_tune_layers
-        
-        # 2. Unfreeze only the selected transformer layers
+            trainable_indices = list(fine_tune_layers)
         for i, layer in enumerate(self.wavlm.encoder.layers):
             if i in trainable_indices:
                 for param in layer.parameters():
                     param.requires_grad = True
-                
-    def forward(self, x, lengths):
-        # x: [B, T]
+
+    def _encode_sequence(self, x: torch.Tensor, lengths: torch.Tensor):
         outputs = self.wavlm(x, output_hidden_states=True)
-        
         if self.use_scalar_mix:
-            # hidden_states: tuple of (B, T, D) for each layer (including input embedding)
-            h = torch.stack(outputs.hidden_states, dim=0) # [L+1, B, T, D]
-            norm_weights = torch.softmax(self.scalar_mix_weights, dim=0)
-            # Weighted sum over layers
-            x = (h * norm_weights.view(-1, 1, 1, 1)).sum(dim=0) # [B, T, D]
+            hidden = torch.stack(outputs.hidden_states, dim=0)
+            weights = torch.softmax(self.scalar_mix_weights, dim=0)
+            sequence = (hidden * weights.view(-1, 1, 1, 1)).sum(dim=0)
         else:
-            x = outputs.last_hidden_state # [B, T, D]
-            
-        # Accurate output lengths after CNN feature extractor
-        out_lengths = self.wavlm._get_feat_extract_output_lengths(lengths)
-        
-        # 1. Mean Pooling
-        # mask shape: [B, T]
-        bool_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), x.size(1)) < out_lengths.unsqueeze(1)
-        float_mask = bool_mask.unsqueeze(-1).float() # [B, T, 1]
-        
-        # Avoid division by zero
-        x_mean = (x * float_mask).sum(dim=1) / (float_mask.sum(dim=1) + 1e-9) # [B, D]
-        
-        if self.pooling_mode == 'mean_attn':
-            # 2. Attention-weighted Pooling
-            # Compute scores: [B, T, 1] -> [B, T]
-            attn_scores = self.attention_head(x).squeeze(-1)
-            
-            if hasattr(self, 'use_pos_encoding') and self.use_pos_encoding:
-                max_T = x.size(1)
-                # Create relative positions 0.0 to 1.0 (shape: [B, T])
-                positions = torch.arange(max_T, device=x.device, dtype=x.dtype).unsqueeze(0).expand(x.size(0), -1)
-                # Avoid division by zero when out_lengths is 1: out_lengths - 1 clamped to min=1
-                rel_pos = (positions / (out_lengths.unsqueeze(1).float() - 1).clamp(min=1)).clamp(0.0, 1.0)
-                rel_pos = rel_pos.masked_fill(~bool_mask, 0.0)  # padding 帧归零
-                
-                pos_emb = self._sinusoidal_pos_encoding(rel_pos, self.pos_dim)  # [B, T, D_pos]
-                pos_bias = self.pos_scorer(pos_emb).squeeze(-1)                  # [B, T]
-                attn_scores = attn_scores + pos_bias  # 叠加，不破坏声学特征
-                
-            # Mask padding frames with -1e9 for softmax
-            # Use a value compatible with FP16/Half
-            attn_scores = attn_scores.masked_fill(~bool_mask, -1e4)
-            # Compute weights: [B, T]
-            attn_weights = torch.softmax(attn_scores, dim=-1)
-            # Weighted sum: [B, T, D] * [B, T, 1] -> [B, D]
-            x_attn = (x * attn_weights.unsqueeze(-1)).sum(dim=1)
-            
-            # 3. Fusion
-            x_final = torch.cat([x_mean, x_attn], dim=-1) # [B, 2*D]
-        elif self.pooling_mode == 'mean_topk':
-            # 2. Top-K Mean Pooling (Legacy / Alternative)
-            frame_scores = torch.norm(x, p=2, dim=-1) 
-            frame_scores = frame_scores.masked_fill(~bool_mask, -1e9)
-            _, indices = frame_scores.sort(dim=1, descending=True)
-            indices_exp = indices.unsqueeze(-1).expand(-1, -1, x.size(-1))
-            sorted_x = x.gather(dim=1, index=indices_exp)
-            
-            # We still need topk params if we want to support this mode
-            topk_ratio = getattr(self, 'topk_ratio', 0.2)
-            topk_min_frames = getattr(self, 'topk_min_frames', 3)
-            k_tensor = torch.clamp((out_lengths.float() * topk_ratio).long(), min=topk_min_frames)
-            k_tensor = torch.min(k_tensor, out_lengths)
-            
-            topk_mask = torch.arange(sorted_x.size(1), device=x.device).expand(x.size(0), x.size(1)) < k_tensor.unsqueeze(1)
-            topk_mask_float = topk_mask.unsqueeze(-1).float()
-            x_topk = (sorted_x * topk_mask_float).sum(dim=1) / (topk_mask_float.sum(dim=1) + 1e-9)
-            
-            x_final = torch.cat([x_mean, x_topk], dim=-1)
-        else:
-            x_final = x_mean
-            
-        logits = self.head(x_final).squeeze(-1) # [B]
-        return logits
+            sequence = outputs.last_hidden_state
+        out_lengths = self.wavlm._get_feat_extract_output_lengths(lengths).to(sequence.device)
+        out_lengths = out_lengths.clamp(min=1, max=sequence.size(1))
+        valid_mask = torch.arange(sequence.size(1), device=sequence.device).unsqueeze(0) < out_lengths.unsqueeze(1)
+        return sequence, out_lengths, valid_mask
+
+    @staticmethod
+    def _relative_positions(mask: torch.Tensor) -> torch.Tensor:
+        """Return positions normalized independently inside each mask span."""
+        positions = torch.arange(mask.size(-1), device=mask.device, dtype=torch.float32)
+        first = torch.argmax(mask.to(torch.int64), dim=-1, keepdim=True)
+        counts = mask.sum(dim=-1, keepdim=True).clamp(min=1)
+        rel = (positions - first.float()) / (counts.float() - 1).clamp(min=1)
+        return rel.clamp(0.0, 1.0).masked_fill(~mask, 0.0)
+
+    def _pool_one(self, x: torch.Tensor, mask: torch.Tensor, relative_positions: torch.Tensor | None = None) -> torch.Tensor:
+        """Pool one sequence using the configured segment-level representation."""
+        float_mask = mask.unsqueeze(-1).to(dtype=x.dtype)
+        x_mean = (x * float_mask).sum(dim=0) / float_mask.sum(dim=0).clamp_min(1e-9)
+        if self.pooling_mode == "mean_attn":
+            scores = self.attention_head(x).squeeze(-1)
+            if self.use_pos_encoding:
+                rel = relative_positions if relative_positions is not None else self._relative_positions(mask.unsqueeze(0))[0]
+                pos_emb = self._sinusoidal_pos_encoding(rel.unsqueeze(0), self.pos_dim)[0]
+                scores = scores + self.pos_scorer(pos_emb).squeeze(-1)
+            scores = scores.masked_fill(~mask, -1e4)
+            weights = torch.softmax(scores, dim=-1)
+            x_attn = (x * weights.unsqueeze(-1)).sum(dim=0)
+            return torch.cat([x_mean, x_attn], dim=-1)
+        if self.pooling_mode == "mean_topk":
+            scores = torch.norm(x, p=2, dim=-1).masked_fill(~mask, -1e9)
+            order = torch.argsort(scores, descending=True)
+            sorted_x = x[order]
+            k = min(max(int(mask.sum().item() * self.topk_ratio), self.topk_min_frames), int(mask.sum().item()))
+            return torch.cat([x_mean, sorted_x[:max(k, 1)].mean(dim=0)], dim=-1)
+        return x_mean
+
+    def _pool_batch(self, x: torch.Tensor, mask: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        return torch.stack([
+            self._pool_one(x[i], mask[i]) for i in range(x.size(0))
+        ])
+
+    def _interval_frame_masks(
+        self,
+        interval_bounds: torch.Tensor,
+        slot_valid: torch.Tensor,
+        lengths: torch.Tensor,
+        frame_count: int,
+    ) -> torch.Tensor:
+        """Vectorize sample-space interval bounds into WavLM frame masks."""
+        audio_lengths = lengths.unsqueeze(1)
+        start_samples = interval_bounds[..., 0].clamp_min(0)
+        start_samples = torch.minimum(start_samples, audio_lengths)
+        end_samples = interval_bounds[..., 1].clamp_min(0)
+        end_samples = torch.minimum(end_samples, audio_lengths)
+        end_samples = torch.maximum(end_samples, start_samples)
+
+        start_frames = self.wavlm._get_feat_extract_output_lengths(start_samples)
+        end_frames = self.wavlm._get_feat_extract_output_lengths(end_samples)
+        start_frames = start_frames.clamp(min=0, max=frame_count - 1)
+        end_frames = end_frames.clamp(min=1, max=frame_count)
+        end_frames = torch.maximum(end_frames, start_frames + 1).clamp(max=frame_count)
+
+        frame_positions = torch.arange(frame_count, device=interval_bounds.device).view(1, 1, -1)
+        return (
+            slot_valid.unsqueeze(-1)
+            & (frame_positions >= start_frames.unsqueeze(-1))
+            & (frame_positions < end_frames.unsqueeze(-1))
+        )
+
+    def _forward_block(
+        self,
+        sequence: torch.Tensor,
+        seq_mask: torch.Tensor,
+        lengths: torch.Tensor,
+        interval_bounds: torch.Tensor,
+        slot_valid: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        interval_masks = self._interval_frame_masks(
+            interval_bounds, slot_valid, lengths, sequence.size(1)
+        )
+        trim = 0
+        # Trimming is applied in frame space after the convolutional stride is known.
+        # Invalid or very short spans remain unchanged instead of becoming empty.
+        if hasattr(self, "boundary_trim_frames"):
+            trim = self.boundary_trim_frames
+        if trim > 0:
+            for b in range(interval_masks.size(0)):
+                for s in range(interval_masks.size(1)):
+                    indices = interval_masks[b, s].nonzero(as_tuple=False).flatten()
+                    if indices.numel() > 2 * trim:
+                        interval_masks[b, s, indices[:trim]] = False
+                        interval_masks[b, s, indices[-trim:]] = False
+        interval_masks = interval_masks & seq_mask.unsqueeze(1)
+        # A trimmed interval with no usable frames is excluded from all losses.
+        slot_valid = slot_valid & interval_masks.any(dim=-1)
+        batch, slots, _ = interval_masks.shape
+        pooled = []
+        for b in range(batch):
+            rows = []
+            for s in range(slots):
+                mask = interval_masks[b, s]
+                rel = self._relative_positions(mask.unsqueeze(0))[0]
+                rows.append(self._pool_one(sequence[b], mask, rel))
+            pooled.append(torch.stack(rows))
+        pooled_tensor = torch.stack(pooled)
+        interval_logits = self.head(pooled_tensor).squeeze(-1)
+        result = {
+            "interval_logits": interval_logits,
+            "interval_masks": interval_masks,
+            "interval_valid": slot_valid,
+        }
+        if self.frame_head_enabled:
+            result["frame_logits"] = self.frame_head(sequence).squeeze(-1)
+        return result
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        lengths: torch.Tensor,
+        interval_bounds: torch.Tensor | None = None,
+        interval_valid: torch.Tensor | None = None,
+    ):
+        sequence, out_lengths, valid_mask = self._encode_sequence(x, lengths)
+        if interval_bounds is not None:
+            if interval_valid is None:
+                interval_valid = torch.ones(interval_bounds.shape[:2], dtype=torch.bool, device=x.device)
+            return self._forward_block(sequence, valid_mask, lengths, interval_bounds, interval_valid)
+        x_final = self._pool_batch(sequence, valid_mask, out_lengths)
+        return self.head(x_final).squeeze(-1)
 
     @staticmethod
     def _sinusoidal_pos_encoding(pos: torch.Tensor, d_model: int) -> torch.Tensor:
-        """pos: [B, T] in [0,1]; returns [B, T, d_model]. No learnable parameters."""
         i = torch.arange(d_model // 2, device=pos.device, dtype=pos.dtype)
         freq = 1.0 / (10000.0 ** (2.0 * i / d_model))
-        angles = pos.unsqueeze(-1) * freq          # [B, T, d_model//2]
-        return torch.cat([angles.sin(), angles.cos()], dim=-1)  # [B, T, d_model]
+        angles = pos.unsqueeze(-1) * freq
+        return torch.cat([angles.sin(), angles.cos()], dim=-1)

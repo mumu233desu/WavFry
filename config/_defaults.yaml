@@ -81,6 +81,21 @@ training:
     use_cosine_restart: false         # false = 退回到标准 cosine
     use_positional_encoding: true    # false = 禁用位置编码
     pos_embed_dim: 32                # 位置编码维度
+  # ── 训练范式 ────────────────────────────────────────
+  paradigm: segment              # segment（现有区间模式）| block（连续块模式）
+  block:
+    duration_ms: 2000
+    hop_ms: 1000
+    batch_size: 4
+    max_intervals: 8
+    boundary_trim_frames: 0
+  frame_head:
+    enabled: false
+    loss_weight: 0.1
+    mil_mode: lse                 # lse | top_k_mean | linear_softmax | max
+    temperature: 1.0
+    topk_ratio: 0.2
+
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: mean_attn    # mean | mean_topk (L2-proxy) | mean_attn (learnable)
   topk_ratio: 0.2           # Top-K 取帧比例

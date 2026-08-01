@@ -25,7 +25,10 @@ class Trainer:
         self.config = config
         self.device = device
         self.augmentor = augmentor
-        
+        self.paradigm = config['training'].get('paradigm', 'segment')
+        self.frame_cfg = config['training'].get('frame_head', {})
+        self._current_frame_proxy = None
+
         self.epochs = config['training']['epochs']
         grad_acc = config['training'].get('gradient_accumulation_steps', 1)
         import math
@@ -40,9 +43,14 @@ class Trainer:
         
         # Dataset construction already materializes epoch-1 generated windows, so
         # weighted BCE reflects the effective initial training distribution.
-        train_df = train_loader.dataset.df
-        n_pos = train_df['label'].sum()
-        n_neg = len(train_df) - n_pos
+        if self.paradigm == 'block':
+            interval_rows = [row for block in train_loader.dataset.blocks for row in block['intervals']]
+            n_pos = sum(int(row['label']) for row in interval_rows)
+            n_neg = len(interval_rows) - n_pos
+        else:
+            train_df = train_loader.dataset.df
+            n_pos = train_df['label'].sum()
+            n_neg = len(train_df) - n_pos
         pos_weight = torch.tensor([n_neg / (n_pos + 1e-9)]).to(device)
         self.loss_fn = get_loss_fn(config, pos_weight=pos_weight)
         
@@ -167,6 +175,104 @@ class Trainer:
 
         return optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
+    def _compute_block_loss(self, outputs, labels, slot_valid, training=True):
+        self._current_frame_proxy = None
+        slot_valid = outputs.get('interval_valid', slot_valid)
+        logits = outputs['interval_logits'][slot_valid]
+        targets = labels[slot_valid]
+        interval_loss = self.loss_fn(logits, targets)
+        if not self.frame_cfg.get('enabled', False):
+            return interval_loss, logits, targets
+
+        from ..model.losses import pool_frame_logits
+        frame_logits = outputs['frame_logits']
+        interval_masks = outputs['interval_masks']
+        frame_masks = interval_masks[slot_valid]
+        expanded = frame_logits.unsqueeze(1).expand_as(interval_masks)[slot_valid]
+        mode = self.frame_cfg.get('mil_mode', 'lse')
+        if mode == 'lse_mean':
+            lse = pool_frame_logits(
+                expanded, frame_masks, mode='lse',
+                temperature=self.frame_cfg.get('temperature', 1.0),
+            )
+            mean = (expanded.masked_fill(~frame_masks, 0.0).sum(-1) /
+                    frame_masks.sum(-1).clamp_min(1))
+            mil_logits = self.model.frame_mil_fusion(
+                torch.stack([lse, mean], dim=-1)
+            ).squeeze(-1)
+        else:
+            mil_logits = pool_frame_logits(
+                expanded,
+                frame_masks,
+                mode=mode,
+                topk_ratio=self.frame_cfg.get('topk_ratio', 0.2),
+                temperature=self.frame_cfg.get('temperature', 1.0),
+            )
+        if not training:
+            try:
+                from sklearn.metrics import roc_auc_score
+                proxy_targets = targets.unsqueeze(-1).expand_as(frame_masks)[frame_masks].detach().cpu().numpy()
+                proxy_scores = torch.sigmoid(expanded[frame_masks]).detach().cpu().float().numpy()
+                if len(set(proxy_targets.tolist())) > 1:
+                    self._current_frame_proxy = float(roc_auc_score(proxy_targets, proxy_scores))
+            except (ValueError, ImportError):
+                self._current_frame_proxy = None
+
+        positive = targets > 0.5
+        frame_terms = []
+        if positive.any():
+            frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                mil_logits[positive], torch.ones_like(mil_logits[positive])
+            ))
+        negative = ~positive
+        if negative.any():
+            negative_logits = expanded[negative][frame_masks[negative]]
+            frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                negative_logits, torch.zeros_like(negative_logits)
+            ))
+        if frame_terms:
+            # Sum class-specific means so abundant negative frames do not silently
+            # erase the sparse positive-bag supervision.
+            frame_loss = torch.stack(frame_terms).sum()
+            interval_loss = interval_loss + float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
+        return interval_loss, logits, targets
+
+    def _forward_batch(self, batch, epoch, training):
+        if self.paradigm == 'block':
+            waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
+            waveforms = waveforms.to(self.device)
+            bounds = bounds.to(self.device)
+            labels = labels.to(self.device)
+            valid = valid.to(self.device)
+            lengths = lengths.to(self.device)
+            if training and self.augmentor is not None:
+                waveforms = self.augmentor.apply(waveforms, epoch, self.device)
+            outputs = self.model(waveforms, lengths, interval_bounds=bounds, interval_valid=valid)
+            effective_valid = outputs.get('interval_valid', valid)
+            if not effective_valid.any():
+                raise RuntimeError("Block batch contains no interval with valid frames")
+            loss, logits, targets = self._compute_block_loss(
+                outputs, labels, effective_valid, training=training
+            )
+            flat_speakers = []
+            flat_ids = []
+            for b in range(effective_valid.size(0)):
+                for s in range(effective_valid.size(1)):
+                    if bool(effective_valid[b, s]):
+                        flat_speakers.append(speakers[b])
+                        flat_ids.append(interval_ids[b][s])
+            return loss, logits, targets, flat_speakers, flat_ids, None
+
+        waveforms, labels, lengths, speakers, meta = batch
+        waveforms = waveforms.to(self.device)
+        labels = labels.to(self.device)
+        lengths = lengths.to(self.device)
+        if training and self.augmentor is not None:
+            waveforms = self.augmentor.apply(waveforms, epoch, self.device)
+        logits = self.model(waveforms, lengths)
+        loss = self.loss_fn(logits, labels)
+        return loss, logits, labels, list(speakers), list(meta), (waveforms, lengths)
+
     def train_epoch(self, epoch):
         # Rebuild deterministic epoch-specific samples before the loader iterates.
         if hasattr(self.train_loader.dataset, 'set_epoch'):
@@ -184,18 +290,10 @@ class Trainer:
         all_labels = []
         
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]")
-        for i, (waveforms, labels, lengths, speaker_ids, _meta) in enumerate(pbar):
-            waveforms, labels, lengths = waveforms.to(self.device), labels.to(self.device), lengths.to(self.device)
-            
-            # [GPU Augmentation] Apply batch-level augmentation
-            if self.augmentor is not None:
-                waveforms = self.augmentor.apply(waveforms, epoch, self.device)
-            
-            # Use appropriate device type and dtype for autocast
+        for i, batch in enumerate(pbar):
             device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                logits = self.model(waveforms, lengths)
-                loss = self.loss_fn(logits, labels)
+                loss, logits, labels, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
                 
             loss = loss / self.config['training']['gradient_accumulation_steps']
             
@@ -254,7 +352,8 @@ class Trainer:
         all_logits = []
         all_labels = []
         all_speaker_ids = []
-        
+        frame_proxy_values = []
+
         if not self.val_loader or len(self.val_loader) == 0:
             return 0.0, {'f1': 0.0, 'precision': 0.0, 'recall': 0.0, 'speaker_metrics': {}, 'cm': [[0, 0], [0, 0]]}
 
@@ -263,33 +362,49 @@ class Trainer:
         count_per_type = self.config['tensorboard'].get('audio_sample_count', 8) // 4
         if count_per_type < 1: count_per_type = 1
         
+        interval_predictions = {}
         with torch.no_grad():
-            for waveforms, labels, lengths, speaker_ids, _meta in tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]"):
-                waveforms, labels, lengths = waveforms.to(self.device), labels.to(self.device), lengths.to(self.device)
-                
+            for batch in tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]"):
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                    logits = self.model(waveforms, lengths)
-                    loss = self.loss_fn(logits, labels)
-                
+                    loss, logits, labels, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
+
                 total_loss += loss.item()
+                if self._current_frame_proxy is not None:
+                    frame_proxy_values.append(self._current_frame_proxy)
+                if self.paradigm == 'block':
+                    for logit, label, speaker, interval_id in zip(logits, labels, speaker_ids, item_ids):
+                        value = logit.detach().cpu()
+                        if interval_id not in interval_predictions:
+                            interval_predictions[interval_id] = [value, label.detach().cpu(), speaker, 1]
+                        else:
+                            interval_predictions[interval_id][0] += value
+                            interval_predictions[interval_id][3] += 1
+                    continue
+
                 all_logits.append(logits.detach().cpu())
                 all_labels.append(labels.detach().cpu())
                 all_speaker_ids.extend(speaker_ids)
-                
-                # Collect samples for error analysis
+                segment_waveforms, segment_lengths = waveforms
                 probs = torch.sigmoid(logits)
                 preds = (probs >= 0.5).float()
-                for i in range(waveforms.size(0)):
+                for i in range(segment_waveforms.size(0)):
                     gt = int(labels[i].item())
                     pr = int(preds[i].item())
                     cat = "TP" if gt==1 and pr==1 else "TN" if gt==0 and pr==0 else "FP" if gt==0 and pr==1 else "FN"
                     if len(samples_to_log[cat]) < count_per_type:
                         samples_to_log[cat].append({
-                            'waveform': waveforms[i, :lengths[i]].detach().cpu(),
+                            'waveform': segment_waveforms[i, :segment_lengths[i]].detach().cpu(),
                             'prob': probs[i].item(),
-                            'meta': _meta[i]
+                            'meta': item_ids[i]
                         })
+
+        if self.paradigm == 'block':
+            if not interval_predictions:
+                raise RuntimeError("Block validation produced no valid intervals")
+            all_logits = [(item[0] / item[3]).reshape(1) for item in interval_predictions.values()]
+            all_labels = [item[1].reshape(1) for item in interval_predictions.values()]
+            all_speaker_ids = [item[2] for item in interval_predictions.values()]
                 
         logits_cat = torch.cat(all_logits)
         labels_cat = torch.cat(all_labels)
@@ -309,7 +424,9 @@ class Trainer:
         metrics['logits'] = logits_cat
         metrics['labels'] = labels_cat
         metrics['samples'] = samples_to_log
-        
+        if frame_proxy_values:
+            metrics['frame_proxy_auroc'] = float(np.mean(frame_proxy_values))
+
         return total_loss / len(self.val_loader), metrics
 
     def run(self, start_epoch=1):
@@ -334,7 +451,9 @@ class Trainer:
                 self.writer.add_scalar('F1/val', val_metrics['f1'], epoch)           # secondary
                 self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
                 self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
-                
+                if 'frame_proxy_auroc' in val_metrics:
+                    self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
+
                 # PR Curve
                 if self.config['tensorboard'].get('log_pr_curve', True):
                     self.writer.add_pr_curve('PR_Curve/val', val_metrics['labels'], torch.sigmoid(val_metrics['logits']), epoch)

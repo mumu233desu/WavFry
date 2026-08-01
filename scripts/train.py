@@ -31,7 +31,7 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod, fold_idx=0, preloaded_wavlm=None, resume=False):
+def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod, fold_idx=0, preloaded_wavlm=None, resume=False, warm_start=None):
     # Set seed for this fold/run (seed + fold_idx for variety in LOOCV)
     set_seed(config['training'].get('seed', 42) + fold_idx)
     
@@ -41,6 +41,9 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Speaker: {val_speakers})")
     
     # Datasets
+    paradigm = config['training'].get('paradigm', 'segment')
+    if paradigm not in {'segment', 'block'}:
+        raise ValueError(f"Unknown training paradigm: {paradigm}")
     augmentor = None
     aug_cfg = config.get('augmentation', {})
     if aug_cfg.get('enabled', False):
@@ -49,30 +52,69 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         print("Data augmentation enabled for training.")
 
     lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
-    train_ds = dataset_mod.CreakyVowelDataset(
-        train_df,
-        context_padding_ms=config['data']['context_padding_ms'],
-        lowpass_cfg=lowpass_cfg,
-        continuous_non_creaky_cfg=config['data'].get('continuous_non_creaky_sampling', {}),
-        seed=config['training'].get('seed', 42),
-        fold_index=fold_idx,
-    )
-    val_ds = dataset_mod.CreakyVowelDataset(
-        val_df, 
-        context_padding_ms=config['data']['context_padding_ms'],
-        lowpass_cfg=lowpass_cfg
-    )
-    
+    if paradigm == 'block':
+        from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
+        block_cfg = config['training'].get('block', {})
+        common_block = dict(
+            duration_ms=block_cfg.get('duration_ms', 2000),
+            hop_ms=block_cfg.get('hop_ms', 1000),
+            max_intervals=block_cfg.get('max_intervals', 8),
+            boundary_trim_frames=block_cfg.get('boundary_trim_frames', 0),
+            lowpass_cfg=lowpass_cfg,
+            seed=config['training'].get('seed', 42),
+            fold_index=fold_idx,
+        )
+        train_ds = ContinuousAudioBlockDataset(train_df, **common_block)
+        val_ds = ContinuousAudioBlockDataset(val_df, **common_block)
+        collate = collate_block_fn
+        train_batch_size = int(block_cfg.get('batch_size', 4))
+        val_batch_size = train_batch_size
+        if config['data'].get('continuous_non_creaky_sampling', {}).get('enabled', False):
+            print('[INFO] continuous_non_creaky_sampling is disabled in block paradigm.')
+    else:
+        train_ds = dataset_mod.CreakyVowelDataset(
+            train_df,
+            context_padding_ms=config['data']['context_padding_ms'],
+            lowpass_cfg=lowpass_cfg,
+            continuous_non_creaky_cfg=config['data'].get('continuous_non_creaky_sampling', {}),
+            seed=config['training'].get('seed', 42),
+            fold_index=fold_idx,
+        )
+        val_ds = dataset_mod.CreakyVowelDataset(
+            val_df,
+            context_padding_ms=config['data']['context_padding_ms'],
+            lowpass_cfg=lowpass_cfg,
+        )
+        collate = dataset_mod.collate_fn
+        train_batch_size = config['training']['batch_size']
+        val_batch_size = config['training']['batch_size']
+
     num_workers = dataset_mod.resolve_num_workers(config['data']['num_workers'])
     prefetch_factor = config['data'].get('prefetch_factor', 2) if num_workers > 0 else None
     
     sampler_cfg = config['data'].get('sampler', {})
-    if sampler_cfg.get('enabled', False):
+    if paradigm == 'block':
+        from wavfry.data.epoch_sampler import EpochShuffleSampler
+        epoch_sampler = EpochShuffleSampler(
+            train_ds,
+            seed=config['training'].get('seed', 42),
+            fold_index=fold_idx,
+        )
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=train_batch_size,
+            sampler=epoch_sampler,
+            num_workers=num_workers,
+            collate_fn=collate,
+            pin_memory=config['data']['pin_memory'],
+            prefetch_factor=prefetch_factor,
+        )
+    elif sampler_cfg.get('enabled', False):
         from wavfry.data.grouped_sampler import GroupedBatchSampler
         active_anchors = [s for s in config['data']['annotated_speakers'] if s not in val_speakers]
         sampler = GroupedBatchSampler(
             df=train_df,
-            batch_size=config['training']['batch_size'],
+            batch_size=train_batch_size,
             anchor_speakers=active_anchors,
             anchor_speakers_per_batch=sampler_cfg.get('anchor_speakers_per_batch', 2),
             seed=config['training'].get('seed', 42) + fold_idx,
@@ -82,7 +124,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             train_ds, 
             batch_sampler=sampler,
             num_workers=num_workers,
-            collate_fn=dataset_mod.collate_fn,
+            collate_fn=collate,
             pin_memory=config['data']['pin_memory'],
             prefetch_factor=prefetch_factor
         )
@@ -95,20 +137,20 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         )
         train_loader = DataLoader(
             train_ds,
-            batch_size=config['training']['batch_size'],
+            batch_size=train_batch_size,
             sampler=epoch_sampler,
             num_workers=num_workers,
-            collate_fn=dataset_mod.collate_fn,
+            collate_fn=collate,
             pin_memory=config['data']['pin_memory'],
             prefetch_factor=prefetch_factor
         )
     
     val_loader = DataLoader(
         val_ds, 
-        batch_size=config['training']['batch_size'], 
-        shuffle=False, 
+        batch_size=val_batch_size,
+        shuffle=False,
         num_workers=num_workers,
-        collate_fn=dataset_mod.collate_fn,
+        collate_fn=collate,
         pin_memory=config['data']['pin_memory'],
         prefetch_factor=prefetch_factor
     )
@@ -120,6 +162,13 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     else:
         model = model_mod.WavFryClassifier(config).to(device)
     
+    if warm_start:
+        checkpoint = torch.load(warm_start, map_location=device, weights_only=False)
+        result = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        print(f"Warm-started model weights from {warm_start}")
+        if result.missing_keys:
+            print(f"[INFO] Newly initialized keys: {result.missing_keys}")
+
     # Trainer
     trainer = trainer_mod.Trainer(model, train_loader, val_loader, config, device, augmentor=augmentor)
     
@@ -148,6 +197,7 @@ def main():
     parser.add_argument('--override', type=str, nargs='*', help='Override config keys: key.subkey=value')
     parser.add_argument('--loocv', action='store_true', help='Run Leave-One-Speaker-Out Cross Validation')
     parser.add_argument('--resume', action='store_true', help='Resume training from the last checkpoint')
+    parser.add_argument('--warm-start', type=str, default=None, help='Load compatible model weights only')
     args = parser.parse_args()
     
     # Load config
@@ -371,8 +421,9 @@ def main():
             else:
                 fold_df = df
             
-            run_training(fold_config, fold_df, device, dataset_mod, splits_mod, model_mod, trainer_mod, 
-                         fold_idx=i, preloaded_wavlm=preloaded_wavlm, resume=args.resume)
+            run_training(fold_config, fold_df, device, dataset_mod, splits_mod, model_mod, trainer_mod,
+                         fold_idx=i, preloaded_wavlm=preloaded_wavlm, resume=args.resume,
+                         warm_start=args.warm_start)
             
             # After training this fold, find the best model it saved
             if fold_best_path.exists():
@@ -517,7 +568,8 @@ def main():
                 print(f"[INFO] Incremental results saved to {result_path} and {md_path}")
 
     else:
-        run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod)
+        run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod,
+                     resume=args.resume, warm_start=args.warm_start)
         
         # Write single fold results to JSON for ablation script compatibility
         base_log_dir = Path(config['tensorboard']['log_dir'])
