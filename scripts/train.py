@@ -342,8 +342,9 @@ def main():
             fold_final_path = base_ckpt_dir / f"best_model_{val_speaker}.pt"
             if not fold_completed and args.resume and fold_final_path.exists():
                 try:
-                    # Use weights_only=True for security since it's just metrics
-                    ckpt = torch.load(fold_final_path, map_location='cpu', weights_only=True)
+                    # Locally produced checkpoints include NumPy RNG state, which
+                    # PyTorch 2.6 rejects under weights_only=True.
+                    ckpt = torch.load(fold_final_path, map_location='cpu', weights_only=False)
                     metrics = ckpt.get('metrics', {'f1': ckpt.get('f1', 0)})
                     fold_metric_data = {
                         'speaker': val_speaker,
@@ -428,7 +429,7 @@ def main():
             # After training this fold, find the best model it saved
             if fold_best_path.exists():
                 # Load to check F1
-                ckpt = torch.load(fold_best_path, map_location='cpu', weights_only=True)
+                ckpt = torch.load(fold_best_path, map_location='cpu', weights_only=False)
                 metrics = ckpt.get('metrics', {'f1': ckpt.get('f1', 0)})
                 f1 = metrics.get('f1', 0)
                 auc_pr = metrics.get('auc_pr', ckpt.get('auc_pr', 0))
@@ -576,7 +577,7 @@ def main():
         base_ckpt_dir = Path(config['checkpoint']['dir'])
         best_ckpt_path = base_ckpt_dir / "best_model.pt"
         if best_ckpt_path.exists():
-            ckpt = torch.load(best_ckpt_path, map_location='cpu', weights_only=True)
+            ckpt = torch.load(best_ckpt_path, map_location='cpu', weights_only=False)
             metrics = ckpt.get('metrics', {'f1': ckpt.get('f1', 0)})
             f1 = metrics.get('f1', 0)
             auc_pr = metrics.get('auc_pr', ckpt.get('auc_pr', 0))
