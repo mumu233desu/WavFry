@@ -27,7 +27,7 @@ data:
     extra_sample_ratio: 0.08
     min_duration_ms: 150
     target_duration_ms: 300
-    max_duration_ms: 800
+    max_duration_ms: 350  # 与正式配置一致，降低长度 shortcut 风险
     min_intervals: 1
     max_intervals: 4
     max_sp_duration_ms: 200

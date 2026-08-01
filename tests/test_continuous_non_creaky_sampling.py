@@ -1,3 +1,5 @@
+import warnings
+
 import pandas as pd
 
 from wavfry.data.continuous_non_creaky_sampling import (
@@ -75,7 +77,7 @@ def test_runs_do_not_cross_creaky_or_time_gaps():
     assert generator.generate(epoch=1).empty
 
 
-def test_unfillable_ratio_fails_with_clear_diagnostics():
+def test_unfillable_ratio_warns_and_returns_available_windows():
     df = pd.DataFrame([
         _row(0.00, 0.20),
         _row(0.20, 0.70, phone_type="silence"),
@@ -86,14 +88,14 @@ def test_unfillable_ratio_fails_with_clear_diagnostics():
         _config(max_sp_duration_ms=0, max_sp_ratio=0.0),
         seed=42,
     )
-    try:
-        generator.generate(epoch=1)
-    except RuntimeError as exc:
-        message = str(exc)
-        assert "requested=" in message
-        assert "generated=" in message
-    else:
-        raise AssertionError("Expected an explicit failure when the ratio is infeasible")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        generated = generator.generate(epoch=1)
+    assert generated.empty
+    assert len(caught) == 1
+    message = str(caught[0].message)
+    assert "requested=" in message
+    assert "generated=" in message
 
 
 def test_sp_limits_apply_to_final_window():
@@ -107,12 +109,11 @@ def test_sp_limits_apply_to_final_window():
         _config(max_sp_duration_ms=20, max_sp_ratio=0.05),
         seed=42,
     )
-    try:
-        generator.generate(epoch=1)
-    except RuntimeError:
-        pass
-    else:
-        raise AssertionError("SP limits should make the requested ratio infeasible")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        generated = generator.generate(epoch=1)
+    assert generated.empty
+    assert len(caught) == 1
     assert generator.last_generation_stats["generated"] == 0
 
 
@@ -128,6 +129,39 @@ def test_single_long_interval_can_generate_partial_windows():
     assert generated["source_interval_count"].eq(1).all()
     assert generated["start_s"].ge(0.0).all()
     assert generated["end_s"].le(1.2).all()
+
+
+def test_default_duration_cap_limits_length_shortcut():
+    df = pd.DataFrame([_row(0.00, 1.20)])
+    generator = ContinuousNonCreakyWindowGenerator(
+        df,
+        {"enabled": True, "extra_sample_ratio": 4.0},
+        seed=42,
+    )
+    generated = generator.generate(epoch=1)
+    durations_ms = (generated["end_s"] - generated["start_s"]) * 1000.0
+    assert durations_ms.le(350.0 + 1e-6).all()
+
+
+def test_legacy_empty_phone_is_counted_as_silence():
+    legacy_silence = _row(0.00, 0.40, phone_type="vowel")
+    legacy_silence["phone"] = ""
+    df = pd.DataFrame([legacy_silence])
+    generator = ContinuousNonCreakyWindowGenerator(
+        df,
+        _config(
+            min_intervals=1,
+            extra_sample_ratio=1.0,
+            max_sp_duration_ms=0,
+            max_sp_ratio=0.0,
+        ),
+        seed=42,
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        generated = generator.generate(epoch=1)
+    assert generated.empty
+    assert len(caught) == 1
 
 
 def test_grouped_sampler_degrades_when_anchor_has_only_one_label():
@@ -161,6 +195,36 @@ def test_generation_stats_report_exact_requested_count():
     generated = generator.generate(epoch=2)
     assert generator.last_generation_stats["requested"] == len(df)
     assert generator.last_generation_stats["generated"] == len(generated)
+
+
+def test_same_epoch_does_not_regenerate_dataset():
+    df = pd.DataFrame([_row(0.00, 0.30), _row(0.30, 0.60)])
+    dataset = CreakyVowelDataset(
+        df,
+        continuous_non_creaky_cfg=_config(extra_sample_ratio=1.0),
+    )
+    initial_df = dataset.df
+    dataset.set_epoch(1)
+    assert dataset.df is initial_df
+    dataset.set_epoch(2)
+    assert dataset.current_epoch == 2
+    assert dataset.df is not initial_df
+
+
+def test_epoch_one_dataset_includes_generated_rows_for_class_weighting():
+    df = pd.DataFrame([
+        _row(0.00, 0.30, label=0),
+        _row(0.30, 0.60, label=0),
+        _row(0.60, 0.90, label=1),
+    ])
+    dataset = CreakyVowelDataset(
+        df,
+        continuous_non_creaky_cfg=_config(extra_sample_ratio=1.0),
+    )
+    generated_count = int(dataset.df["sample_source"].eq("continuous_non_creaky").sum())
+    assert generated_count == len(df)
+    assert len(dataset.df) == len(df) + generated_count
+    assert int(dataset.df["label"].sum()) == 1
 
 
 def test_disabled_module_keeps_dataset_unchanged():

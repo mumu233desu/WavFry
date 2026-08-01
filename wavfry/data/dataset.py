@@ -51,7 +51,10 @@ class CreakyVowelDataset(Dataset):
         ).reset_index(drop=True)
 
     def set_epoch(self, epoch: int):
-        self.current_epoch = int(epoch)
+        epoch = int(epoch)
+        if epoch == self.current_epoch:
+            return
+        self.current_epoch = epoch
         self.df = self._build_epoch_df(self.current_epoch)
 
     def __len__(self):

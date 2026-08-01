@@ -38,8 +38,8 @@ class Trainer:
         # Scheduler
         self.scheduler = self.create_scheduler()
         
-        # Loss function
-        # Calculate pos_weight if needed
+        # Dataset construction already materializes epoch-1 generated windows, so
+        # weighted BCE reflects the effective initial training distribution.
         train_df = train_loader.dataset.df
         n_pos = train_df['label'].sum()
         n_neg = len(train_df) - n_pos

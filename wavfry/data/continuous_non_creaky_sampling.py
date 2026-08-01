@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ class ContinuousNonCreakySamplingConfig:
     extra_sample_ratio: float = 0.08
     min_duration_ms: float = 150.0
     target_duration_ms: float = 300.0
-    max_duration_ms: float = 800.0
+    max_duration_ms: float = 350.0
     min_intervals: int = 1
     max_intervals: int = 4
     max_sp_duration_ms: float = 200.0
@@ -35,7 +36,7 @@ class ContinuousNonCreakySamplingConfig:
             extra_sample_ratio=float(values.get("extra_sample_ratio", 0.08)),
             min_duration_ms=float(values.get("min_duration_ms", 150.0)),
             target_duration_ms=float(values.get("target_duration_ms", 300.0)),
-            max_duration_ms=float(values.get("max_duration_ms", 800.0)),
+            max_duration_ms=float(values.get("max_duration_ms", 350.0)),
             min_intervals=int(values.get("min_intervals", 1)),
             max_intervals=int(values.get("max_intervals", 4)),
             max_sp_duration_ms=float(values.get("max_sp_duration_ms", 200.0)),
@@ -165,11 +166,14 @@ class ContinuousNonCreakyWindowGenerator:
             f"failed_attempts={attempts - len(rows)}, eligible_runs={len(self.runs)}"
         )
         if len(rows) < count:
-            raise RuntimeError(
-                "Continuous non-creaky sampling could not satisfy the configured ratio: "
-                + message
+            warnings.warn(
+                "Continuous non-creaky sampling could not satisfy the configured ratio; "
+                "continuing with the available windows: " + message,
+                RuntimeWarning,
+                stacklevel=2,
             )
-        print(f"[ContinuousNonCreaky] {message}.")
+        else:
+            print(f"[ContinuousNonCreaky] {message}.")
         return pd.DataFrame(rows)
 
     def _sample_window(
@@ -226,6 +230,11 @@ class ContinuousNonCreakyWindowGenerator:
         if not self.config.min_intervals <= len(overlapping) <= self.config.max_intervals:
             return None
 
+        def is_silence(interval: dict[str, Any]) -> bool:
+            phone_type = str(interval.get("phone_type", "")).strip().lower()
+            phone = str(interval.get("phone", "")).strip().upper()
+            return phone_type == "silence" or phone in {"SP", ""}
+
         sp_duration_s = sum(
             max(
                 0.0,
@@ -233,8 +242,7 @@ class ContinuousNonCreakyWindowGenerator:
                 - max(start_s, float(interval["start_s"])),
             )
             for interval in overlapping
-            if str(interval.get("phone_type", "")) == "silence"
-            or str(interval.get("phone", "")).strip().upper() == "SP"
+            if is_silence(interval)
         )
         duration_s = end_s - start_s
         non_sp_duration_s = duration_s - sp_duration_s
