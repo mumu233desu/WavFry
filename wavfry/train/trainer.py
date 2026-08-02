@@ -720,8 +720,8 @@ class Trainer:
         if rng_state:
             random.setstate(rng_state['python'])
             np.random.set_state(rng_state['numpy'])
-            torch.set_rng_state(rng_state['torch'])
+            torch.set_rng_state(rng_state['torch'].cpu())
             if torch.cuda.is_available() and rng_state.get('cuda') is not None:
-                torch.cuda.set_rng_state_all(rng_state['cuda'])
+                torch.cuda.set_rng_state_all([s.cpu() if isinstance(s, torch.Tensor) else s for s in rng_state['cuda']])
 
         return checkpoint['epoch']
