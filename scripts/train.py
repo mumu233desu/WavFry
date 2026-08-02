@@ -188,6 +188,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         trainer.run(start_epoch=start_epoch)
     except KeyboardInterrupt:
         print("\nTraining interrupted by user. Gracefully exiting...")
+        sys.exit(1)
     finally:
         trainer.writer.close()
 
@@ -538,9 +539,12 @@ def main():
                 print("="*40)
                 
                 # Save to JSON
+                import os
                 result_path = base_log_dir / "loocv_results.json"
-                with open(result_path, 'w', encoding='utf-8') as f:
+                tmp_path = result_path.with_suffix('.json.tmp')
+                with open(tmp_path, 'w', encoding='utf-8') as f:
                     json.dump(report, f, indent=4)
+                os.replace(tmp_path, result_path)
                     
                 # Save to Markdown
                 md_path = base_log_dir / "loocv_report.md"
@@ -584,8 +588,9 @@ def main():
             best_threshold = metrics.get('best_threshold', ckpt.get('best_threshold', 0.5))
             threshold_f1 = metrics.get('threshold_f1', ckpt.get('threshold_f1', 0))
             
+            val_spk_str = "_".join(val_speakers_cfg) if isinstance(val_speakers_cfg, list) else str(val_speakers_cfg)
             single_fold_res = {
-                'speaker': 'sampled',
+                'speaker': val_spk_str,
                 'accuracy': metrics.get('accuracy', 0),
                 'precision': metrics.get('precision', 0),
                 'recall': metrics.get('recall', 0),
@@ -609,12 +614,16 @@ def main():
                 'std_auc_pr': 0.0,
                 'mean_peak_vram_mb': 0.0,
                 'folds': [single_fold_res],
-                'best_fold': {'speaker': 'sampled', 'auc_pr': auc_pr}
+                'best_fold': {'speaker': val_spk_str, 'auc_pr': auc_pr}
             }
+            import tempfile
+            import os
             result_path = base_log_dir / "loocv_results.json"
             base_log_dir.mkdir(parents=True, exist_ok=True)
-            with open(result_path, 'w', encoding='utf-8') as f:
+            tmp_path = result_path.with_suffix('.json.tmp')
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(report, f, indent=4)
+            os.replace(tmp_path, result_path)
             print(f"[INFO] Single fold results saved to {result_path} for ablation compatibility.")
 
 if __name__ == "__main__":

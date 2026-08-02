@@ -52,7 +52,7 @@ model:
 # ── 训练 ──────────────────────────────────────────────
 training:
   optimizer: adamw_8bit              # adamw_fp32 | adamw_8bit
-  epochs: 25
+  epochs: 30
   batch_size: 32
   gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation
                                      # 显存不足时设 2/4，等效扩大 batch
@@ -86,13 +86,13 @@ training:
   block:
     duration_ms: 2000
     hop_ms: 1000
-    batch_size: 4
+    batch_size: 16
     max_intervals: 8
     boundary_trim_frames: 0
   frame_head:
     enabled: false
     loss_weight: 0.1
-    mil_mode: lse                 # lse | top_k_mean | linear_softmax | max
+    mil_mode: lse                 # lse | top_k_mean | linear_softmax | max | lse_mean
     temperature: 1.0
     topk_ratio: 0.2
 

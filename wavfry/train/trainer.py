@@ -648,14 +648,28 @@ class Trainer:
             
         if not only_latest:
             path = self.ckpt_dir / name
-            torch.save(checkpoint, path)
+            import os
+            tmp_path = path.with_suffix('.pt.tmp')
+            torch.save(checkpoint, tmp_path)
+            os.replace(tmp_path, path)
         else:
             path = self.ckpt_dir / name # Just for the print message below
         
-        # Also maintain a fixed name 'best_model.pt' for script automation
+        # Also maintain a fixed name 'best_model.pt' for script automation using hardlinks (0 bytes overhead)
         if is_best:
-            import shutil
-            shutil.copy(path, self.ckpt_dir / "best_model.pt")
+            import os
+            best_fixed_path = self.ckpt_dir / "best_model.pt"
+            if best_fixed_path.exists():
+                try:
+                    best_fixed_path.unlink()
+                except Exception as e:
+                    print(f"Warning: could not unlink {best_fixed_path}: {e}")
+            try:
+                os.link(path, best_fixed_path)
+            except Exception as e:
+                print(f"Warning: could not create hardlink for {best_fixed_path}: {e}. Falling back to copy.")
+                import shutil
+                shutil.copy(path, best_fixed_path)
             
             # Cleanup old best checkpoints (keep the N best by PR-AUC)
             keep_count = self.config['checkpoint'].get('keep_best_count', 3)
@@ -675,7 +689,10 @@ class Trainer:
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
             
         latest_path = self.ckpt_dir / f"latest_{val_str}.pt"
-        torch.save(checkpoint, latest_path)
+        import os
+        tmp_latest = latest_path.with_suffix('.pt.tmp')
+        torch.save(checkpoint, tmp_latest)
+        os.replace(tmp_latest, latest_path)
             
         if only_latest:
             print(f"Updated latest checkpoint: {latest_path} (mode: {save_mode})")
