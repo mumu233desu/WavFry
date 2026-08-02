@@ -114,21 +114,27 @@ class AudioAugmentor:
         denoise_prob = self.denoise_cfg.get('prob', 0.0)
         noise_prob = self.noise_cfg.get('prob', 0.0)
         
-        # Apply according to order
-        if self.aug_order == 'noise_first':
-            waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
-            waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
-        elif self.aug_order == 'denoise_first':
-            waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
-            waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
-        else: # Random order
-            if torch.rand(1).item() > 0.5:
+        # Disable autocast during augmentation to prevent Conv1d (used in Resample) 
+        # from corrupting the audio mantissa to BFloat16 and crashing NumPy in DFN.
+        device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
+        with torch.amp.autocast(device_type, enabled=False):
+            waveforms = waveforms.float()
+            
+            # Apply according to order
+            if self.aug_order == 'noise_first':
                 waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
                 waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
-            else:
+            elif self.aug_order == 'denoise_first':
                 waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
                 waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
-                
+            else: # Random order
+                if torch.rand(1).item() > 0.5:
+                    waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
+                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                else:
+                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                    waveforms = self.add_noise(waveforms, epoch, noise_prob, device)
+                    
         return waveforms
 
     def denoise(self, waveforms, epoch, prob, device):
