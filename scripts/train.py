@@ -36,9 +36,20 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     set_seed(config['training'].get('seed', 42) + fold_idx)
     
     # Split
-    val_speakers = config['data']['val_speakers']
-    train_df, val_df = splits_mod.make_speaker_split(df, val_speakers)
-    print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Speaker: {val_speakers})")
+    val_speakers = config['data'].get('val_speakers', [])
+    if val_speakers in ('batch', 'batch_split', ['batch'], ['batch_split']) or (isinstance(val_speakers, list) and 'batch2' in val_speakers):
+        train_df, val_df, test_df = splits_mod.make_batch_split(df)
+    else:
+        train_df, val_df = splits_mod.make_speaker_split(df, val_speakers)
+        test_df = df.iloc[0:0].copy()
+
+    print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Split mode: {val_speakers})")
+
+    if not test_df.empty:
+        test_out_path = Path(config['checkpoint']['dir']) / f"batch_test_set_{fold_idx}.csv"
+        test_out_path.parent.mkdir(parents=True, exist_ok=True)
+        test_df.to_csv(test_out_path, index=False)
+        print(f"[Test] Batch Test Set: {len(test_df)} segments saved to {test_out_path}")
     
     # Datasets
     paradigm = config['training'].get('paradigm', 'segment')
@@ -287,8 +298,13 @@ def main():
         is_loocv = True
         
     if is_loocv:
-        # Exclude Batch 2 completely for LOOCV to maintain consistency with earlier runs
-        if 'batch_id' in df.columns:
+        # Exclude non-train batches (e.g. Batch 2 or test batches) from LOOCV folds
+        if 'batch_split' in df.columns:
+            original_len = len(df)
+            df = df[df['batch_split'] == 'train'].copy()
+            if len(df) < original_len:
+                print(f"[INFO] LOOCV Mode: Excluded {original_len - len(df)} non-train batch segments (val/test/unassigned).")
+        elif 'batch_id' in df.columns:
             batch_ids = pd.to_numeric(df['batch_id'], errors='coerce')
             original_len = len(df)
             df = df[batch_ids != 2].copy()

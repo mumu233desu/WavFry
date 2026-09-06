@@ -63,3 +63,32 @@ def make_speaker_split(df, val_speakers):
     train_df['split'] = 'train'
     
     return train_df, val_df
+
+
+def make_batch_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split manifest DataFrame into train, validation, and test sets based on 'batch_split'.
+
+    Extracts:
+      - train_df: rows with batch_split == 'train'
+      - val_df:   rows with batch_split == 'val'
+      - test_df:  rows with batch_split == 'test'
+    """
+    if "batch_split" not in df.columns:
+        print("[Split] WARNING: 'batch_split' column missing. Falling back to all-train.")
+        train_df = df.copy()
+        val_df = df.iloc[0:0].copy()
+        test_df = df.iloc[0:0].copy()
+    else:
+        train_df = df[df["batch_split"] == "train"].copy()
+        val_df = df[df["batch_split"] == "val"].copy()
+        test_df = df[df["batch_split"] == "test"].copy()
+
+    train_df["split"] = "train"
+    val_df["split"] = "val"
+    test_df["split"] = "test"
+
+    print(
+        f"[Split] Batch Split: Train {len(train_df)} segments, "
+        f"Val {len(val_df)} segments, Test {len(test_df)} segments."
+    )
+    return train_df, val_df, test_df

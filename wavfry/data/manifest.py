@@ -134,109 +134,147 @@ def _annotation_records(
     unknown_labels: Counter[str] = Counter()
     records: list[dict[str, Any]] = []
     seen_rows: set[tuple[str, str]] = set()
+    seen_file_splits: dict[str, tuple[int | None, str]] = {}
 
     for store_language in sorted(include_languages):
         textgrid_dir = Path(textgrid_dirs[store_language])
         audio_dir = Path(audio_dirs[store_language])
-        annotation_path = annotation_storage_path(textgrid_dir)
-        print(f"[manifest] Loading annotations from {annotation_path}...")
-        all_annotations = load_annotations(annotation_path)
+        batches_dir = textgrid_dir / "_creaky_cache" / "batches"
 
-        files_with_annotations = all_annotations.get("files", {})
-        if not isinstance(files_with_annotations, dict):
-            continue
+        batch_items = []
+        if batches_dir.exists() and sampling_state_path.exists():
+            try:
+                state = json.loads(sampling_state_path.read_text(encoding="utf-8"))
+                for b in state.get("batches", []):
+                    b_id = b["batch_id"]
+                    b_name = b.get("name") or f"Batch {b_id}"
+                    b_split = b.get("split") or "unassigned"
+                    b_path = annotation_storage_path(textgrid_dir, batch_id=b_id)
+                    batch_items.append((b_id, b_name, b_split, b_path))
+            except Exception as e:
+                print(f"[manifest] WARNING: Could not read batches from {sampling_state_path}: {e}")
 
-        for file_key, entry in tqdm(
-            files_with_annotations.items(),
-            desc=f"Processing {store_language} annotations",
-        ):
-            file_key = str(file_key)
-            language = _language_from_file_key(file_key)
-            if language not in include_languages:
-                stats["skipped_language"] += 1
-                continue
-            speaker_id = _speaker_id(file_key)
-            if not speaker_id:
-                stats["skipped_missing_speaker"] += 1
-                continue
-            if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
-                stats["skipped_malformed_entry"] += 1
-                continue
+        if not batch_items:
+            annotation_path = annotation_storage_path(textgrid_dir)
+            batch_items.append((None, "legacy", "unassigned", annotation_path))
 
-            audio_dir_for_file = Path(audio_dirs[language])
-            tg_dir_for_file = Path(textgrid_dirs[language])
-            audio_path = next(
-                (
-                    audio_dir_for_file / f"{file_key}{suffix}"
-                    for suffix in (".wav", ".flac")
-                    if (audio_dir_for_file / f"{file_key}{suffix}").exists()
-                ),
-                None,
-            )
-            tg_path = tg_dir_for_file / f"{file_key}.TextGrid"
-            if audio_path is None or not tg_path.exists():
-                stats["skipped_missing_source"] += 1
+        for b_id, b_name, b_split, annotation_path in batch_items:
+            if b_split not in {"train", "val", "test"}:
+                print(f"[manifest] Skipping Batch [{b_id}] '{b_name}' because split is '{b_split}'.")
                 continue
 
-            annotation_type = "full" if speaker_id in speakers else "sampled"
-            inventory = inventory_by_language[language]
-            for raw_interval_id, label in entry["annotations"].items():
-                if label not in {"creaky", "non_creaky"}:
-                    stats["skipped_state"] += 1
+            if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
+                print(f"[manifest] WARNING: Annotation path for Batch [{b_id}] not found: {annotation_path}")
+                continue
+
+            print(f"[manifest] Loading Batch [{b_id}] '{b_name}' (split='{b_split}') from {annotation_path}...")
+            batch_annotations = load_annotations(annotation_path)
+            files_with_annotations = batch_annotations.get("files", {})
+            if not isinstance(files_with_annotations, dict):
+                continue
+
+            for file_key, entry in tqdm(
+                files_with_annotations.items(),
+                desc=f"Processing Batch {b_id} ({store_language})",
+            ):
+                file_key = str(file_key)
+                if file_key in seen_file_splits:
+                    prev_id, prev_split = seen_file_splits[file_key]
+                    if prev_split != b_split:
+                        raise ValueError(
+                            f"[manifest] Split Exclusivity Violation: File '{file_key}' assigned to conflicting splits "
+                            f"('{prev_split}' in Batch [{prev_id}] vs '{b_split}' in Batch [{b_id}]). "
+                            f"Please adjust batch splits in Annotation App to ensure exclusivity."
+                        )
+                seen_file_splits[file_key] = (b_id, b_split)
+
+                language = _language_from_file_key(file_key)
+                if language not in include_languages:
+                    stats["skipped_language"] += 1
+                    continue
+                speaker_id = _speaker_id(file_key)
+                if not speaker_id:
+                    stats["skipped_missing_speaker"] += 1
+                    continue
+                if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
+                    stats["skipped_malformed_entry"] += 1
                     continue
 
-                parts = str(raw_interval_id).split("|")
-                if len(parts) != 3:
-                    stats["skipped_invalid_id"] += 1
-                    continue
-                try:
-                    start_s = float(parts[0])
-                    end_s = float(parts[1])
-                except (TypeError, ValueError):
-                    stats["skipped_invalid_id"] += 1
-                    continue
-                phone = parts[2]
-                interval_id = make_interval_id(start_s, end_s, phone)
-                if (file_key, interval_id) in seen_rows:
-                    stats["skipped_duplicate"] += 1
-                    continue
-                seen_rows.add((file_key, interval_id))
-
-                if (end_s - start_s) * 1000.0 < min_duration_ms:
-                    stats["skipped_too_short"] += 1
-                    continue
-
-                phone_type = classify_phone_label(phone, inventory)
-                if phone_type == IntervalType.UNKNOWN:
-                    unknown_labels[phone] += 1
-                    stats["skipped_unknown"] += 1
-                    continue
-                if phone_type.value not in training_phone_types:
-                    stats["skipped_phone_type"] += 1
-                    continue
-
-                batch_id = batch_lookup.get(file_key)
-                is_golden = bool(entry.get("is_golden_file", False))
-                records.append(
-                    {
-                        "file_key": file_key,
-                        "audio_path": str(audio_path),
-                        "tg_path": str(tg_path),
-                        "start_s": start_s,
-                        "end_s": end_s,
-                        "phone": canonical_phone_for_id(phone),
-                        "phone_type": phone_type.value,
-                        "speaker_id": speaker_id,
-                        "language": language,
-                        "label": 1 if label == "creaky" else 0,
-                        "annotation_type": annotation_type,
-                        "batch_id": batch_id,
-                        "is_golden": is_golden,
-                    }
+                audio_dir_for_file = Path(audio_dirs[language])
+                tg_dir_for_file = Path(textgrid_dirs[language])
+                audio_path = next(
+                    (
+                        audio_dir_for_file / f"{file_key}{suffix}"
+                        for suffix in (".wav", ".flac")
+                        if (audio_dir_for_file / f"{file_key}{suffix}").exists()
+                    ),
+                    None,
                 )
-                if is_golden:
-                    stats["golden_files_included"] += 1
-                stats["included"] += 1
+                tg_path = tg_dir_for_file / f"{file_key}.TextGrid"
+                if audio_path is None or not tg_path.exists():
+                    stats["skipped_missing_source"] += 1
+                    continue
+
+                annotation_type = "full" if speaker_id in speakers else "sampled"
+                inventory = inventory_by_language[language]
+                for raw_interval_id, label in entry["annotations"].items():
+                    if label not in {"creaky", "non_creaky"}:
+                        stats["skipped_state"] += 1
+                        continue
+
+                    parts = str(raw_interval_id).split("|")
+                    if len(parts) != 3:
+                        stats["skipped_invalid_id"] += 1
+                        continue
+                    try:
+                        start_s = float(parts[0])
+                        end_s = float(parts[1])
+                    except (TypeError, ValueError):
+                        stats["skipped_invalid_id"] += 1
+                        continue
+                    phone = parts[2]
+                    interval_id = make_interval_id(start_s, end_s, phone)
+                    if (file_key, interval_id) in seen_rows:
+                        stats["skipped_duplicate"] += 1
+                        continue
+                    seen_rows.add((file_key, interval_id))
+
+                    if (end_s - start_s) * 1000.0 < min_duration_ms:
+                        stats["skipped_too_short"] += 1
+                        continue
+
+                    phone_type = classify_phone_label(phone, inventory)
+                    if phone_type == IntervalType.UNKNOWN:
+                        unknown_labels[phone] += 1
+                        stats["skipped_unknown"] += 1
+                        continue
+                    if phone_type.value not in training_phone_types:
+                        stats["skipped_phone_type"] += 1
+                        continue
+
+                    is_golden = bool(entry.get("is_golden_file", False))
+                    records.append(
+                        {
+                            "file_key": file_key,
+                            "audio_path": str(audio_path),
+                            "tg_path": str(tg_path),
+                            "start_s": start_s,
+                            "end_s": end_s,
+                            "phone": canonical_phone_for_id(phone),
+                            "phone_type": phone_type.value,
+                            "speaker_id": speaker_id,
+                            "language": language,
+                            "label": 1 if label == "creaky" else 0,
+                            "annotation_type": annotation_type,
+                            "batch_id": b_id,
+                            "batch_name": b_name,
+                            "batch_split": b_split,
+                            "is_golden": is_golden,
+                        }
+                    )
+                    if is_golden:
+                        stats["golden_files_included"] += 1
+                    stats["included"] += 1
 
     report: dict[str, Any] = {
         "rows": len(records),
@@ -264,6 +302,7 @@ def _print_manifest_stats(df: pd.DataFrame, report: dict[str, Any]) -> None:
         "phone",
         "speaker_id",
         "annotation_type",
+        "batch_split",
     ):
         counts = df.groupby(column, dropna=False).size().sort_values(ascending=False)
         report["counts"][column] = {
@@ -332,6 +371,8 @@ def build_manifest(config: dict[str, Any]) -> pd.DataFrame:
         "label",
         "annotation_type",
         "batch_id",
+        "batch_name",
+        "batch_split",
         "is_golden",
     ]
     df = pd.DataFrame(records, columns=columns)
