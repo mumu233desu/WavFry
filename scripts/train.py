@@ -257,6 +257,25 @@ def main():
     for col in ['start_s', 'end_s', 'label']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col])
+            
+    # Extract Golden Test Set globally
+    if 'is_golden' in df.columns:
+        # csv reads it as string 'True' or 'False'
+        is_golden_series = df['is_golden'].astype(str).str.lower().map({'true': True, 'false': False, '1': True, '0': False}).fillna(False)
+        golden_speakers = set(df[is_golden_series]['speaker_id'].unique())
+        if golden_speakers:
+            test_df = df[(df['speaker_id'].isin(golden_speakers)) & is_golden_series].copy()
+            test_df['split'] = 'test'
+            
+            # Globally remove all data from these speakers from df
+            df = df[~df['speaker_id'].isin(golden_speakers)].copy()
+            print(f"[Golden] Extracted {len(test_df)} test segments from {len(golden_speakers)} speakers.")
+            
+            # Save test_df to checkpoint dir for later evaluation
+            test_out_path = Path(config['checkpoint']['dir']) / "golden_test_set.csv"
+            test_out_path.parent.mkdir(parents=True, exist_ok=True)
+            test_df.to_csv(test_out_path, index=False)
+            print(f"[Golden] Golden test set saved to {test_out_path}")
     
     val_speakers_cfg = config['data'].get('val_speakers', [])
     is_loocv = (val_speakers_cfg == 'loocv') or args.loocv

@@ -216,6 +216,7 @@ def _annotation_records(
                     continue
 
                 batch_id = batch_lookup.get(file_key)
+                is_golden = bool(entry.get("is_golden_file", False))
                 records.append(
                     {
                         "file_key": file_key,
@@ -230,8 +231,11 @@ def _annotation_records(
                         "label": 1 if label == "creaky" else 0,
                         "annotation_type": annotation_type,
                         "batch_id": batch_id,
+                        "is_golden": is_golden,
                     }
                 )
+                if is_golden:
+                    stats["golden_files_included"] += 1
                 stats["included"] += 1
 
     report: dict[str, Any] = {
@@ -328,6 +332,7 @@ def build_manifest(config: dict[str, Any]) -> pd.DataFrame:
         "label",
         "annotation_type",
         "batch_id",
+        "is_golden",
     ]
     df = pd.DataFrame(records, columns=columns)
     _print_manifest_stats(df, report)
