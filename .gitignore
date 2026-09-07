@@ -8,3 +8,5 @@ __pycache__/
 *.onnx
 .venv/
 exp_results/
+nul
+*.lnk
