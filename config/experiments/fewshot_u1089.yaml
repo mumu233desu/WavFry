@@ -1,0 +1,59 @@
+# Few-shot Speaker Adaptation Experiment Configuration (Speaker: U1089)
+# Comparing Model A (Zero-shot), Model B (Joint 1x), Model C (Joint 5x), Model D (TTA Head)
+
+experiment:
+  name: fewshot_adaptation_u1089
+  target_speaker: U1089
+  output_dir: experiments/fewshot_u1089
+  seed: 42
+  shots:
+    positive_file_key: M_22_Sichuan_EN_ZH-CN_U1089_S0_269   # 21 segments, 8 creaky
+    negative_file_key: M_22_Sichuan_EN_ZH-CN_U1089_S0_285   # 15 segments, 0 creaky
+  oversample_factor: 5  # For Model C
+  tta:                  # For Model D (Test-Time Adaptation)
+    steps: 15
+    lr: 1.0e-4
+    freeze_backbone: true
+    freeze_scalar_mix: true
+    batch_size: 8
+
+data:
+  manifest_path: manifests/segments_all.csv
+  context_padding_ms: 30
+  min_duration_ms: 30
+  num_workers: auto
+  pin_memory: true
+
+model:
+  backbone: microsoft/wavlm-base-plus
+  fine_tune_layers: "4-8"
+  use_scalar_mix: true
+  dropout: 0.1
+  head_hidden_dim: 256
+  pooling_mode: mean
+
+training:
+  epochs: 20
+  batch_size: 16
+  gradient_accumulation_steps: 2
+  backbone_lr: 1.0e-5
+  head_lr: 1.0e-4
+  warmup_steps: 100
+  weight_decay: 0.01
+  grad_clip: 1.0
+  loss: focal
+  focal_gamma: 2.0
+  focal_alpha: 0.75
+  mixed_precision: no    # portable default; set to bf16 on GPU
+  seed: 42
+  paradigm: segment
+  pooling_mode: mean
+
+eval:
+  primary_metric: auc_pr
+  early_stopping_patience: 3
+
+checkpoint:
+  dir: experiments/fewshot_u1089/checkpoints
+  save_mode: delta
+  keep_best_count: 1
