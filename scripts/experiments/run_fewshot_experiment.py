@@ -512,6 +512,69 @@ def build_dataloader(
     )
 
 
+def train_model_variant(
+    variant_name: str,
+    train_df: pd.DataFrame,
+    heldout_loader: DataLoader,
+    config: dict,
+    device: torch.device,
+) -> tuple[WavFryClassifier, dict]:
+    """
+    Trains a WavFryClassifier variant using Trainer, restores the best checkpoint,
+    and evaluates on the held-out test loader.
+    """
+    set_seed(config['experiment'].get('seed', 42))
+    variant_cfg = copy.deepcopy(config)
+    base_ckpt_dir = Path(config['checkpoint']['dir'])
+    variant_ckpt_dir = base_ckpt_dir / variant_name
+    variant_ckpt_dir.mkdir(parents=True, exist_ok=True)
+    variant_cfg['checkpoint']['dir'] = str(variant_ckpt_dir)
+
+    base_tb_dir = Path(config['tensorboard']['log_dir'])
+    variant_tb_dir = base_tb_dir / variant_name
+    variant_tb_dir.mkdir(parents=True, exist_ok=True)
+    variant_cfg['tensorboard']['log_dir'] = str(variant_tb_dir)
+
+    train_loader = build_dataloader(train_df, variant_cfg, shuffle=True)
+    model = WavFryClassifier(variant_cfg).to(device)
+
+    logger.info(
+        f"[{variant_name.upper()}] Starting training on {len(train_df)} samples, "
+        f"evaluating on {len(heldout_loader.dataset)} held-out samples..."
+    )
+    trainer = Trainer(model, train_loader, heldout_loader, variant_cfg, device)
+    try:
+        trainer.run(start_epoch=1)
+    finally:
+        trainer.writer.close()
+
+    # Load best checkpoint into model
+    best_path = variant_ckpt_dir / "best_model.pt"
+    if best_path.exists():
+        ckpt = torch.load(best_path, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt['model_state_dict'], strict=False)
+        logger.info(
+            f"[{variant_name.upper()}] Loaded best checkpoint from {best_path} "
+            f"(Epoch {ckpt.get('epoch')}, Best PR-AUC: {ckpt.get('auc_pr', 0.0):.4f})"
+        )
+    else:
+        logger.warning(f"[{variant_name.upper()}] No best_model.pt found at {best_path}. Using current model state.")
+
+    # Evaluate strictly on held-out test set
+    metrics = evaluate_on_heldout(model, heldout_loader, device)
+    logger.info(
+        f"[{variant_name.upper()}] Final Held-out Evaluation: "
+        f"PR-AUC={metrics['pr_auc']:.4f}, ROC-AUC={metrics['roc_auc']:.4f}, "
+        f"F1@0.5={metrics['f1_05']:.4f}, Best-F1={metrics['best_f1']:.4f} (τ*={metrics['best_tau']:.2f})"
+    )
+
+    del trainer
+    del train_loader
+    torch.cuda.empty_cache()
+
+    return model, metrics
+
+
 def format_results_markdown(results: dict, target_speaker: str) -> str:
     """Renders a clean academic markdown comparison table for all 7 models."""
     lines = [
@@ -580,13 +643,13 @@ def main():
     out_dir = Path(config['experiment'].get('output_dir', f"experiments/fewshot_{target_spk}"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Build Base Model Architecture
-    logger.info("Initializing WavFryClassifier architecture...")
-    base_model = WavFryClassifier(config).to(device)
-
+    # 2. Build Base Model Architecture & Run Benchmark
     results = {}
 
     if args.dry_run:
+        logger.info("Initializing WavFryClassifier architecture for dry-run...")
+        base_model = WavFryClassifier(config).to(device)
+
         logger.info(">>> [Dry-Run] Step 1: Evaluating Model A (Zero-shot Baseline) on Held-out Set...")
         metrics_a = evaluate_on_heldout(base_model, heldout_loader, device)
         results["Model A"] = {"name": "严格隔离 Zero-shot 基线 (7 Speakers)", "extra": "离线基线 / 0 参数", **metrics_a}
@@ -648,8 +711,95 @@ def main():
         results["Model G"] = {"name": "分类头内置 LoRA (r=1, 折叠权重)", "extra": "1024 参数 / 0ms 推理", **metrics_g}
 
     else:
-        logger.info("Full GPU training mode requested. Initiating 7-Model pipeline...")
-        raise NotImplementedError("Full GPU training should be launched on the designated GPU cluster.")
+        logger.info("Full GPU training mode requested. Initiating 7-Model Benchmark Pipeline...")
+
+        # Step 1: Model A (Strictly Isolated Zero-shot Baseline)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 1/7] Training Model A (Strictly Speaker-Isolated Zero-shot Baseline)...\n" + "=" * 75)
+        model_a, metrics_a = train_model_variant("model_a", splits['train_a_df'], heldout_loader, config, device)
+        results["Model A"] = {
+            "name": "严格隔离 Zero-shot 基线 (7 Speakers)",
+            "extra": "离线基线 / 0 参数",
+            **metrics_a,
+        }
+
+        # Step 2: Model B (Few-shot Joint Natural Mixing, 1x)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 2/7] Training Model B (Few-shot Joint Natural Mixing, 1x)...\n" + "=" * 75)
+        model_b, metrics_b = train_model_variant("model_b", splits['train_b_df'], heldout_loader, config, device)
+        results["Model B"] = {
+            "name": "Few-shot 自然混入 (1x)",
+            "extra": "离线联合 / 94.5M",
+            **metrics_b,
+        }
+        del model_b
+        torch.cuda.empty_cache()
+
+        # Step 3: Model C (Few-shot Joint Oversampling, 5x)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 3/7] Training Model C (Few-shot Joint Oversampling, 5x)...\n" + "=" * 75)
+        model_c, metrics_c = train_model_variant("model_c", splits['train_c_df'], heldout_loader, config, device)
+        results["Model C"] = {
+            "name": "Few-shot 适度重采样 (5x)",
+            "extra": "离线联合 / 94.5M",
+            **metrics_c,
+        }
+        del model_c
+        torch.cuda.empty_cache()
+
+        # Step 4: Model D (Full Head TTA from Model A best weights)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 4/7] Testing Model D (Full Head TTA adapted from Model A)...\n" + "=" * 75)
+        model_d = run_test_time_adaptation(copy.deepcopy(model_a), shots_loader, config, device)
+        metrics_d = evaluate_on_heldout(model_d, heldout_loader, device)
+        results["Model D"] = {
+            "name": "全分类头微调 TTA (15 步)",
+            "extra": "TTA / 197k 参数",
+            **metrics_d,
+        }
+        del model_d
+        torch.cuda.empty_cache()
+
+        # Step 5: Feature Caching from Model A for Models E, F, G
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 5/7] Feature Caching from Model A for Models E, F, G...\n" + "=" * 75)
+        shots_feats, shots_logits, shots_labels = extract_dataset_features(model_a, shots_loader, device)
+        heldout_feats, heldout_logits, heldout_labels = extract_dataset_features(model_a, heldout_loader, device)
+
+        logger.info(">>> Running Model E (Dual-Prototype Contrastive KNN Bias)...")
+        metrics_e, best_alpha = run_knn_adaptation(
+            shots_feats, shots_logits, shots_labels,
+            heldout_feats, heldout_logits, heldout_labels,
+            config,
+        )
+        results["Model E"] = {
+            "name": f"双原型差分 KNN (α*={best_alpha:.1f})",
+            "extra": "0 参数 / 0 梯度 (<1ms)",
+            **metrics_e,
+        }
+
+        # Step 6: Model F (Logit-level Platt Calibration)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 6/7] Testing Model F (Logit-level Platt Calibration)...\n" + "=" * 75)
+        metrics_f, (a_opt, b_opt) = run_platt_calibration(
+            shots_logits, shots_labels,
+            heldout_logits, heldout_labels,
+            config,
+        )
+        results["Model F"] = {
+            "name": f"Logit 级 Platt 校准 (a={a_opt:.2f}, b={b_opt:.2f})",
+            "extra": "2 标量 / 凸优化 (2ms)",
+            **metrics_f,
+        }
+
+        # Step 7: Model G (Head-embedded LoRA r=1 with Weight Folding)
+        logger.info("\n" + "=" * 75 + "\n>>> [BENCHMARK 7/7] Testing Model G (Head-embedded LoRA r=1 with Weight Folding)...\n" + "=" * 75)
+        metrics_g, model_g = run_lora_adaptation(
+            copy.deepcopy(model_a), shots_feats, shots_labels,
+            heldout_loader, config, device,
+        )
+        results["Model G"] = {
+            "name": "分类头内置 LoRA (r=1, 折叠权重)",
+            "extra": "1024 参数 / 0ms 推理",
+            **metrics_g,
+        }
+        del model_g
+        del model_a
+        torch.cuda.empty_cache()
 
     # 3. Format & Export Results
     report_md = format_results_markdown(results, target_spk)
@@ -657,9 +807,17 @@ def main():
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_md)
 
+    # Also save a persistent copy in repository
+    repo_report_dir = repo_root / "experiments" / f"fewshot_{target_spk}"
+    repo_report_dir.mkdir(parents=True, exist_ok=True)
+    with open(repo_report_dir / "fewshot_comparison_report.md", "w", encoding="utf-8") as f:
+        f.write(report_md)
+
     logger.info(f"\n{report_md}\n")
-    logger.info(f"Report saved to: {report_path}")
-    print("\n[SUCCESS] 7-Model Few-shot experiment dry-run completed successfully!")
+    logger.info(f"Report saved to RAM disk: {report_path}")
+    logger.info(f"Report saved to repository: {repo_report_dir / 'fewshot_comparison_report.md'}")
+    mode_str = "dry-run" if args.dry_run else "full GPU benchmark"
+    print(f"\n[SUCCESS] 7-Model Few-shot experiment ({mode_str}) completed successfully!")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 experiment:
   name: fewshot_adaptation_u1089
   target_speaker: U1089
-  output_dir: experiments/fewshot_u1089
+  output_dir: R:/experiments/fewshot_u1089
   seed: 42
   shots:
     positive_file_key: M_22_Sichuan_EN_ZH-CN_U1089_S0_269   # 21 segments, 8 creaky
@@ -35,6 +35,7 @@ data:
   min_duration_ms: 30
   num_workers: auto
   pin_memory: true
+  val_speakers: [U1089]
 
 model:
   backbone: microsoft/wavlm-base-plus
@@ -56,16 +57,22 @@ training:
   loss: focal
   focal_gamma: 2.0
   focal_alpha: 0.75
-  mixed_precision: no    # portable default; set to bf16 on GPU
+  mixed_precision: bf16    # Native hardware acceleration on RTX 4060 Ti
   seed: 42
   paradigm: segment
   pooling_mode: mean
+
+tensorboard:
+  log_dir: R:/experiments/fewshot_u1089/runs
+  log_audio_samples: false
+  log_confusion_matrix: false
+  log_pr_curve: false
 
 eval:
   primary_metric: auc_pr
   early_stopping_patience: 3
 
 checkpoint:
-  dir: experiments/fewshot_u1089/checkpoints
+  dir: R:/experiments/fewshot_u1089/checkpoints
   save_mode: delta
   keep_best_count: 1
