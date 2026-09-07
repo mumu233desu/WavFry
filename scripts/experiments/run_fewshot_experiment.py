@@ -126,7 +126,7 @@ def prepare_data_splits(config: dict, dry_run: bool = False):
         logger.info("[Dry-run Mode] Subsampling datasets for fast functional verification...")
         other_speakers_df = other_speakers_df.head(32).copy()
         heldout_df = heldout_df.head(20).copy()
-        shots_df = shots_df.head(10).copy()
+        # Keep full shots_df (36 rows) to preserve both positive and negative shot files
 
     # Model training datasets
     train_a_df = other_speakers_df.copy()
@@ -144,7 +144,8 @@ def prepare_data_splits(config: dict, dry_run: bool = False):
 
 def compute_dual_metrics(labels: np.ndarray, logits: np.ndarray) -> dict:
     """Computes ranking metrics and threshold-sensitive metrics."""
-    probs = 1.0 / (1.0 + np.exp(-logits))
+    from scipy.special import expit
+    probs = expit(logits)
 
     # 1. Global Ranking Metrics
     try:
@@ -206,7 +207,7 @@ def evaluate_on_heldout(model: nn.Module, heldout_loader: DataLoader, device: to
         targets = targets.to(device)
 
         logits = model(waveforms, lengths=lengths)
-        all_logits.append(logits.squeeze(-1).cpu().numpy())
+        all_logits.append(logits.view(-1).cpu().numpy())
         all_labels.append(targets.cpu().numpy())
 
     all_logits = np.concatenate(all_logits, axis=0)
@@ -232,7 +233,7 @@ def extract_dataset_features(model: nn.Module, loader: DataLoader, device: torch
 
         sequence, out_lengths, valid_mask = model._encode_sequence(waveforms, lengths)
         feats = model._pool_batch(sequence, valid_mask, out_lengths)
-        logits = model.head(feats).squeeze(-1)
+        logits = model.head(feats).view(-1)
 
         all_feats.append(feats.cpu())
         all_logits.append(logits.cpu())
@@ -473,7 +474,7 @@ def run_test_time_adaptation(
         targets = targets.to(device).float()
 
         optimizer.zero_grad()
-        logits = adapted_model(waveforms, lengths=lengths).squeeze(-1)
+        logits = adapted_model(waveforms, lengths=lengths).view(-1)
         loss = loss_fn(logits, targets)
         loss.backward()
         optimizer.step()
@@ -482,7 +483,12 @@ def run_test_time_adaptation(
     return adapted_model
 
 
-def build_dataloader(df: pd.DataFrame, config: dict, shuffle: bool = False) -> DataLoader:
+def build_dataloader(
+    df: pd.DataFrame,
+    config: dict,
+    shuffle: bool = False,
+    batch_size: int | None = None,
+) -> DataLoader:
     """Builds a standard CreakyVowelDataset DataLoader."""
     lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     ds = CreakyVowelDataset(
@@ -495,9 +501,10 @@ def build_dataloader(df: pd.DataFrame, config: dict, shuffle: bool = False) -> D
         import platform
         workers = 0 if platform.system() == 'Windows' else 4
 
+    bs = batch_size if batch_size is not None else int(config['training'].get('batch_size', 16))
     return DataLoader(
         ds,
-        batch_size=int(config['training'].get('batch_size', 16)),
+        batch_size=bs,
         shuffle=shuffle,
         collate_fn=collate_fn,
         num_workers=int(workers),
@@ -566,7 +573,8 @@ def main():
     # 1. Prepare Data Splits
     splits = prepare_data_splits(config, dry_run=args.dry_run)
     heldout_loader = build_dataloader(splits['heldout_df'], config, shuffle=False)
-    shots_loader = build_dataloader(splits['shots_df'], config, shuffle=True)
+    shots_bs = int(config['experiment'].get('tta', {}).get('batch_size', 8))
+    shots_loader = build_dataloader(splits['shots_df'], config, shuffle=True, batch_size=shots_bs)
 
     target_spk = config['experiment']['target_speaker']
     out_dir = Path(config['experiment'].get('output_dir', f"experiments/fewshot_{target_spk}"))

@@ -18,8 +18,8 @@ experiment:
     batch_size: 8
   knn:                  # For Model E (Dual-Prototype Contrastive KNN)
     alpha_min: 0.0
-    alpha_max: 5.0
-    alpha_steps: 26     # step = 0.2
+    alpha_max: 10.0
+    alpha_steps: 21     # step = 0.5
   platt:                # For Model F (Logit-level Platt Calibration)
     reg_lambda: 0.1
   lora:                 # For Model G (Head-embedded LoRA)
