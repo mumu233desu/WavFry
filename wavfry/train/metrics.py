@@ -16,9 +16,9 @@ def compute_metrics(logits, labels, threshold=0.5):
     
     # Handle case with only one class in labels (e.g. all non-creaky)
     try:
-        auc_pr = average_precision_score(labels_np, probs)
+        auc_pr = float(average_precision_score(labels_np, probs))
     except ValueError:
-        auc_pr = 0.0
+        auc_pr = float("nan")
         
     # Put Creaky (1) first to match common diagnostic practice
     cm = confusion_matrix(labels_np, preds, labels=[1, 0])

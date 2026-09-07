@@ -40,11 +40,12 @@ def add_white_noise(audio: np.ndarray, snr_db: float) -> np.ndarray:
     return noisy_audio.astype(np.float32)
 
 def main():
+    np.random.seed(42)
     if not SAMPLE_JSON.exists():
         print(f"Error: {SAMPLE_JSON} not found.")
         return
 
-    # 1. Parse which files are in the test set (batch 1)
+    # 1. Parse which files are in the test set (batch 2: Held-out Val)
     target_files = set()
     with open(SAMPLE_JSON, "r", encoding="utf-8") as f:
         st = json.load(f)

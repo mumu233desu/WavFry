@@ -74,13 +74,20 @@ def main():
     # 1. Export Full PyTorch Model
     full_pt_path = out_dir / args.pt_name
     print(f"\nSaving full PyTorch model to: {full_pt_path}...")
+    best_threshold = ckpt.get('best_threshold', ckpt.get('metrics', {}).get('best_threshold', 0.5))
+    threshold_f1 = ckpt.get('threshold_f1', ckpt.get('metrics', {}).get('threshold_f1', None))
     full_checkpoint = {
         'model_state_dict': model.state_dict(),
         'config': config,
+        'best_threshold': float(best_threshold),
+        'threshold_f1': float(threshold_f1) if threshold_f1 is not None else None,
         'info': 'Exported full model (base + delta)'
     }
     # Update config to indicate this is now a full model
     full_checkpoint['config']['checkpoint']['save_mode'] = 'full'
+    if 'inference' not in full_checkpoint['config']:
+        full_checkpoint['config']['inference'] = {}
+    full_checkpoint['config']['inference']['threshold'] = float(best_threshold)
     torch.save(full_checkpoint, full_pt_path)
     print(f"File size: {full_pt_path.stat().st_size / (1024 * 1024):.2f} MB")
 

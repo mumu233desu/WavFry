@@ -43,7 +43,7 @@ def run_praat(val_df: pd.DataFrame, audio_dir: Path, cache_dir: Path) -> dict[tu
     print("[praat] Starting Praat evaluation...")
     file_keys = sorted(val_df["file_key"].unique().tolist())
     
-    hash_str = f"praat|{'|'.join(file_keys)}"
+    hash_str = f"praat|{audio_dir.name}|{'|'.join(file_keys)}"
     input_hash = hashlib.md5(hash_str.encode("utf-8")).hexdigest()
     
     base_dir = cache_dir / "cache_praat"
@@ -135,7 +135,7 @@ def run_kane(val_df: pd.DataFrame, audio_dir: Path, cache_dir: Path) -> dict[tup
     print("[kane] Starting Kane (2013) baseline evaluation...")
     file_keys = sorted(val_df["file_key"].unique().tolist())
     
-    hash_str = f"kane_v1|{'|'.join(file_keys)}"
+    hash_str = f"kane_v1|{audio_dir.name}|{'|'.join(file_keys)}"
     input_hash = hashlib.md5(hash_str.encode("utf-8")).hexdigest()
     
     base_dir = cache_dir / "cache_kane"
@@ -509,7 +509,7 @@ def run_deepfry(val_df: pd.DataFrame, audio_dir: Path, cache_dir: Path) -> dict[
     file_keys = sorted(val_df["file_key"].unique().tolist())
     
     # Compute hash based on model, keys, and settings
-    hash_str = f"deepfry_v1_custom|{'|'.join(file_keys)}"
+    hash_str = f"deepfry_v1_custom|{audio_dir.name}|{'|'.join(file_keys)}"
     input_hash = hashlib.md5(hash_str.encode("utf-8")).hexdigest()
     
     base_dir = cache_dir / "deepfry"
@@ -572,7 +572,7 @@ def run_creapy(val_df: pd.DataFrame, audio_dir: Path, source_tg_dir: Path, cache
     print("[creapy] Starting Creapy evaluation...")
     file_keys = sorted(val_df["file_key"].unique().tolist())
     
-    hash_str = f"creapy|{'|'.join(file_keys)}"
+    hash_str = f"creapy|{audio_dir.name}|{'|'.join(file_keys)}"
     input_hash = hashlib.md5(hash_str.encode("utf-8")).hexdigest()
     
     base_dir = cache_dir / "cache_creapy"
@@ -756,7 +756,7 @@ def run_wavfry(val_df: pd.DataFrame, audio_dir: Path, tg_dir: Path, cache_dir: P
     print("[wavfry] Starting WavFry evaluation...")
     file_keys = sorted(val_df["file_key"].unique().tolist())
     
-    hash_str = f"wavfry|{'|'.join(file_keys)}|{int(checkpoint_path.stat().st_mtime)}"
+    hash_str = f"wavfry|{audio_dir.name}|{checkpoint_path.name}|{int(checkpoint_path.stat().st_mtime)}|{'|'.join(file_keys)}"
     input_hash = hashlib.md5(hash_str.encode("utf-8")).hexdigest()
     
     base_dir = cache_dir / "cache_wavfry"
@@ -967,7 +967,7 @@ def main():
     parser.add_argument("--skip-praat", action="store_true")
     parser.add_argument("--skip-kane", action="store_true")
     parser.add_argument("--sample-json", type=str, default="04_creaky_tools/_annotation_sampling/sampling_state.json")
-    parser.add_argument("--batch-id", type=int, default=1)
+    parser.add_argument("--batch-id", type=int, default=2)
     args = parser.parse_args()
     
     wf_config_path = WORKSPACE_ROOT / args.wavfry_config
@@ -981,12 +981,22 @@ def main():
         with open(sample_json_path, "r", encoding="utf-8") as f:
             st = json.load(f)
             target_file_keys = set()
+            batch_found = False
             for b in st.get("batches", []):
                 if b.get("batch_id") == args.batch_id:
+                    batch_found = True
+                    b_split = str(b.get("split", "")).lower()
+                    if b_split == "train":
+                        raise ValueError(
+                            f"[DATA LEAKAGE ERROR] Batch {args.batch_id} ('{b.get('name')}') is marked as split='{b_split}'! "
+                            f"Running test benchmark on training data is strictly forbidden in academic evaluation."
+                        )
                     for fh in b.get("files", []):
                         if fh.get("annotated", False):
                             target_file_keys.add(fh["file_key"])
                     break
+            if not batch_found:
+                raise ValueError(f"Batch ID {args.batch_id} not found in {args.sample_json}")
         print(f"[val_manifest] Loaded {len(target_file_keys)} sampled files for validation from {args.sample_json}")
     else:
         print(f"[val_manifest] Warning: {args.sample_json} not found. Falling back to default speakers from YAML config.")

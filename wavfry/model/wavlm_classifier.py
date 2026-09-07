@@ -26,6 +26,18 @@ class WavFryClassifier(nn.Module):
 
         training_cfg = config["training"]
         self.pooling_mode = training_cfg.get("pooling_mode", "mean")
+        self.supported_pooling_modes = {
+            "mean": 1,
+            "mean_topk": 2,
+            "mean_attn": 2,
+            "attn": 1,
+        }
+        if self.pooling_mode not in self.supported_pooling_modes:
+            raise ValueError(
+                f"Unsupported pooling_mode: '{self.pooling_mode}'. "
+                f"Supported modes: {list(self.supported_pooling_modes.keys())}"
+            )
+
         self.topk_ratio = float(training_cfg.get("topk_ratio", 0.2))
         self.topk_min_frames = int(training_cfg.get("topk_min_frames", 3))
         self.use_pos_encoding = training_cfg.get("ablation", {}).get("use_positional_encoding", False)
@@ -38,9 +50,7 @@ class WavFryClassifier(nn.Module):
 
         head_hidden = config["model"].get("head_hidden_dim", 256)
         dropout = config["model"].get("dropout", 0.1)
-        in_features = self.hidden_dim * 2 if "mean" in self.pooling_mode and (
-            "topk" in self.pooling_mode or "attn" in self.pooling_mode
-        ) else self.hidden_dim
+        in_features = self.hidden_dim * self.supported_pooling_modes[self.pooling_mode]
         self.head = nn.Sequential(
             nn.Linear(in_features, head_hidden),
             nn.GELU(),
@@ -109,7 +119,9 @@ class WavFryClassifier(nn.Module):
         """Pool one sequence using the configured segment-level representation."""
         float_mask = mask.unsqueeze(-1).to(dtype=x.dtype)
         x_mean = (x * float_mask).sum(dim=0) / float_mask.sum(dim=0).clamp_min(1e-9)
-        if self.pooling_mode == "mean_attn":
+        if self.pooling_mode == "mean":
+            return x_mean
+        elif self.pooling_mode == "mean_attn":
             scores = self.attention_head(x).squeeze(-1)
             if self.use_pos_encoding:
                 rel = relative_positions if relative_positions is not None else self._relative_positions(mask.unsqueeze(0))[0]
@@ -119,13 +131,24 @@ class WavFryClassifier(nn.Module):
             weights = torch.softmax(scores, dim=-1)
             x_attn = (x * weights.unsqueeze(-1)).sum(dim=0)
             return torch.cat([x_mean, x_attn], dim=-1)
-        if self.pooling_mode == "mean_topk":
-            scores = torch.norm(x, p=2, dim=-1).masked_fill(~mask, -1e9)
+        elif self.pooling_mode == "attn":
+            scores = self.attention_head(x).squeeze(-1)
+            if self.use_pos_encoding:
+                rel = relative_positions if relative_positions is not None else self._relative_positions(mask.unsqueeze(0))[0]
+                pos_emb = self._sinusoidal_pos_encoding(rel.unsqueeze(0), self.pos_dim)[0]
+                scores = scores + self.pos_scorer(pos_emb).squeeze(-1)
+            scores = scores.masked_fill(~mask, -1e4)
+            weights = torch.softmax(scores, dim=-1)
+            return (x * weights.unsqueeze(-1)).sum(dim=0)
+        elif self.pooling_mode == "mean_topk":
+            scores = torch.norm(x, p=2, dim=-1).masked_fill(~mask, -1e4)
             order = torch.argsort(scores, descending=True)
             sorted_x = x[order]
-            k = min(max(int(mask.sum().item() * self.topk_ratio), self.topk_min_frames), int(mask.sum().item()))
+            mask_sum = int(mask.sum().item())
+            k = min(max(int(mask_sum * self.topk_ratio), self.topk_min_frames), mask_sum)
             return torch.cat([x_mean, sorted_x[:max(k, 1)].mean(dim=0)], dim=-1)
-        return x_mean
+        else:
+            raise ValueError(f"Unknown pooling mode: '{self.pooling_mode}'")
 
     def _pool_batch(self, x: torch.Tensor, mask: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
         return torch.stack([
@@ -140,22 +163,26 @@ class WavFryClassifier(nn.Module):
         frame_count: int,
     ) -> torch.Tensor:
         """Vectorize sample-space interval bounds into WavLM frame masks."""
+        conv_stride = 320
         audio_lengths = lengths.unsqueeze(1)
         start_samples = interval_bounds[..., 0].clamp_min(0)
         start_samples = torch.minimum(start_samples, audio_lengths)
         end_samples = interval_bounds[..., 1].clamp_min(0)
         end_samples = torch.minimum(end_samples, audio_lengths)
-        end_samples = torch.maximum(end_samples, start_samples)
 
-        start_frames = self.wavlm._get_feat_extract_output_lengths(start_samples)
-        end_frames = self.wavlm._get_feat_extract_output_lengths(end_samples)
-        start_frames = start_frames.clamp(min=0, max=frame_count - 1)
-        end_frames = end_frames.clamp(min=1, max=frame_count)
-        end_frames = torch.maximum(end_frames, start_frames + 1).clamp(max=frame_count)
+        is_positive = end_samples > start_samples
+        start_frames = (start_samples // conv_stride).clamp(min=0, max=frame_count)
+        end_frames = ((end_samples + conv_stride - 1) // conv_stride).clamp(min=0, max=frame_count)
+        end_frames = torch.where(
+            is_positive & (end_frames <= start_frames),
+            (start_frames + 1).clamp(max=frame_count),
+            end_frames
+        )
 
         frame_positions = torch.arange(frame_count, device=interval_bounds.device).view(1, 1, -1)
         return (
             slot_valid.unsqueeze(-1)
+            & is_positive.unsqueeze(-1)
             & (frame_positions >= start_frames.unsqueeze(-1))
             & (frame_positions < end_frames.unsqueeze(-1))
         )
@@ -187,15 +214,20 @@ class WavFryClassifier(nn.Module):
         # A trimmed interval with no usable frames is excluded from all losses.
         slot_valid = slot_valid & interval_masks.any(dim=-1)
         batch, slots, _ = interval_masks.shape
-        pooled = []
-        for b in range(batch):
-            rows = []
-            for s in range(slots):
-                mask = interval_masks[b, s]
-                rel = self._relative_positions(mask.unsqueeze(0))[0]
-                rows.append(self._pool_one(sequence[b], mask, rel))
-            pooled.append(torch.stack(rows))
-        pooled_tensor = torch.stack(pooled)
+        if self.pooling_mode == "mean":
+            mask_expanded = interval_masks.unsqueeze(-1).to(sequence.dtype)
+            counts = mask_expanded.sum(dim=2).clamp_min(1.0)
+            pooled_tensor = (sequence.unsqueeze(1) * mask_expanded).sum(dim=2) / counts
+        else:
+            pooled = []
+            for b in range(batch):
+                rows = []
+                for s in range(slots):
+                    mask = interval_masks[b, s]
+                    rel = self._relative_positions(mask.unsqueeze(0))[0] if self.use_pos_encoding else None
+                    rows.append(self._pool_one(sequence[b], mask, rel))
+                pooled.append(torch.stack(rows))
+            pooled_tensor = torch.stack(pooled)
         interval_logits = self.head(pooled_tensor).squeeze(-1)
         result = {
             "interval_logits": interval_logits,

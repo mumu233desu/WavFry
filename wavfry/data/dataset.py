@@ -60,10 +60,7 @@ class CreakyVowelDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
-    def __getitem__(self, idx, attempts=0):
-        if attempts > 10:
-            raise RuntimeError(f"Failed to load a valid audio sample after 10 attempts. Last attempted index: {idx}")
-            
+    def __getitem__(self, idx):
         row = self.df.iloc[idx]
         audio_path = row['audio_path']
         start_s = row['start_s']
@@ -129,8 +126,10 @@ class CreakyVowelDataset(Dataset):
             
             return waveform, torch.tensor(label, dtype=torch.float32), row['speaker_id'], meta
         except Exception as e:
-            print(f"\n[Error] Failed to load {audio_path}: {e}")
-            return self.__getitem__((idx + 1) % len(self.df), attempts + 1)
+            raise RuntimeError(
+                f"[DATASET FATAL ERROR] Failed to load audio sample at index {idx} "
+                f"(path: '{audio_path}'): {e}. Academic training refuses silent fallback!"
+            ) from e
 
 def collate_fn(batch):
     """

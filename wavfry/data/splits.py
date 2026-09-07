@@ -74,14 +74,13 @@ def make_batch_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.D
       - test_df:  rows with batch_split == 'test'
     """
     if "batch_split" not in df.columns:
-        print("[Split] WARNING: 'batch_split' column missing. Falling back to all-train.")
-        train_df = df.copy()
-        val_df = df.iloc[0:0].copy()
-        test_df = df.iloc[0:0].copy()
-    else:
-        train_df = df[df["batch_split"] == "train"].copy()
-        val_df = df[df["batch_split"] == "val"].copy()
-        test_df = df[df["batch_split"] == "test"].copy()
+        raise KeyError(
+            "[DATA SPLIT ERROR] Required partition column 'batch_split' not found in dataframe! "
+            "Refusing silent fallback to all-train mode. Please ensure manifest contains 'batch_split'."
+        )
+    train_df = df[df["batch_split"] == "train"].copy()
+    val_df = df[df["batch_split"] == "val"].copy()
+    test_df = df[df["batch_split"] == "test"].copy()
 
     train_df["split"] = "train"
     val_df["split"] = "val"

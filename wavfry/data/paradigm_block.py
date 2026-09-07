@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import random
+import hashlib
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,8 @@ import pandas as pd
 import torch
 import torchaudio
 from torch.utils.data import Dataset
+
+logger = logging.getLogger(__name__)
 
 
 class BlockIndex:
@@ -65,6 +69,7 @@ class BlockIndex:
 
         blocks: dict[tuple[str, ...], dict[str, Any]] = {}
         for file_key, group in df.groupby("file_key", sort=True):
+            file_hash = int(hashlib.md5(str(file_key).encode('utf-8')).hexdigest()[:8], 16)
             rows = sorted(group.to_dict("records"), key=lambda row: (row["start_s"], row["end_s"]))
             file_end = max(float(row["end_s"]) for row in rows)
             grid_end = max(0.0, file_end - self.duration_s)
@@ -90,7 +95,7 @@ class BlockIndex:
                     continue
                 for row in contained:
                     row["interval_id"] = self._interval_id(row)
-                rng = random.Random(self.seed + self.fold_index * 100003 + int(round(start * 1000)))
+                rng = random.Random(self.seed + self.fold_index * 100003 + file_hash + int(round(start * 1000)))
                 selected = self._select_intervals(contained, None, rng)
                 block_id = f"{file_key}|{start:.6f}|{end:.6f}"
                 blocks[(str(file_key), int(round(start * 1_000_000)))] = {
@@ -112,6 +117,7 @@ class BlockIndex:
             for interval in block["intervals"]
         }
         for file_key, group in df.groupby("file_key", sort=True):
+            file_hash = int(hashlib.md5(str(file_key).encode('utf-8')).hexdigest()[:8], 16)
             rows = sorted(group.to_dict("records"), key=lambda row: (row["start_s"], row["end_s"]))
             for row in rows:
                 primary = self._interval_id(row)
@@ -119,21 +125,35 @@ class BlockIndex:
                     continue
                 interval_duration = float(row["end_s"]) - float(row["start_s"])
                 if interval_duration > self.duration_s + 1e-7:
-                    raise ValueError(
-                        f"Interval {primary} exceeds block duration "
-                        f"({interval_duration:.3f}s > {self.duration_s:.3f}s)"
+                    logger.warning(
+                        f"Interval {primary} duration ({interval_duration:.3f}s) exceeds block capacity ({self.duration_s}s). "
+                        f"Truncating to {self.duration_s}s."
                     )
-                start = max(0.0, float(row["end_s"]) - self.duration_s)
-                end = start + self.duration_s
-                contained = [
-                    dict(candidate)
-                    for candidate in rows
-                    if float(candidate["start_s"]) >= start - 1e-7
-                    and float(candidate["end_s"]) <= end + 1e-7
-                ]
-                for candidate in contained:
-                    candidate["interval_id"] = self._interval_id(candidate)
-                rng = random.Random(self.seed + self.fold_index * 100003 + int(round(start * 1000)))
+                    start = float(row["start_s"])
+                    end = start + self.duration_s
+                    row_copy = dict(row)
+                    row_copy["end_s"] = end
+                    row_copy["interval_id"] = primary
+                    contained = [row_copy]
+                    for candidate in rows:
+                        if candidate is row:
+                            continue
+                        if float(candidate["start_s"]) >= start - 1e-7 and float(candidate["end_s"]) <= end + 1e-7:
+                            c = dict(candidate)
+                            c["interval_id"] = self._interval_id(c)
+                            contained.append(c)
+                else:
+                    start = max(0.0, float(row["end_s"]) - self.duration_s)
+                    end = start + self.duration_s
+                    contained = [
+                        dict(candidate)
+                        for candidate in rows
+                        if float(candidate["start_s"]) >= start - 1e-7
+                        and float(candidate["end_s"]) <= end + 1e-7
+                    ]
+                    for candidate in contained:
+                        candidate["interval_id"] = self._interval_id(candidate)
+                rng = random.Random(self.seed + self.fold_index * 100003 + file_hash + int(round(start * 1000)))
                 selected = self._select_intervals(contained, primary, rng)
                 key = (str(file_key), int(round(start * 1_000_000)), primary)
                 blocks[key] = {

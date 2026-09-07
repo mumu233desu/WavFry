@@ -156,7 +156,7 @@ def _annotation_records(
 
         if not batch_items:
             annotation_path = annotation_storage_path(textgrid_dir)
-            batch_items.append((None, "legacy", "unassigned", annotation_path))
+            batch_items.append((None, "legacy", "train", annotation_path))
 
         for b_id, b_name, b_split, annotation_path in batch_items:
             if b_split not in {"train", "val", "test"}:
@@ -189,13 +189,21 @@ def _annotation_records(
                 seen_file_splits[file_key] = (b_id, b_split)
 
                 language = _language_from_file_key(file_key)
+                if language is None:
+                    raise ValueError(
+                        f"[MANIFEST FORMAT ERROR] Audio file key '{file_key}' does not match the "
+                        f"expected convention (e.g. 'Gender_Age_Dialect_Language_SpeakerID_...'). "
+                        f"Cannot determine language token at index 3. Please correct filename or update parser."
+                    )
                 if language not in include_languages:
                     stats["skipped_language"] += 1
                     continue
                 speaker_id = _speaker_id(file_key)
                 if not speaker_id:
-                    stats["skipped_missing_speaker"] += 1
-                    continue
+                    raise ValueError(
+                        f"[MANIFEST FORMAT ERROR] Audio file key '{file_key}' does not contain an identifiable "
+                        f"speaker ID starting with 'U' (e.g. 'U01'). Please correct filename or update parser."
+                    )
                 if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
                     stats["skipped_malformed_entry"] += 1
                     continue

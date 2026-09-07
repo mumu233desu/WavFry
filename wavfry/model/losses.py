@@ -3,18 +3,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.75, gamma=2.0, reduction='mean'):
+    def __init__(self, alpha=0.75, gamma=2.0, reduction='mean', pos_weight=None):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
+        if pos_weight is not None:
+            if not isinstance(pos_weight, torch.Tensor):
+                pos_weight = torch.tensor(pos_weight, dtype=torch.float32)
+            self.register_buffer("pos_weight", pos_weight)
+        else:
+            self.pos_weight = None
 
     def forward(self, inputs, targets):
         # inputs are logits
+        bce_loss = F.binary_cross_entropy_with_logits(
+            inputs, targets, pos_weight=self.pos_weight, reduction="none"
+        )
         p = torch.sigmoid(inputs)
-        ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
         p_t = p * targets + (1 - p) * (1 - targets)
-        loss = ce_loss * ((1 - p_t) ** self.gamma)
+        loss = bce_loss * ((1 - p_t) ** self.gamma)
 
         if self.alpha >= 0:
             alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
@@ -28,14 +36,17 @@ class FocalLoss(nn.Module):
             return loss
 
 def logmeanexp_pool(logits, mask, temperature=1.0):
-    """Pool valid frame logits with length-normalized LogMeanExp."""
+    """Pool valid frame logits with length-normalized LogMeanExp in float32 for AMP stability."""
     if temperature <= 0:
         raise ValueError("temperature must be positive")
-    masked = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
-    count = mask.sum(dim=-1).clamp_min(1).to(logits.dtype)
-    return (
+    orig_dtype = logits.dtype
+    logits_fp32 = logits.float()
+    masked = logits_fp32.masked_fill(~mask, -1e4)
+    count = mask.sum(dim=-1).clamp_min(1).float()
+    pooled = (
         torch.logsumexp(masked * temperature, dim=-1) - count.log()
     ) / temperature
+    return pooled.to(dtype=orig_dtype)
 
 
 def linear_softmax_pool(logits, mask):
@@ -70,7 +81,8 @@ def get_loss_fn(config, pos_weight=None):
     if loss_type == 'focal':
         return FocalLoss(
             alpha=config['training'].get('focal_alpha', 0.75),
-            gamma=config['training'].get('focal_gamma', 2.0)
+            gamma=config['training'].get('focal_gamma', 2.0),
+            pos_weight=pos_weight,
         )
     elif loss_type == 'weighted_bce':
         return nn.BCEWithLogitsLoss(pos_weight=pos_weight)

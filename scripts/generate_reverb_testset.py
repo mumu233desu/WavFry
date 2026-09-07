@@ -50,6 +50,7 @@ def add_reverb(audio: np.ndarray, fs: int, rt60: float) -> np.ndarray:
     return reverbed.astype(np.float32)
 
 def main():
+    np.random.seed(42)
     if not SAMPLE_JSON.exists():
         print(f"Error: {SAMPLE_JSON} not found.")
         return

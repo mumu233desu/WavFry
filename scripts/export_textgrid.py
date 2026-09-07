@@ -38,7 +38,12 @@ def export_to_textgrid(csv_path, tg_dir, output_dir, tier_name='wavfry'):
                 # (though in our case vowels shouldn't overlap)
                 new_tier.add_interval(interval)
                 
-            tg.add_tier(new_tier)
+            filled_tier = new_tier.get_copy_with_gaps_filled(
+                start_time=0.0,
+                end_time=tg.end_time,
+                empty_string=""
+            )
+            tg.add_tier(filled_tier)
             
             out_path = output_dir / f"{file_key}.TextGrid"
             tgt.io.write_to_file(tg, str(out_path), format='long')

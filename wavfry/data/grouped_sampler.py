@@ -1,9 +1,12 @@
 import math
 import random
+import logging
 from typing import List, Iterator
 import pandas as pd
 import torch
 from torch.utils.data import Sampler
+
+logger = logging.getLogger(__name__)
 
 class GroupedBatchSampler(Sampler[List[int]]):
     """
@@ -44,10 +47,9 @@ class GroupedBatchSampler(Sampler[List[int]]):
 
         n_anchor = int((self.df['speaker_id'].isin(self.anchor_speakers)).sum())
         computed_slots = round(self.batch_size * n_anchor / max(len(self.df), 1))
-        self.anchor_slots = min(
-            max(self.anchor_speakers_per_batch * 2, computed_slots),
-            self.batch_size,
-        )
+        step = max(1, self.anchor_speakers_per_batch * 2)
+        slots_per_label = max(1, computed_slots // step)
+        self.anchor_slots = min(slots_per_label * step, self.batch_size)
         self.random_slots = self.batch_size - self.anchor_slots
 
         self.anchor_buckets = {
@@ -79,12 +81,11 @@ class GroupedBatchSampler(Sampler[List[int]]):
             if self.drop_last
             else math.ceil(len(self.df) / self.batch_size)
         )
-        needed_random = self.total_batches * self.random_slots
-        self.random_pool_base = (
-            list(range(len(self.df)))
-            if len(sampled_indices) < needed_random
-            else sampled_indices
-        )
+        if len(sampled_indices) == 0:
+            logger.warning("No non-anchor samples available. Falling back to full dataset for random pool.")
+            self.random_pool_base = list(range(len(self.df)))
+        else:
+            self.random_pool_base = list(sampled_indices)
         if self.total_batches > 0 and not self.random_pool_base and not self.active_anchor_speakers:
             raise ValueError("GroupedBatchSampler has no usable training samples")
             

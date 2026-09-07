@@ -44,6 +44,17 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         test_df = df.iloc[0:0].copy()
 
     print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Split mode: {val_speakers})")
+    if len(val_df) == 0:
+        raise ValueError(
+            f"[DATA SPLIT ERROR] Validation dataset is empty (0 segments)! "
+            f"Configured 'data.val_speakers' ({val_speakers}) matched zero samples in manifest. "
+            f"Training without validation is strictly prohibited as early stopping and best checkpointing cannot function."
+        )
+    if len(train_df) == 0:
+        raise ValueError(
+            f"[DATA SPLIT ERROR] Training dataset is empty (0 segments)! "
+            f"Check data and splitting configuration."
+        )
 
     if not test_df.empty:
         test_out_path = Path(config['checkpoint']['dir']) / f"batch_test_set_{fold_idx}.csv"
@@ -193,7 +204,10 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
                 start_epoch = last_epoch + 1
                 print(f"Resuming {val_speakers} from epoch {start_epoch}")
             except Exception as e:
-                print(f"Failed to load resume checkpoint for {val_speakers}: {e}. Starting from scratch.")
+                raise RuntimeError(
+                    f"[RESUME ERROR] Failed to load resume checkpoint for {val_speakers} from '{latest_path}': {e}. "
+                    f"Academic training refuses silent fallback to training from scratch!"
+                ) from e
 
     try:
         trainer.run(start_epoch=start_epoch)
@@ -233,12 +247,21 @@ def main():
                         try: v = float(v)
                         except ValueError: pass
                 
-                # Navigate and set
+                # Navigate and validate
                 keys = key_path.split('.')
                 curr = config
                 for k in keys[:-1]:
-                    if k not in curr: curr[k] = {}
+                    if k not in curr or not isinstance(curr[k], dict):
+                        raise KeyError(
+                            f"[CONFIG OVERRIDE ERROR] Invalid configuration key '{key_path}'! "
+                            f"Segment '{k}' does not exist in base configuration. Check for typos."
+                        )
                     curr = curr[k]
+                if keys[-1] not in curr:
+                    raise KeyError(
+                        f"[CONFIG OVERRIDE ERROR] Invalid configuration key '{key_path}'! "
+                        f"Field '{keys[-1]}' does not exist in base configuration. Check for typos."
+                    )
                 curr[keys[-1]] = v
                 print(f"Overriding {key_path} with {v}")
             

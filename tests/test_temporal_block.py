@@ -42,14 +42,13 @@ def test_block_index_keeps_every_interval_complete():
     assert all(len(block["intervals"]) <= 2 for block in index.blocks)
 
 
-def test_interval_longer_than_block_fails_explicitly():
+def test_interval_longer_than_block_truncates_safely():
     df = pd.DataFrame([_row(0.0, 2.5)])
-    try:
-        BlockIndex(df, duration_ms=2000, hop_ms=1000)
-    except ValueError as exc:
-        assert "exceeds block duration" in str(exc)
-    else:
-        raise AssertionError("Expected an interval longer than the block to fail")
+    index = BlockIndex(df, duration_ms=2000, hop_ms=1000)
+    assert len(index.blocks) > 0
+    block = index.blocks[0]
+    interval = block["intervals"][0]
+    assert interval["end_s"] <= block["end_s"] + 1e-7
 
 
 def test_interval_cap_does_not_drop_same_start_intervals():

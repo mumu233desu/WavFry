@@ -9,7 +9,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import io
 import numpy as np
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from ..model import losses as losses_mod
 get_loss_fn = losses_mod.get_loss_fn
@@ -22,6 +25,11 @@ class Trainer:
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
+        if self.val_loader is None or len(self.val_loader) == 0:
+            raise RuntimeError(
+                "[TRAINER CONFIG ERROR] Trainer requires a non-empty validation DataLoader. "
+                "Cannot train blindly without validation."
+            )
         self.config = config
         self.device = device
         self.augmentor = augmentor
@@ -57,7 +65,7 @@ class Trainer:
         # Mixed precision setup
         self.mixed_prec = config['training'].get('mixed_precision', 'no')
         self.use_amp = self.mixed_prec != 'no' and 'cuda' in str(device)
-        self.scaler = torch.amp.GradScaler('cuda') if self.use_amp else None
+        self.scaler = torch.amp.GradScaler('cuda') if (self.use_amp and self.mixed_prec == 'fp16') else None
         self.autocast_dtype = torch.bfloat16 if self.mixed_prec == 'bf16' else torch.float16
         
         # TensorBoard
@@ -254,11 +262,12 @@ class Trainer:
             loss, logits, targets = self._compute_block_loss(
                 outputs, labels, effective_valid, training=training
             )
+            valid_cpu = effective_valid.detach().cpu().numpy()
             flat_speakers = []
             flat_ids = []
-            for b in range(effective_valid.size(0)):
-                for s in range(effective_valid.size(1)):
-                    if bool(effective_valid[b, s]):
+            for b in range(valid_cpu.shape[0]):
+                for s in range(valid_cpu.shape[1]):
+                    if valid_cpu[b, s]:
                         flat_speakers.append(speakers[b])
                         flat_ids.append(interval_ids[b][s])
             return loss, logits, targets, flat_speakers, flat_ids, None
@@ -355,7 +364,7 @@ class Trainer:
         frame_proxy_values = []
 
         if not self.val_loader or len(self.val_loader) == 0:
-            return 0.0, {'f1': 0.0, 'precision': 0.0, 'recall': 0.0, 'speaker_metrics': {}, 'cm': [[0, 0], [0, 0]]}
+            raise RuntimeError("val_loader is empty or None in Trainer.validate(). Cannot evaluate without validation data.")
 
         # Issue 8: Collect samples during validation to avoid duplicate traversal
         samples_to_log = {"TP": [], "FP": [], "FN": [], "TN": []}
@@ -440,61 +449,61 @@ class Trainer:
             self.writer.add_scalar('LR/backbone', self.optimizer.param_groups[0]['lr'], epoch)
             self.writer.add_scalar('LR/head', self.optimizer.param_groups[1]['lr'], epoch)
 
-            has_val = self.val_loader is not None and len(self.val_loader) > 0
+            val_loss, val_metrics = self.validate(epoch)
             
-            if has_val:
-                val_loss, val_metrics = self.validate(epoch)
-                
-                # Logging — PR-AUC is primary, F1 is secondary
-                self.writer.add_scalar('Loss/val', val_loss, epoch)
-                self.writer.add_scalar('PR_AUC/val', val_metrics['auc_pr'], epoch)  # primary
-                self.writer.add_scalar('F1/val', val_metrics['f1'], epoch)           # secondary
-                self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
-                self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
-                if 'frame_proxy_auroc' in val_metrics:
-                    self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
+            # Logging — PR-AUC is primary, F1 is secondary
+            self.writer.add_scalar('Loss/val', val_loss, epoch)
+            self.writer.add_scalar('PR_AUC/val', val_metrics['auc_pr'], epoch)  # primary
+            self.writer.add_scalar('F1/val', val_metrics['f1'], epoch)           # secondary
+            self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
+            self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
+            if 'frame_proxy_auroc' in val_metrics:
+                self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
 
-                # PR Curve
-                if self.config['tensorboard'].get('log_pr_curve', True):
-                    self.writer.add_pr_curve('PR_Curve/val', val_metrics['labels'], torch.sigmoid(val_metrics['logits']), epoch)
-                
-                # Per-speaker metrics
-                for spk, spk_m in val_metrics['speaker_metrics'].items():
-                    self.writer.add_scalar(f'Speaker_PR_AUC/{spk}', spk_m['auc_pr'], epoch)
-                    self.writer.add_scalar(f'Speaker_F1/{spk}', spk_m['f1'], epoch)
-                
-                # Confusion Matrix
-                self.log_confusion_matrix(val_metrics['cm'], epoch)
-                
-                # Audio Samples (Error Analysis)
-                if self.config['tensorboard'].get('log_audio_samples', True):
-                    self.log_audio_samples(epoch, val_metrics.get('samples', {}))
-                
-                # Early Stopping and Checkpointing — based on configured primary metric
-                current_val = val_metrics[self.primary_metric]
-                if current_val > self.best_primary_metric_val:
-                    self.best_primary_metric_val = current_val
-                    self.patience_counter = 0
-                    # Cache raw outputs for post-training threshold grid search
-                    self._best_val_logits = val_metrics['logits'].clone()
-                    self._best_val_labels = val_metrics['labels'].clone()
-                    self.save_checkpoint(epoch, val_metrics, is_best=True)
-                else:
-                    self.patience_counter += 1
-                    # Save latest anyway even if not best, to support robust resume
-                    self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
-                    
-                patience = self.config['eval'].get('early_stopping_patience', 0)
-                if patience > 0 and self.patience_counter >= patience:
-                    print(
-                        f"Early stopping at epoch {epoch} "
-                        f"({self.primary_metric} did not improve for {patience} epochs)"
-                    )
-                    break
+            # PR Curve
+            if self.config['tensorboard'].get('log_pr_curve', True):
+                self.writer.add_pr_curve('PR_Curve/val', val_metrics['labels'], torch.sigmoid(val_metrics['logits']), epoch)
+            
+            # Per-speaker metrics
+            for spk, spk_m in val_metrics['speaker_metrics'].items():
+                self.writer.add_scalar(f'Speaker_PR_AUC/{spk}', spk_m['auc_pr'], epoch)
+                self.writer.add_scalar(f'Speaker_F1/{spk}', spk_m['f1'], epoch)
+            
+            # Confusion Matrix
+            self.log_confusion_matrix(val_metrics['cm'], epoch)
+            
+            # Audio Samples (Error Analysis)
+            if self.config['tensorboard'].get('log_audio_samples', True):
+                self.log_audio_samples(epoch, val_metrics.get('samples', {}))
+            
+            # Early Stopping and Checkpointing — based on configured primary metric
+            current_val = val_metrics[self.primary_metric]
+            import math
+            if math.isnan(current_val):
+                logger.warning(
+                    f"Epoch {epoch}: {self.primary_metric} is NaN (likely single-class validation fold). "
+                    "Freezing patience counter."
+                )
+                self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
+            elif current_val > self.best_primary_metric_val:
+                self.best_primary_metric_val = current_val
+                self.patience_counter = 0
+                # Cache raw outputs for post-training threshold grid search
+                self._best_val_logits = val_metrics['logits'].clone()
+                self._best_val_labels = val_metrics['labels'].clone()
+                self.save_checkpoint(epoch, val_metrics, is_best=True)
             else:
-                # No validation: just save the model every epoch
-                self.save_checkpoint(epoch, train_metrics, is_best=False)
-                print(f"Epoch {epoch} complete (No validation).")
+                self.patience_counter += 1
+                # Save latest anyway even if not best, to support robust resume
+                self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
+                
+            patience = self.config['eval'].get('early_stopping_patience', 0)
+            if patience > 0 and self.patience_counter >= patience:
+                print(
+                    f"Early stopping at epoch {epoch} "
+                    f"({self.primary_metric} did not improve for {patience} epochs)"
+                )
+                break
 
         # ── Post-training: threshold grid search on best validation epoch ──
         if self._best_val_logits is not None:
@@ -570,29 +579,33 @@ class Trainer:
     def _update_checkpoint_threshold(
         self, best_threshold: float, threshold_f1: float
     ) -> None:
-        """Load the best checkpoint from disk, inject threshold fields, and re-save."""
+        """Load the best checkpoints from disk, inject threshold fields, and re-save."""
         val_speakers = self.config['data']['val_speakers']
         val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
-        best_ckpt_path = self.ckpt_dir / "best_model.pt"
-        if not best_ckpt_path.exists():
-            # Try speaker-specific path that the LOOCV loop may have renamed it to
-            candidate = self.ckpt_dir / f"best_model_{val_str}.pt"
-            if candidate.exists():
-                best_ckpt_path = candidate
-            else:
-                print("[WARNING] Could not locate best checkpoint to inject threshold — skipping.")
-                return
-        try:
-            ckpt = torch.load(best_ckpt_path, map_location='cpu', weights_only=False)
-            ckpt['best_threshold'] = best_threshold
-            ckpt['threshold_f1'] = threshold_f1
-            if 'metrics' in ckpt:
-                ckpt['metrics']['best_threshold'] = best_threshold
-                ckpt['metrics']['threshold_f1'] = threshold_f1
-            torch.save(ckpt, best_ckpt_path)
-            print(f"Threshold {best_threshold:.3f} saved to {best_ckpt_path}")
-        except Exception as exc:
-            print(f"[WARNING] Failed to update checkpoint with threshold: {exc}")
+        targets = [self.ckpt_dir / "best_model.pt"]
+        candidate = self.ckpt_dir / f"best_model_{val_str}.pt"
+        if candidate.exists():
+            targets.append(candidate)
+        targets.extend(list(self.ckpt_dir.glob(f"best_ep*_{val_str}.pt")))
+        
+        updated_count = 0
+        for ckpt_path in set(targets):
+            if not ckpt_path.exists():
+                continue
+            try:
+                ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+                ckpt['best_threshold'] = best_threshold
+                ckpt['threshold_f1'] = threshold_f1
+                if 'metrics' in ckpt:
+                    ckpt['metrics']['best_threshold'] = best_threshold
+                    ckpt['metrics']['threshold_f1'] = threshold_f1
+                tmp = ckpt_path.with_suffix('.pt.tmp')
+                torch.save(ckpt, tmp)
+                os.replace(tmp, ckpt_path)
+                updated_count += 1
+            except Exception as exc:
+                print(f"[WARNING] Failed to update checkpoint with threshold ({ckpt_path}): {exc}")
+        print(f"Synchronized optimal threshold {best_threshold:.3f} across {updated_count} checkpoints.")
 
     # ──────────────────────────────────────────────────────────────────────
     # Checkpoint I/O
@@ -620,6 +633,8 @@ class Trainer:
             'model_state_dict': state_dict,
             'f1': f1,
             'auc_pr': auc_pr,
+            'patience_counter': self.patience_counter,
+            'best_primary_metric_val': self.best_primary_metric_val,
             # best_threshold / threshold_f1 are injected later by _update_checkpoint_threshold
             'metrics': metrics_to_save,
             'config': self.config,
@@ -630,6 +645,9 @@ class Trainer:
                 'cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
             },
         }
+        
+        if self.scaler is not None:
+            checkpoint['scaler_state_dict'] = self.scaler.state_dict()
         
         # For non-delta mode, we always want the optimizer to allow resuming from any checkpoint
         if save_mode != 'delta':
@@ -723,5 +741,10 @@ class Trainer:
             torch.set_rng_state(rng_state['torch'].cpu())
             if torch.cuda.is_available() and rng_state.get('cuda') is not None:
                 torch.cuda.set_rng_state_all([s.cpu() if isinstance(s, torch.Tensor) else s for s in rng_state['cuda']])
+
+        self.patience_counter = checkpoint.get('patience_counter', 0)
+        self.best_primary_metric_val = checkpoint.get('best_primary_metric_val', 0.0)
+        if self.scaler is not None and 'scaler_state_dict' in checkpoint:
+            self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
 
         return checkpoint['epoch']
