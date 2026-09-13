@@ -35,6 +35,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     # Set seed for this fold/run (seed + fold_idx for variety in LOOCV)
     set_seed(config['training'].get('seed', 42) + fold_idx)
     if 'tasks' not in config.get('model', {}):
+        print("[WARNING] 'model.tasks' not configured in config, defaulting to ['creaky']")
         config.setdefault('model', {})['tasks'] = ['creaky']
     
     # Split

@@ -423,3 +423,28 @@ def test_segment_mean_attn_pooling():
     out = model(waveforms, lengths)
     assert "creaky" in out
     assert out["creaky"].shape == (2,)
+
+
+def test_collate_block_fn_empty_batch():
+    """Verify collate_block_fn safely handles empty batch without crashing."""
+    empty_result = collate_block_fn([])
+    waveforms, bounds, labels, valid, lengths, speakers, block_ids, ids = empty_result
+    assert waveforms.numel() == 0
+    assert bounds.numel() == 0
+    assert labels.numel() == 0
+    assert valid.numel() == 0
+    assert lengths.numel() == 0
+    assert len(speakers) == 0
+
+
+def test_defaults_yaml_contains_tasks():
+    """Verify _defaults.yaml has model.tasks and training.train_heads declared."""
+    import yaml
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    with open(root / "config" / "_defaults.yaml", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    assert "tasks" in cfg["model"]
+    assert cfg["model"]["tasks"] == ["creaky"]
+    assert "train_heads" in cfg["training"]
+    assert cfg["training"]["train_heads"]["creaky"] is True

@@ -50,6 +50,7 @@ model:
   use_scalar_mix: true               # 所有层学习加权聚合
   dropout: 0.1
   head_hidden_dim: 256               # 分类头隐层（自动适配 backbone 输出维度）
+  tasks: [creaky]                    # 默认激活的任务头列表（多任务可配置如 [creaky, breathy]）
 
 # ── 训练 ──────────────────────────────────────────────
 training:

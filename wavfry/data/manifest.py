@@ -25,35 +25,45 @@ WAVE_ROOT = Path(__file__).resolve().parents[3]
 if str(WAVE_ROOT) not in sys.path:
     sys.path.insert(0, str(WAVE_ROOT))
 
-# Lightweight imports for phone inventory & manual annotation
-phone_inventory = __import__(
-    "04_creaky_tools.src.phone_inventory",
-    fromlist=[
-        "IntervalType",
-        "canonical_phone_for_id",
-        "classify_phone_label",
-        "get_phone_inventory",
-        "make_interval_id",
-    ],
-)
-IntervalType = phone_inventory.IntervalType
-canonical_phone_for_id = phone_inventory.canonical_phone_for_id
-classify_phone_label = phone_inventory.classify_phone_label
-get_phone_inventory = phone_inventory.get_phone_inventory
-make_interval_id = phone_inventory.make_interval_id
+# Lightweight imports for phone inventory & manual annotation (graceful fallback if 04_creaky_tools missing)
+try:
+    phone_inventory = __import__(
+        "04_creaky_tools.src.phone_inventory",
+        fromlist=[
+            "IntervalType",
+            "canonical_phone_for_id",
+            "classify_phone_label",
+            "get_phone_inventory",
+            "make_interval_id",
+        ],
+    )
+    IntervalType = phone_inventory.IntervalType
+    canonical_phone_for_id = phone_inventory.canonical_phone_for_id
+    classify_phone_label = phone_inventory.classify_phone_label
+    get_phone_inventory = phone_inventory.get_phone_inventory
+    make_interval_id = phone_inventory.make_interval_id
 
-manual_annotation = __import__(
-    "04_creaky_tools.src.manual_annotation",
-    fromlist=["load_annotations", "annotation_storage_path"],
-)
-load_annotations = manual_annotation.load_annotations
-annotation_storage_path = manual_annotation.annotation_storage_path
-
+    manual_annotation = __import__(
+        "04_creaky_tools.src.manual_annotation",
+        fromlist=["load_annotations", "annotation_storage_path"],
+    )
+    load_annotations = manual_annotation.load_annotations
+    annotation_storage_path = manual_annotation.annotation_storage_path
+    _HAS_CREAKY_TOOLS = True
+except (ImportError, ModuleNotFoundError):
+    _HAS_CREAKY_TOOLS = False
+    IntervalType = None
+    canonical_phone_for_id = lambda p: p
+    classify_phone_label = None
+    get_phone_inventory = None
+    make_interval_id = lambda s, e, p: f"{float(s):.3f}|{float(e):.3f}|{p}"
+    load_annotations = None
+    annotation_storage_path = None
 
 DEFAULT_TRAINING_PHONE_TYPES = {
-    IntervalType.VOWEL.value,
-    IntervalType.VOICELESS_OBS.value,
-    IntervalType.SILENCE.value,
+    "vowel",
+    "voiceless_obs",
+    "silence",
 }
 
 MANIFEST_COLUMNS = [
@@ -129,6 +139,11 @@ def _speaker_id(file_key: str) -> str | None:
 
 def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """CS-Dialogue MFA TextGrid + Sharded Annotation Adapter."""
+    if not _HAS_CREAKY_TOOLS:
+        raise ImportError(
+            "[manifest] '04_creaky_tools' module is required for 'cs_dialogue_textgrid' adapter, "
+            "but could not be imported. Please ensure '04_creaky_tools' is available."
+        )
     params = ds_cfg.get("adapter_params", {})
     dataset_id = ds_cfg.get("dataset_id", "cs_dialogue")
     domain = ds_cfg.get("domain", "conversational_efl")

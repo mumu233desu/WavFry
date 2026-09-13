@@ -269,10 +269,23 @@ class ContinuousAudioBlockDataset(Dataset):
 
 
 def collate_block_fn(batch):
+    batch = [b for b in batch if b is not None]
+    if not batch:
+        return (
+            torch.empty((0, 0), dtype=torch.float32),
+            torch.empty((0, 0, 2), dtype=torch.long),
+            torch.empty((0, 0, 1), dtype=torch.float32),
+            torch.empty((0, 0), dtype=torch.bool),
+            torch.empty((0,), dtype=torch.long),
+            [],
+            [],
+            [],
+        )
+
     waveforms, bounds, labels, speakers, block_ids, interval_ids = zip(*batch)
     lengths = torch.tensor([waveform.numel() for waveform in waveforms], dtype=torch.long)
     max_audio = int(lengths.max())
-    max_intervals = max(item.shape[0] for item in bounds)
+    max_intervals = max((item.shape[0] for item in bounds), default=0)
     num_tasks = labels[0].shape[1] if (len(labels) > 0 and labels[0].ndim > 1) else 1
 
     padded = torch.zeros(len(batch), max_audio, dtype=waveforms[0].dtype)
