@@ -62,7 +62,7 @@ class BlockIndex:
     def _build(self, df: pd.DataFrame) -> list[dict[str, Any]]:
         if df.empty:
             return []
-        required = {"file_key", "audio_path", "start_s", "end_s", "label", "speaker_id"}
+        required = {"file_key", "audio_path", "start_s", "end_s", "speaker_id"}
         missing = required - set(df.columns)
         if missing:
             raise KeyError(f"Block index requires columns: {sorted(missing)}")
@@ -252,7 +252,11 @@ class ContinuousAudioBlockDataset(Dataset):
             rel_start = max(0.0, float(row["start_s"]) - start_s)
             rel_end = min(end_s - start_s, float(row["end_s"]) - start_s)
             bounds.append([int(round(rel_start * self.target_sr)), int(round(rel_end * self.target_sr))])
-            labels.append(float(row["label"]))
+            
+            # Multi-label support: [label_creaky, label_breathy]
+            l_creaky = float(row.get("label_creaky", row.get("label", float("nan"))))
+            l_breathy = float(row.get("label_breathy", float("nan")))
+            labels.append([l_creaky, l_breathy])
             ids.append(row["interval_id"])
         return (
             waveform,
@@ -269,9 +273,14 @@ def collate_block_fn(batch):
     lengths = torch.tensor([waveform.numel() for waveform in waveforms], dtype=torch.long)
     max_audio = int(lengths.max())
     max_intervals = max(item.shape[0] for item in bounds)
+    num_tasks = labels[0].shape[1] if (len(labels) > 0 and labels[0].ndim > 1) else 1
+
     padded = torch.zeros(len(batch), max_audio, dtype=waveforms[0].dtype)
     padded_bounds = torch.zeros(len(batch), max_intervals, 2, dtype=torch.long)
-    padded_labels = torch.zeros(len(batch), max_intervals, dtype=torch.float32)
+    if num_tasks > 1:
+        padded_labels = torch.full((len(batch), max_intervals, num_tasks), float("nan"), dtype=torch.float32)
+    else:
+        padded_labels = torch.full((len(batch), max_intervals), float("nan"), dtype=torch.float32)
     valid = torch.zeros(len(batch), max_intervals, dtype=torch.bool)
     ids = [[None] * max_intervals for _ in batch]
     for i, waveform in enumerate(waveforms):

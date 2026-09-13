@@ -86,6 +86,10 @@ def main():
     parser.add_argument('--ext', type=str, default='wav', choices=['wav', 'flac'])
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument(
+        '--task', type=str, default='creaky',
+        help='Target task to predict (e.g. "creaky", "breathy"). Default: "creaky"'
+    )
     args = parser.parse_args()
     
     if args.device == 'auto':
@@ -96,8 +100,10 @@ def main():
     print(f"Using device: {device}")
     
     # Load checkpoint
-    # Load checkpoint (with security check for torch 2.6+)
-    ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
+    try:
+        ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+    except Exception:
+        ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
     config = ckpt['config']
     
     # Model
@@ -241,8 +247,18 @@ def main():
             waveforms, lengths, indices = batch
             waveforms, lengths = waveforms.to(device), lengths.to(device)
             
-            logits = model(waveforms, lengths)
-            probs = torch.sigmoid(logits).cpu().float().numpy()
+            outputs = model(waveforms, lengths)
+            if isinstance(outputs, dict):
+                if args.task in outputs:
+                    task_logits = outputs[args.task]
+                else:
+                    first_task = next(iter(outputs.keys()))
+                    print(f"[WARN] Task '{args.task}' not found in model outputs {list(outputs.keys())}. Falling back to '{first_task}'.")
+                    task_logits = outputs[first_task]
+            else:
+                task_logits = outputs
+
+            probs = torch.sigmoid(task_logits).cpu().float().numpy()
             
             for prob, idx in zip(probs, indices):
                 seg_info = all_segments[idx]
@@ -251,6 +267,7 @@ def main():
                     'start_s': seg_info['start_s'],
                     'end_s': seg_info['end_s'],
                     'phone': seg_info['phone'],
+                    'task': args.task,
                     'pred_label': 1 if prob >= threshold else 0,
                     'confidence': float(prob)
                 })

@@ -104,6 +104,11 @@ training:
   topk_ratio: 0.2           # Top-K 取帧比例
   topk_min_frames: 3        # Top-K 最少取几帧
 
+  # ── 多任务训练头开关（必须显式设为 true 才计算对应 head 的损失并更新） ──
+  train_heads:
+    creaky: true            # 训练 creaky 检测头
+    breathy: false          # 训练 breathy 检测头（接入气声数据后开启）
+
 # ── 评估 ──────────────────────────────────────────────
 eval:
   primary_metric: auc_pr        # auc_pr（推荐）| f1 — 决定 early-stopping 和最优 ckpt 判断依据

@@ -122,9 +122,13 @@ class CreakyVowelDataset(Dataset):
             # Metadata for provenance
             audio_stem = Path(audio_path).stem
             phone = row.get('phone', 'UNK')
-            meta = f"{audio_stem}|{start_s:.3f}-{end_s:.3f}|{phone}"
+            meta = f"{audio_stem}|{float(row['start_s']):.3f}-{float(row['end_s']):.3f}|{phone}"
+            # Multi-label support: [label_creaky, label_breathy]
+            l_creaky = float(row.get("label_creaky", row.get("label", float("nan"))))
+            l_breathy = float(row.get("label_breathy", float("nan")))
+            labels_tensor = torch.tensor([l_creaky, l_breathy], dtype=torch.float32)
             
-            return waveform, torch.tensor(label, dtype=torch.float32), row['speaker_id'], meta
+            return waveform, labels_tensor, row['speaker_id'], meta
         except Exception as e:
             raise RuntimeError(
                 f"[DATASET FATAL ERROR] Failed to load audio sample at index {idx} "

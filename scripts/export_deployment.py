@@ -11,31 +11,55 @@ if str(root) not in sys.path:
 
 from wavfry.model import wavlm_classifier as model_mod
 
-def export_to_onnx(model, output_path):
-    print(f"Exporting model to ONNX: {output_path}...")
+class ONNXExportWrapper(torch.nn.Module):
+    def __init__(self, model, task="creaky"):
+        super().__init__()
+        self.model = model
+        self.task = task
+        
+    def forward(self, waveform, lengths):
+        out = self.model(waveform, lengths)
+        if isinstance(out, dict):
+            if self.task != "all" and self.task in out:
+                return out[self.task]
+            # Return tuple for all tasks in order
+            return tuple(out[t] for t in self.model.tasks)
+        return out
+
+def export_to_onnx(model, output_path, task="creaky"):
+    print(f"Exporting model to ONNX: {output_path} (task: {task})...")
     model.eval()
     
-    # Dummy inputs for tracing
-    # WavLM expects input of shape [Batch, Time]
-    # We use a batch size of 1 and a dummy length of 16000 (1 second at 16kHz)
+    wrapper = ONNXExportWrapper(model, task=task)
+    wrapper.eval()
+    
+    tasks = getattr(model, 'tasks', ['creaky'])
+    if task != "all" and task in tasks:
+        output_names = ['logits']
+    else:
+        output_names = [f'logits_{t}' for t in tasks]
+
+    dynamic_axes = {
+        'waveform': {0: 'batch_size', 1: 'sequence_length'},
+        'lengths': {0: 'batch_size'},
+    }
+    for name in output_names:
+        dynamic_axes[name] = {0: 'batch_size'}
+
     dummy_waveform = torch.randn(1, 16000, device=next(model.parameters()).device)
     dummy_lengths = torch.tensor([16000], dtype=torch.long, device=dummy_waveform.device)
     
     try:
         torch.onnx.export(
-            model,
+            wrapper,
             (dummy_waveform, dummy_lengths),
             output_path,
             export_params=True,
-            opset_version=14,  # Opset 14 is generally well-supported and handles most transformer ops
+            opset_version=14,
             do_constant_folding=True,
             input_names=['waveform', 'lengths'],
-            output_names=['logits'],
-            dynamic_axes={
-                'waveform': {0: 'batch_size', 1: 'sequence_length'},
-                'lengths': {0: 'batch_size'},
-                'logits': {0: 'batch_size'}
-            }
+            output_names=output_names,
+            dynamic_axes=dynamic_axes
         )
         print(f"Successfully exported ONNX model to {output_path}")
         print(f"File size: {Path(output_path).stat().st_size / (1024 * 1024):.2f} MB")
@@ -48,13 +72,17 @@ def main():
     parser.add_argument('--output-dir', type=str, default=str(root / 'checkpoints'), help="Directory to save the exported models")
     parser.add_argument('--onnx-name', type=str, default="wavfry_model.onnx", help="Name of the exported ONNX file")
     parser.add_argument('--pt-name', type=str, default="wavfry_full.pt", help="Name of the exported full PyTorch file")
+    parser.add_argument('--task', type=str, default="creaky", help="Task to export ('creaky', 'breathy', or 'all'). Default: 'creaky'")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Loading checkpoint from: {args.checkpoint}")
-    ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
+    try:
+        ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+    except Exception:
+        ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=True)
     config = ckpt['config']
     
     print(f"Initializing WavFryClassifier with backbone: {config['model']['backbone']}...")
@@ -93,7 +121,7 @@ def main():
 
     # 2. Export ONNX Model
     onnx_path = out_dir / args.onnx_name
-    export_to_onnx(model, onnx_path)
+    export_to_onnx(model, onnx_path, task=args.task)
 
 if __name__ == "__main__":
     main()

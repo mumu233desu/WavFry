@@ -1,15 +1,21 @@
-"""Build a safe, typed training manifest from sharded annotations."""
+"""Build a safe, typed, multi-dataset training manifest with extensible adapters."""
 
 from __future__ import annotations
 
 import json
+import logging
+import math
+import random
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -19,7 +25,7 @@ WAVE_ROOT = Path(__file__).resolve().parents[3]
 if str(WAVE_ROOT) not in sys.path:
     sys.path.insert(0, str(WAVE_ROOT))
 
-# The lightweight module is intentionally used instead of the librosa-heavy App core.
+# Lightweight imports for phone inventory & manual annotation
 phone_inventory = __import__(
     "04_creaky_tools.src.phone_inventory",
     fromlist=[
@@ -50,14 +56,36 @@ DEFAULT_TRAINING_PHONE_TYPES = {
     IntervalType.SILENCE.value,
 }
 
+MANIFEST_COLUMNS = [
+    "dataset_id",
+    "domain",
+    "file_key",
+    "audio_path",
+    "tg_path",
+    "start_s",
+    "end_s",
+    "speaker_id",
+    "language",
+    "phone",
+    "phone_type",
+    "annotation_granularity",
+    "label_creaky",
+    "label_breathy",
+    "label",
+    "batch_split",
+    "annotation_type",
+    "batch_id",
+    "batch_name",
+    "is_golden",
+]
+
 
 def _build_batch_lookup(sampling_state_path: Path) -> dict[str, int]:
     """Return ``file_key -> batch_id`` from sampling_state.json."""
-
     lookup: dict[str, int] = {}
     if not sampling_state_path.exists():
         print(
-            "[manifest] WARNING: sampling_state.json not found at "
+            f"[manifest] WARNING: sampling_state.json not found at "
             f"{sampling_state_path}; sampled rows will have no batch_id."
         )
         return lookup
@@ -97,44 +125,44 @@ def _speaker_id(file_key: str) -> str | None:
     )
 
 
-def _annotation_records(
-    config: dict[str, Any],
-    *,
-    include_languages: set[str],
-    training_phone_types: set[str],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    data_config = config.get("data", {})
-    speakers = {str(speaker) for speaker in data_config.get("annotated_speakers", [])}
-    audio_dirs = data_config.get("audio_dirs", {})
-    textgrid_dirs = data_config.get("textgrid_dirs", {})
-    min_duration_ms = float(data_config.get("min_duration_ms", 30.0))
+# ── 适配器函数实现 (Adapters) ────────────────────────────────────────────────
+
+def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """CS-Dialogue MFA TextGrid + Sharded Annotation Adapter."""
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "cs_dialogue")
+    domain = ds_cfg.get("domain", "conversational_efl")
+    granularity = params.get("annotation_granularity", "segment")
+
+    speakers = {str(s) for s in params.get("annotated_speakers", [])}
+    audio_dirs = params.get("audio_dirs", {})
+    textgrid_dirs = params.get("textgrid_dirs", {})
+    min_duration_ms = float(params.get("min_duration_ms", 30.0))
+    include_languages = {str(l).strip().lower() for l in params.get("include_languages", ["en"])}
+    training_phone_types = {str(p).strip().lower() for p in params.get("training_phone_types", sorted(DEFAULT_TRAINING_PHONE_TYPES))}
 
     for language in include_languages:
         if language not in audio_dirs or language not in textgrid_dirs:
             raise KeyError(
-                f"Config must define audio_dirs and textgrid_dirs for language {language!r}"
+                f"adapter_cs_dialogue_textgrid requires audio_dirs and textgrid_dirs for {language!r}"
             )
-        audio_dir = Path(audio_dirs[language])
-        textgrid_dir = Path(textgrid_dirs[language])
-        if not audio_dir.is_dir():
-            raise FileNotFoundError(f"Audio directory does not exist for {language}: {audio_dir}")
-        if not textgrid_dir.is_dir():
-            raise FileNotFoundError(
-                f"TextGrid directory does not exist for {language}: {textgrid_dir}"
-            )
+        if not Path(audio_dirs[language]).is_dir():
+            raise FileNotFoundError(f"Audio dir not found for {language}: {audio_dirs[language]}")
+        if not Path(textgrid_dirs[language]).is_dir():
+            raise FileNotFoundError(f"TextGrid dir not found for {language}: {textgrid_dirs[language]}")
 
     sampling_state_path = (
         WAVE_ROOT / "04_creaky_tools" / "_annotation_sampling" / "sampling_state.json"
     )
     batch_lookup = _build_batch_lookup(sampling_state_path)
     inventory_by_language = {
-        language: get_phone_inventory(language) for language in include_languages
+        lang: get_phone_inventory(lang) for lang in include_languages
     }
-    stats: Counter[str] = Counter()
-    unknown_labels: Counter[str] = Counter()
+
     records: list[dict[str, Any]] = []
     seen_rows: set[tuple[str, str]] = set()
     seen_file_splits: dict[str, tuple[int | None, str]] = {}
+    stats: Counter[str] = Counter()
 
     for store_language in sorted(include_languages):
         textgrid_dir = Path(textgrid_dirs[store_language])
@@ -160,14 +188,12 @@ def _annotation_records(
 
         for b_id, b_name, b_split, annotation_path in batch_items:
             if b_split not in {"train", "val", "test"}:
-                print(f"[manifest] Skipping Batch [{b_id}] '{b_name}' because split is '{b_split}'.")
                 continue
 
             if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
-                print(f"[manifest] WARNING: Annotation path for Batch [{b_id}] not found: {annotation_path}")
                 continue
 
-            print(f"[manifest] Loading Batch [{b_id}] '{b_name}' (split='{b_split}') from {annotation_path}...")
+            print(f"[manifest] [{dataset_id}] Loading Batch [{b_id}] '{b_name}' (split='{b_split}') from {annotation_path}...")
             batch_annotations = load_annotations(annotation_path)
             files_with_annotations = batch_annotations.get("files", {})
             if not isinstance(files_with_annotations, dict):
@@ -183,29 +209,17 @@ def _annotation_records(
                     if prev_split != b_split:
                         raise ValueError(
                             f"[manifest] Split Exclusivity Violation: File '{file_key}' assigned to conflicting splits "
-                            f"('{prev_split}' in Batch [{prev_id}] vs '{b_split}' in Batch [{b_id}]). "
-                            f"Please adjust batch splits in Annotation App to ensure exclusivity."
+                            f"('{prev_split}' in Batch [{prev_id}] vs '{b_split}' in Batch [{b_id}])."
                         )
                 seen_file_splits[file_key] = (b_id, b_split)
 
                 language = _language_from_file_key(file_key)
-                if language is None:
-                    raise ValueError(
-                        f"[MANIFEST FORMAT ERROR] Audio file key '{file_key}' does not match the "
-                        f"expected convention (e.g. 'Gender_Age_Dialect_Language_SpeakerID_...'). "
-                        f"Cannot determine language token at index 3. Please correct filename or update parser."
-                    )
-                if language not in include_languages:
-                    stats["skipped_language"] += 1
+                if language is None or language not in include_languages:
                     continue
                 speaker_id = _speaker_id(file_key)
                 if not speaker_id:
-                    raise ValueError(
-                        f"[MANIFEST FORMAT ERROR] Audio file key '{file_key}' does not contain an identifiable "
-                        f"speaker ID starting with 'U' (e.g. 'U01'). Please correct filename or update parser."
-                    )
+                    continue
                 if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
-                    stats["skipped_malformed_entry"] += 1
                     continue
 
                 audio_dir_for_file = Path(audio_dirs[language])
@@ -220,170 +234,470 @@ def _annotation_records(
                 )
                 tg_path = tg_dir_for_file / f"{file_key}.TextGrid"
                 if audio_path is None or not tg_path.exists():
-                    stats["skipped_missing_source"] += 1
                     continue
 
                 annotation_type = "full" if speaker_id in speakers else "sampled"
                 inventory = inventory_by_language[language]
+
                 for raw_interval_id, label in entry["annotations"].items():
                     if label not in {"creaky", "non_creaky"}:
-                        stats["skipped_state"] += 1
                         continue
 
                     parts = str(raw_interval_id).split("|")
                     if len(parts) != 3:
-                        stats["skipped_invalid_id"] += 1
                         continue
                     try:
                         start_s = float(parts[0])
                         end_s = float(parts[1])
                     except (TypeError, ValueError):
-                        stats["skipped_invalid_id"] += 1
                         continue
                     phone = parts[2]
                     interval_id = make_interval_id(start_s, end_s, phone)
                     if (file_key, interval_id) in seen_rows:
-                        stats["skipped_duplicate"] += 1
                         continue
                     seen_rows.add((file_key, interval_id))
 
                     if (end_s - start_s) * 1000.0 < min_duration_ms:
-                        stats["skipped_too_short"] += 1
                         continue
 
                     phone_type = classify_phone_label(phone, inventory)
-                    if phone_type == IntervalType.UNKNOWN:
-                        unknown_labels[phone] += 1
-                        stats["skipped_unknown"] += 1
-                        continue
-                    if phone_type.value not in training_phone_types:
-                        stats["skipped_phone_type"] += 1
+                    if phone_type == IntervalType.UNKNOWN or phone_type.value not in training_phone_types:
                         continue
 
                     is_golden = bool(entry.get("is_golden_file", False))
+                    creak_val = 1.0 if label == "creaky" else 0.0
+
                     records.append(
                         {
+                            "dataset_id": dataset_id,
+                            "domain": domain,
                             "file_key": file_key,
                             "audio_path": str(audio_path),
                             "tg_path": str(tg_path),
                             "start_s": start_s,
                             "end_s": end_s,
-                            "phone": canonical_phone_for_id(phone),
-                            "phone_type": phone_type.value,
                             "speaker_id": speaker_id,
                             "language": language,
-                            "label": 1 if label == "creaky" else 0,
+                            "phone": canonical_phone_for_id(phone),
+                            "phone_type": phone_type.value,
+                            "annotation_granularity": granularity,
+                            "label_creaky": creak_val,
+                            "label_breathy": float("nan"),
+                            "label": creak_val,
+                            "batch_split": b_split,
                             "annotation_type": annotation_type,
                             "batch_id": b_id,
                             "batch_name": b_name,
-                            "batch_split": b_split,
                             "is_golden": is_golden,
                         }
                     )
-                    if is_golden:
-                        stats["golden_files_included"] += 1
-                    stats["included"] += 1
 
-    report: dict[str, Any] = {
-        "rows": len(records),
-        "filters": {
-            "include_languages": sorted(include_languages),
-            "training_phone_types": sorted(training_phone_types),
-            "min_duration_ms": min_duration_ms,
+    return records
+
+
+def adapter_grbas_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """GRBAS Voice Disorder CSV Adapter (utterance-level MIL)."""
+    import torchaudio
+
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "femh_2018")
+    domain = ds_cfg.get("domain", "pathological_voice")
+    granularity = params.get("annotation_granularity", "utterance")
+
+    audio_dir = Path(params.get("audio_dir", ""))
+    csv_path = Path(params.get("annotation_csv", ""))
+    col_map = params.get("csv_columns", {"file_id": "file_id", "grbas_b": "B", "speaker_id": "speaker_id"})
+    threshold = float(params.get("breathy_threshold", 1.0))
+
+    if not csv_path.exists() or not audio_dir.exists():
+        print(f"[manifest] [{dataset_id}] Notice: CSV '{csv_path}' or audio dir '{audio_dir}' not found. Returning empty.")
+        return []
+
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        print(f"[manifest] [{dataset_id}] Failed to read CSV {csv_path}: {e}")
+        return []
+
+    file_col = col_map.get("file_id", "file_id")
+    b_col = col_map.get("grbas_b", "B")
+    spk_col = col_map.get("speaker_id", "speaker_id")
+
+    records = []
+    for _, row in df.iterrows():
+        file_id = str(row[file_col]).strip()
+        audio_path = next(
+            (audio_dir / f"{file_id}{ext}" for ext in (".wav", ".flac") if (audio_dir / f"{file_id}{ext}").exists()),
+            None,
+        )
+        if audio_path is None:
+            continue
+
+        try:
+            info = torchaudio.info(str(audio_path))
+            duration = info.num_frames / info.sample_rate
+        except Exception:
+            duration = 2.0  # fallback
+
+        b_score = float(row[b_col]) if not pd.isna(row[b_col]) else float("nan")
+        breathy_val = 1.0 if (not math.isnan(b_score) and b_score >= threshold) else (0.0 if not math.isnan(b_score) else float("nan"))
+        speaker_id = str(row[spk_col]) if spk_col in row and not pd.isna(row[spk_col]) else file_id
+
+        records.append({
+            "dataset_id": dataset_id,
+            "domain": domain,
+            "file_key": file_id,
+            "audio_path": str(audio_path),
+            "tg_path": "",
+            "start_s": 0.0,
+            "end_s": round(duration, 4),
+            "speaker_id": speaker_id,
+            "language": "zh",
+            "phone": "VOWEL",
+            "phone_type": "vowel",
+            "annotation_granularity": granularity,
+            "label_creaky": float("nan"),
+            "label_breathy": breathy_val,
+            "label": breathy_val,
+            "batch_split": "train",
+            "annotation_type": "external",
+            "batch_id": float("nan"),
+            "batch_name": "external",
+            "is_golden": False,
+        })
+    return records
+
+
+def adapter_capev_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """CAPE-V Ratings CSV Adapter (threshold or continuous soft label)."""
+    import torchaudio
+
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "pvqd")
+    domain = ds_cfg.get("domain", "pathological_voice")
+    granularity = params.get("annotation_granularity", "utterance")
+
+    audio_dir = Path(params.get("audio_dir", ""))
+    csv_path = Path(params.get("annotation_csv", ""))
+    col_map = params.get("csv_columns", {"file_id": "file_id", "capev_breathiness": "Breathiness", "speaker_id": "SpeakerID"})
+    label_mode = params.get("breathy_label_mode", "threshold")
+    threshold = float(params.get("breathy_threshold", 40.0))
+
+    if not csv_path.exists() or not audio_dir.exists():
+        print(f"[manifest] [{dataset_id}] Notice: CSV '{csv_path}' or audio dir '{audio_dir}' not found. Returning empty.")
+        return []
+
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        print(f"[manifest] [{dataset_id}] Failed to read CSV {csv_path}: {e}")
+        return []
+
+    file_col = col_map.get("file_id", "file_id")
+    b_col = col_map.get("capev_breathiness", "Breathiness")
+    spk_col = col_map.get("speaker_id", "SpeakerID")
+
+    records = []
+    for _, row in df.iterrows():
+        file_id = str(row[file_col]).strip()
+        audio_path = next(
+            (audio_dir / f"{file_id}{ext}" for ext in (".wav", ".flac") if (audio_dir / f"{file_id}{ext}").exists()),
+            None,
+        )
+        if audio_path is None:
+            continue
+
+        try:
+            info = torchaudio.info(str(audio_path))
+            duration = info.num_frames / info.sample_rate
+        except Exception:
+            duration = 2.0
+
+        raw_val = float(row[b_col]) if not pd.isna(row[b_col]) else float("nan")
+        if math.isnan(raw_val):
+            breathy_val = float("nan")
+        elif label_mode == "threshold":
+            breathy_val = 1.0 if raw_val >= threshold else 0.0
+        else:
+            breathy_val = max(0.0, min(1.0, raw_val / 100.0))
+
+        speaker_id = str(row[spk_col]) if spk_col in row and not pd.isna(row[spk_col]) else file_id
+
+        records.append({
+            "dataset_id": dataset_id,
+            "domain": domain,
+            "file_key": file_id,
+            "audio_path": str(audio_path),
+            "tg_path": "",
+            "start_s": 0.0,
+            "end_s": round(duration, 4),
+            "speaker_id": speaker_id,
+            "language": "en",
+            "phone": "VOWEL",
+            "phone_type": "vowel",
+            "annotation_granularity": granularity,
+            "label_creaky": float("nan"),
+            "label_breathy": breathy_val,
+            "label": breathy_val,
+            "batch_split": "train",
+            "annotation_type": "external",
+            "batch_id": float("nan"),
+            "batch_name": "external",
+            "is_golden": False,
+        })
+    return records
+
+
+def adapter_generic_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generic CSV Adapter for arbitrary custom annotations."""
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "custom_csv")
+    domain = ds_cfg.get("domain", "conversational_efl")
+    granularity = params.get("annotation_granularity", "segment")
+
+    csv_path = Path(params.get("csv_path", ""))
+    audio_base = Path(params.get("audio_base_dir", ""))
+
+    if not csv_path.exists():
+        print(f"[manifest] [{dataset_id}] Notice: CSV '{csv_path}' not found. Returning empty.")
+        return []
+
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        print(f"[manifest] [{dataset_id}] Failed to read CSV {csv_path}: {e}")
+        return []
+
+    records = []
+    for _, row in df.iterrows():
+        raw_audio = str(row.get("audio_path", ""))
+        audio_path = Path(raw_audio) if Path(raw_audio).is_absolute() else audio_base / raw_audio
+        if not audio_path.exists():
+            continue
+
+        file_key = str(row.get("file_key", audio_path.stem))
+        start_s = float(row.get("start_s", 0.0))
+        end_s = float(row.get("end_s", 0.0))
+        speaker_id = str(row.get("speaker_id", "UNK"))
+        lang = str(row.get("language", "en"))
+        phone = str(row.get("phone", "VOWEL"))
+        phone_type = str(row.get("phone_type", "vowel"))
+        l_creaky = float(row["label_creaky"]) if "label_creaky" in row and not pd.isna(row["label_creaky"]) else float("nan")
+        l_breathy = float(row["label_breathy"]) if "label_breathy" in row and not pd.isna(row["label_breathy"]) else float("nan")
+        b_split = str(row.get("batch_split", "train"))
+
+        records.append({
+            "dataset_id": dataset_id,
+            "domain": domain,
+            "file_key": file_key,
+            "audio_path": str(audio_path),
+            "tg_path": str(row.get("tg_path", "")),
+            "start_s": start_s,
+            "end_s": end_s,
+            "speaker_id": speaker_id,
+            "language": lang,
+            "phone": phone,
+            "phone_type": phone_type,
+            "annotation_granularity": granularity,
+            "label_creaky": l_creaky,
+            "label_breathy": l_breathy,
+            "label": l_creaky if not math.isnan(l_creaky) else l_breathy,
+            "batch_split": b_split,
+            "annotation_type": str(row.get("annotation_type", "custom")),
+            "batch_id": float(row.get("batch_id", float("nan"))),
+            "batch_name": str(row.get("batch_name", "")),
+            "is_golden": bool(row.get("is_golden", False)),
+        })
+    return records
+
+
+# ── 适配器注册表 ─────────────────────────────────────────────────────────────
+
+ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
+    "cs_dialogue_textgrid": adapter_cs_dialogue_textgrid,
+    "grbas_csv": adapter_grbas_csv,
+    "capev_csv": adapter_capev_csv,
+    "generic_csv": adapter_generic_csv,
+}
+
+
+# ── 划分策略应用 (Split Strategies) ──────────────────────────────────────────
+
+def _apply_split_strategies(df: pd.DataFrame, datasets_cfg: dict[str, Any]) -> None:
+    """Apply dataset-specific partitioning strategies in-place."""
+    split_defaults = datasets_cfg.get("split_defaults", {})
+    seed = int(split_defaults.get("seed", 42))
+
+    for ds in datasets_cfg.get("datasets", []):
+        if not ds.get("enabled", True):
+            continue
+        ds_id = ds["dataset_id"]
+        mask = df["dataset_id"] == ds_id
+        if not mask.any():
+            continue
+
+        strategy = ds.get("split_strategy", "all_train")
+
+        if strategy == "all_train":
+            df.loc[mask, "batch_split"] = "train"
+
+        elif strategy == "batch_split":
+            # Already populated by the adapter (e.g. from sampling_state.json), keep as-is
+            pass
+
+        elif strategy == "speaker_list":
+            val_spks = set(ds.get("val_speakers", []))
+            test_spks = set(ds.get("test_speakers", []))
+            df.loc[mask & df["speaker_id"].isin(val_spks), "batch_split"] = "val"
+            if test_spks:
+                df.loc[mask & df["speaker_id"].isin(test_spks), "batch_split"] = "test"
+                df.loc[mask & ~df["speaker_id"].isin(val_spks | test_spks), "batch_split"] = "train"
+            else:
+                df.loc[mask & ~df["speaker_id"].isin(val_spks), "batch_split"] = "train"
+
+        elif strategy == "random":
+            spks = sorted(df.loc[mask, "speaker_id"].dropna().unique())
+            rng = random.Random(seed)
+            rng.shuffle(spks)
+            n_val = max(1, int(round(len(spks) * float(split_defaults.get("val_fraction", 0.1)))))
+            n_test = max(1, int(round(len(spks) * float(split_defaults.get("test_fraction", 0.1)))))
+            val_set = set(spks[:n_val])
+            test_set = set(spks[n_val : n_val + n_test])
+            train_set = set(spks[n_val + n_test :])
+
+            df.loc[mask & df["speaker_id"].isin(val_set), "batch_split"] = "val"
+            df.loc[mask & df["speaker_id"].isin(test_set), "batch_split"] = "test"
+            df.loc[mask & df["speaker_id"].isin(train_set), "batch_split"] = "train"
+
+
+def _print_multi_manifest_stats(df: pd.DataFrame, tasks: list[str]) -> None:
+    print(f"\n=======================================================")
+    print(f"[Manifest] Multi-Dataset Manifest Built: {len(df)} total rows")
+    print(f"[Manifest] Active Tasks ({len(tasks)}): {tasks}")
+    print(f"=======================================================")
+    if df.empty:
+        return
+    print("\nCounts by Dataset & Split:")
+    print(pd.crosstab(df["dataset_id"], df["batch_split"], margins=True).to_string())
+
+    for task in tasks:
+        col = f"label_{task}"
+        if col in df.columns:
+            valid = df[col].dropna()
+            pos = (valid > 0.5).sum()
+            ratio = (pos / len(valid)) if len(valid) > 0 else 0.0
+            print(f"\nTask [{task.upper()}]: {len(valid)} labeled ({pos} positive, {len(valid) - pos} negative, pos_ratio={ratio:.3f})")
+
+
+# ── 主入口 (Main Multi-Dataset Manifest Builder) ──────────────────────────────
+
+def build_manifest_multi(
+    datasets_cfg: dict[str, Any],
+    global_cfg: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Build unified multi-dataset manifest from datasets.yaml specifications."""
+    all_records: list[dict[str, Any]] = []
+    active_tasks: set[str] = set()
+
+    for ds in datasets_cfg.get("datasets", []):
+        if not ds.get("enabled", True):
+            continue
+
+        adapter_name = ds.get("annotation_adapter")
+        if adapter_name not in ADAPTERS:
+            raise ValueError(f"Unknown annotation_adapter: '{adapter_name}'. Registered: {list(ADAPTERS.keys())}")
+
+        schema = ds.get("label_schema", {})
+        for task_name, has_task in schema.items():
+            if has_task:
+                active_tasks.add(task_name)
+
+        adapter_fn = ADAPTERS[adapter_name]
+        records = adapter_fn(ds)
+        all_records.extend(records)
+
+    df = pd.DataFrame(all_records, columns=MANIFEST_COLUMNS)
+    _apply_split_strategies(df, datasets_cfg)
+
+    # Sort tasks deterministically
+    sorted_tasks = sorted(active_tasks)
+    _print_multi_manifest_stats(df, sorted_tasks)
+
+    df.attrs["tasks"] = sorted_tasks
+    return df
+
+
+# ── 向后兼容接口 (Backward Compatibility Wrapper) ─────────────────────────────
+
+def _annotation_records(
+    config: dict[str, Any],
+    *,
+    include_languages: set[str],
+    training_phone_types: set[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Legacy helper for backward compatibility."""
+    ds_cfg = {
+        "dataset_id": "cs_dialogue",
+        "domain": "conversational_efl",
+        "adapter_params": {
+            "annotated_speakers": config.get("data", {}).get("annotated_speakers", []),
+            "audio_dirs": config.get("data", {}).get("audio_dirs", {}),
+            "textgrid_dirs": config.get("data", {}).get("textgrid_dirs", {}),
+            "phone_tier_name": config.get("data", {}).get("phone_tier_name", "phones"),
+            "creaky_tier_name": config.get("data", {}).get("creaky_tier_name", "creaky"),
+            "context_padding_ms": config.get("data", {}).get("context_padding_ms", 30),
+            "min_duration_ms": config.get("data", {}).get("min_duration_ms", 30.0),
+            "include_languages": list(include_languages),
+            "training_phone_types": list(training_phone_types),
         },
-        "excluded": dict(sorted(stats.items())),
-        "unknown_top_labels": dict(unknown_labels.most_common(20)),
     }
+    records = adapter_cs_dialogue_textgrid(ds_cfg)
+    report = {"rows": len(records)}
     return records, report
 
 
 def _print_manifest_stats(df: pd.DataFrame, report: dict[str, Any]) -> None:
-    print(f"[manifest] Included rows: {len(df)}")
-    if df.empty:
-        print("[manifest] No rows passed the language/type/state/duration filters.")
-        return
-    report["counts"] = {}
-    for column in (
-        "language",
-        "phone_type",
-        "label",
-        "phone",
-        "speaker_id",
-        "annotation_type",
-        "batch_split",
-    ):
-        counts = df.groupby(column, dropna=False).size().sort_values(ascending=False)
-        report["counts"][column] = {
-            str(key): int(value) for key, value in counts.items()
-        }
-        print(f"[manifest] Counts by {column}:")
-        print(counts.to_string())
-    class_counts = df["label"].value_counts().to_dict()
-    positive_ratio = float(df["label"].mean())
-    report["label_counts"] = {
-        "non_creaky": int(class_counts.get(0, 0)),
-        "creaky": int(class_counts.get(1, 0)),
-    }
-    report["positive_ratio"] = positive_ratio
-    print(
-        f"[manifest] Label counts: non_creaky={class_counts.get(0, 0)}, "
-        f"creaky={class_counts.get(1, 0)}, positive_ratio={positive_ratio:.4f}"
-    )
-    if report.get("unknown_top_labels"):
-        print(f"[manifest] UNKNOWN labels excluded: {report['unknown_top_labels']}")
+    """Legacy stats printer."""
+    tasks = df.attrs.get("tasks", ["creaky"])
+    _print_multi_manifest_stats(df, tasks)
 
 
 def build_manifest(config: dict[str, Any]) -> pd.DataFrame:
-    """Build and return the training DataFrame.
+    """Build manifest: loads datasets.yaml if present, or falls back to cs_dialogue."""
+    if "datasets" in config:
+        return build_manifest_multi(config, global_cfg=config)
 
-    The default configuration includes English vowel, voiceless-obstruent,
-    silence, and sonorant intervals; callers may select any known phone types.
-    """
+    data_cfg = config.get("data", {})
+    if "audio_dirs" in data_cfg or "textgrid_dirs" in data_cfg:
+        ds_cfg = {
+            "dataset_id": "cs_dialogue",
+            "domain": "conversational_efl",
+            "enabled": True,
+            "annotation_adapter": "cs_dialogue_textgrid",
+            "adapter_params": data_cfg,
+            "label_schema": {"creaky": True, "breathy": False},
+            "split_strategy": "batch_split",
+        }
+        datasets_cfg = {"datasets": [ds_cfg]}
+        return build_manifest_multi(datasets_cfg, global_cfg=config)
 
-    data_config = config.get("data", {})
-    include_languages = {
-        str(language).strip().lower()
-        for language in data_config.get("include_languages", ["en"])
-        if str(language).strip()
+    root = Path(__file__).resolve().parents[2]
+    datasets_yaml = root / "config" / "datasets.yaml"
+    if datasets_yaml.exists():
+        import yaml
+        with open(datasets_yaml, encoding="utf-8") as f:
+            datasets_cfg = yaml.safe_load(f)
+        return build_manifest_multi(datasets_cfg, global_cfg=config)
+
+    # Fallback to single cs_dialogue dataset using existing config
+    ds_cfg = {
+        "dataset_id": "cs_dialogue",
+        "domain": "conversational_efl",
+        "enabled": True,
+        "annotation_adapter": "cs_dialogue_textgrid",
+        "adapter_params": data_cfg,
+        "label_schema": {"creaky": True, "breathy": False},
+        "split_strategy": "batch_split",
     }
-    if not include_languages:
-        raise ValueError("data.include_languages must contain at least one language")
-    training_phone_types = {
-        str(phone_type).strip().lower()
-        for phone_type in data_config.get(
-            "training_phone_types",
-            sorted(DEFAULT_TRAINING_PHONE_TYPES),
-        )
-        if str(phone_type).strip()
-    }
-    known_phone_types = {item.value for item in IntervalType if item != IntervalType.UNKNOWN}
-    unknown_config_types = training_phone_types - known_phone_types
-    if unknown_config_types:
-        raise ValueError(f"Unknown training phone types: {sorted(unknown_config_types)}")
-
-    records, report = _annotation_records(
-        config,
-        include_languages=include_languages,
-        training_phone_types=training_phone_types,
-    )
-    columns = [
-        "file_key",
-        "audio_path",
-        "tg_path",
-        "start_s",
-        "end_s",
-        "phone",
-        "phone_type",
-        "speaker_id",
-        "language",
-        "label",
-        "annotation_type",
-        "batch_id",
-        "batch_name",
-        "batch_split",
-        "is_golden",
-    ]
-    df = pd.DataFrame(records, columns=columns)
-    _print_manifest_stats(df, report)
-    df.attrs["manifest_report"] = report
-    return df
+    datasets_cfg = {"datasets": [ds_cfg]}
+    return build_manifest_multi(datasets_cfg, global_cfg=config)

@@ -1,0 +1,132 @@
+# ==============================================================================
+# WavFry 多数据集注册表 (datasets.yaml)
+# 每个 entry 声明一个数据集的物理路径、标注格式、任务标签和划分策略
+# ==============================================================================
+
+datasets:
+
+  # ── CS-Dialogue（核心数据集，creaky 精标，MFA TextGrid + sampling_state） ──
+  - dataset_id: cs_dialogue
+    enabled: true
+    display_name: "CS-Dialogue (Creaky)"
+    domain: conversational_efl      # 领域标签，供分析用
+
+    # 标注适配器：指定如何读取此数据集的标注
+    annotation_adapter: cs_dialogue_textgrid
+    # adapter 专属参数
+    adapter_params:
+      annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
+      audio_dirs:
+        en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
+        zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
+      textgrid_dirs:
+        en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/02_en_mfa_aligned
+        zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/12_zh_hfa_aligned
+      phone_tier_name: phones
+      creaky_tier_name: creaky
+      context_padding_ms: 30
+      min_duration_ms: 30
+      include_languages: [en]
+      training_phone_types: [vowel, voiceless_obs, silence, sonorant]
+
+    # 任务标签声明：此数据集提供哪些任务的标签
+    label_schema:
+      creaky: true    # 提供 creaky 精标
+      breathy: false  # 不提供 breathy 标签（manifest 中对应列填 NaN）
+
+    # 划分策略
+    split_strategy: batch_split   # 使用 batch_split 列（来自 sampling_state.json）
+    # split_strategy 可选值:
+    #   batch_split  - 由 sampling_state.json 中 batch.split 字段决定
+    #   speaker_list - 指定 val_speakers 列表
+    #   all_train    - 全部作为训练集（外部数据集常用）
+    #   random       - 随机按比例划分（seed 由全局 training.seed 控制）
+
+  # ── FEMH 2018（Breathy 病理性，GRBAS B 分，utterance-level MIL） ──
+  - dataset_id: femh_2018
+    enabled: false    # 待数据确认后开启
+    display_name: "FEMH 2018 Voice Disorder Challenge"
+    domain: pathological_voice
+
+    annotation_adapter: grbas_csv
+    adapter_params:
+      audio_dir: E:/Corpus/FEMH2018/audio
+      annotation_csv: E:/Corpus/FEMH2018/labels/grbas_ratings.csv
+      # CSV 列名映射
+      csv_columns:
+        file_id: file_id
+        grbas_b: B           # Breathiness 分值列名
+        speaker_id: speaker_id
+      # GRBAS B >= threshold → breathy=1，否则=0
+      breathy_threshold: 1   # 0=normal, 1=mild, 2=moderate, 3=severe
+      # utterance-level 标注，MIL 处理（由 Dataset 层处理，此处只声明粒度）
+      annotation_granularity: utterance   # utterance | segment | frame
+
+    label_schema:
+      creaky: false
+      breathy: true
+
+    split_strategy: all_train   # 病理数据全部用于训练，不作 val/test
+
+  # ── PVQD（Breathy，CAPE-V，utterance-level MIL） ──
+  - dataset_id: pvqd
+    enabled: false
+    display_name: "Pediatric Voice Quality Database"
+    domain: pathological_voice
+
+    annotation_adapter: capev_csv
+    adapter_params:
+      audio_dir: E:/Corpus/PVQD/audio
+      annotation_csv: E:/Corpus/PVQD/ratings.csv
+      csv_columns:
+        file_id: file_id
+        capev_breathiness: Breathiness   # 0-100 连续值
+        speaker_id: SpeakerID
+      # 连续分值归一化方式：threshold | soft_label
+      breathy_label_mode: threshold
+      breathy_threshold: 40.0            # CAPE-V >= 40 → breathy=1
+      annotation_granularity: utterance
+
+    label_schema:
+      creaky: false
+      breathy: true
+
+    split_strategy: all_train
+
+  # ── CS-Dialogue Breathy（未来：人工精标 breathy 段落，同一语料库） ──
+  - dataset_id: cs_dialogue_breathy
+    enabled: false    # 等待标注完成后开启
+    display_name: "CS-Dialogue (Breathy, Manual)"
+    domain: conversational_efl
+
+    annotation_adapter: generic_csv    # 通用 CSV 适配器
+    adapter_params:
+      csv_path: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/breathy_annotations/segments.csv
+      # CSV 必须包含: audio_path, start_s, end_s, label_breathy, speaker_id
+      # 可选列: label_creaky, language, phone, batch_split
+      audio_base_dir: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
+      annotation_granularity: segment
+
+    label_schema:
+      creaky: false   # 此批标注只标 breathy，creaky 列留 NaN
+      breathy: true
+
+    split_strategy: batch_split   # CSV 中有 batch_split 列
+
+
+# ==============================================================================
+# 全局 Manifest 构建参数
+# ==============================================================================
+manifest:
+  output_dir: manifests/
+  output_filename: segments_multi.csv
+  save_per_dataset: true   # 每个 dataset_id 单独保存一份，便于调试
+
+# ==============================================================================
+# 全局划分兜底参数（当 split_strategy=random 时使用）
+# ==============================================================================
+split_defaults:
+  seed: 42
+  train_fraction: 0.8
+  val_fraction: 0.1
+  test_fraction: 0.1

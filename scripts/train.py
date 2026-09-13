@@ -34,6 +34,8 @@ def set_seed(seed):
 def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod, fold_idx=0, preloaded_wavlm=None, resume=False, warm_start=None):
     # Set seed for this fold/run (seed + fold_idx for variety in LOOCV)
     set_seed(config['training'].get('seed', 42) + fold_idx)
+    if 'tasks' not in config.get('model', {}):
+        config.setdefault('model', {})['tasks'] = ['creaky']
     
     # Split
     val_speakers = config['data'].get('val_speakers', [])
@@ -134,7 +136,12 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         )
     elif sampler_cfg.get('enabled', False):
         from wavfry.data.grouped_sampler import GroupedBatchSampler
-        active_anchors = [s for s in config['data']['annotated_speakers'] if s not in val_speakers]
+        if 'annotation_type' in train_df.columns and (train_df['annotation_type'] == 'full').any():
+            spk_col = 'speaker' if 'speaker' in train_df.columns else 'speaker_id'
+            all_anchors = train_df[train_df['annotation_type'] == 'full'][spk_col].unique().tolist()
+        else:
+            all_anchors = config['data'].get('annotated_speakers', [])
+        active_anchors = [s for s in all_anchors if s not in val_speakers]
         sampler = GroupedBatchSampler(
             df=train_df,
             batch_size=train_batch_size,
@@ -276,10 +283,41 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # Load manifest
-    manifest_path = root / "manifests" / "segments_all.csv"
-    if not manifest_path.exists():
-        print(f"Manifest not found at {manifest_path}. Please run build_manifest.py first.")
+    # Auto-detect tasks from datasets.yaml if not explicitly configured in model
+    datasets_cfg_path = root / "config" / "datasets.yaml"
+    if 'tasks' not in config.get('model', {}):
+        if datasets_cfg_path.exists():
+            with open(datasets_cfg_path, 'r', encoding='utf-8') as f:
+                ds_registry = yaml.safe_load(f)
+            inferred_tasks = set()
+            ds_items = ds_registry.get('datasets', [])
+            if isinstance(ds_items, dict):
+                ds_items = ds_items.values()
+            for ds_info in ds_items:
+                if isinstance(ds_info, dict) and ds_info.get('enabled', False):
+                    for task, is_labeled in ds_info.get('label_schema', {}).items():
+                        if is_labeled:
+                            inferred_tasks.add(task)
+            canonical_order = ["creaky", "breathy"]
+            if inferred_tasks:
+                config.setdefault('model', {})['tasks'] = [t for t in canonical_order if t in inferred_tasks] + [t for t in inferred_tasks if t not in canonical_order]
+            else:
+                config.setdefault('model', {})['tasks'] = ['creaky']
+        else:
+            config.setdefault('model', {})['tasks'] = ['creaky']
+    print(f"Model tasks: {config['model']['tasks']}")
+
+    # Load manifest (prefer segments_multi.csv if present)
+    multi_manifest = root / "manifests" / "segments_multi.csv"
+    legacy_manifest = root / "manifests" / "segments_all.csv"
+    if multi_manifest.exists():
+        manifest_path = multi_manifest
+        print(f"Using multi-dataset manifest: {manifest_path}")
+    elif legacy_manifest.exists():
+        manifest_path = legacy_manifest
+        print(f"Using legacy manifest: {manifest_path}")
+    else:
+        print(f"Manifest not found at {multi_manifest} or {legacy_manifest}. Please run build_manifest.py first.")
         sys.exit(1)
         
     import csv
@@ -289,9 +327,9 @@ def main():
     pd.set_option("mode.string_storage", "python")
     df = pd.DataFrame(data)
     # Convert numeric columns
-    for col in ['start_s', 'end_s', 'label']:
+    for col in ['start_s', 'end_s', 'label', 'label_creaky', 'label_breathy']:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col])
+            df[col] = pd.to_numeric(df[col], errors='coerce')
             
     # Extract Golden Test Set globally
     if 'is_golden' in df.columns:

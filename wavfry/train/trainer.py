@@ -10,6 +10,8 @@ import seaborn as sns
 import io
 import numpy as np
 import logging
+import math
+import pandas as pd
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -52,15 +54,27 @@ class Trainer:
         
         # Dataset construction already materializes epoch-1 generated windows, so
         # weighted BCE reflects the effective initial training distribution.
+        primary_task = config.get('eval', {}).get('primary_task', 'creaky')
         if self.paradigm == 'block':
             interval_rows = [row for block in train_loader.dataset.blocks for row in block['intervals']]
-            n_pos = sum(int(row['label']) for row in interval_rows)
-            n_neg = len(interval_rows) - n_pos
+            creaky_vals = []
+            for row in interval_rows:
+                val = row.get(f'label_{primary_task}', row.get('label', float('nan')))
+                try:
+                    fval = float(val)
+                    if not math.isnan(fval):
+                        creaky_vals.append(fval)
+                except (ValueError, TypeError):
+                    pass
+            n_pos = sum(1 for v in creaky_vals if v > 0.5)
+            n_neg = len(creaky_vals) - n_pos
         else:
             train_df = train_loader.dataset.df
-            n_pos = train_df['label'].sum()
-            n_neg = len(train_df) - n_pos
-        pos_weight = torch.tensor([n_neg / (n_pos + 1e-9)]).to(device)
+            col = f'label_{primary_task}' if f'label_{primary_task}' in train_df.columns else 'label'
+            valid_series = pd.to_numeric(train_df[col], errors='coerce').dropna()
+            n_pos = int((valid_series > 0.5).sum())
+            n_neg = len(valid_series) - n_pos
+        pos_weight = torch.tensor([max(n_neg, 1) / max(n_pos, 1)]).to(device)
         self.loss_fn = get_loss_fn(config, pos_weight=pos_weight)
         
         # Mixed precision setup
@@ -184,67 +198,98 @@ class Trainer:
 
         return optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
+    CANONICAL_TASKS = ("creaky", "breathy")
+
+    def _get_task_target(self, labels: torch.Tensor, task: str) -> torch.Tensor:
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        # If labels tensor has multi-task dimension matching CANONICAL_TASKS
+        if labels.ndim > 1 and labels.shape[-1] == len(self.CANONICAL_TASKS):
+            if task in self.CANONICAL_TASKS:
+                return labels[..., self.CANONICAL_TASKS.index(task)]
+        if labels.ndim > 1 and labels.shape[-1] == len(tasks):
+            if task in tasks:
+                return labels[..., tasks.index(task)]
+        if labels.ndim > 1 and labels.shape[-1] == 1:
+            return labels.squeeze(-1)
+        return labels
+
     def _compute_block_loss(self, outputs, labels, slot_valid, training=True):
         self._current_frame_proxy = None
         slot_valid = outputs.get('interval_valid', slot_valid)
-        logits = outputs['interval_logits'][slot_valid]
-        targets = labels[slot_valid]
-        interval_loss = self.loss_fn(logits, targets)
-        if not self.frame_cfg.get('enabled', False):
-            return interval_loss, logits, targets
+        train_heads_cfg = self.config.get('training', {}).get('train_heads', {})
+        tasks = getattr(self.model, "tasks", ["creaky"])
 
-        from ..model.losses import pool_frame_logits
-        frame_logits = outputs['frame_logits']
-        interval_masks = outputs['interval_masks']
-        frame_masks = interval_masks[slot_valid]
-        expanded = frame_logits.unsqueeze(1).expand_as(interval_masks)[slot_valid]
-        mode = self.frame_cfg.get('mil_mode', 'lse')
-        if mode == 'lse_mean':
-            lse = pool_frame_logits(
-                expanded, frame_masks, mode='lse',
-                temperature=self.frame_cfg.get('temperature', 1.0),
-            )
-            mean = (expanded.masked_fill(~frame_masks, 0.0).sum(-1) /
-                    frame_masks.sum(-1).clamp_min(1))
-            mil_logits = self.model.frame_mil_fusion(
-                torch.stack([lse, mean], dim=-1)
-            ).squeeze(-1)
-        else:
-            mil_logits = pool_frame_logits(
-                expanded,
-                frame_masks,
-                mode=mode,
-                topk_ratio=self.frame_cfg.get('topk_ratio', 0.2),
-                temperature=self.frame_cfg.get('temperature', 1.0),
-            )
-        if not training:
-            try:
-                from sklearn.metrics import roc_auc_score
-                proxy_targets = targets.unsqueeze(-1).expand_as(frame_masks)[frame_masks].detach().cpu().numpy()
-                proxy_scores = torch.sigmoid(expanded[frame_masks]).detach().cpu().float().numpy()
-                if len(set(proxy_targets.tolist())) > 1:
-                    self._current_frame_proxy = float(roc_auc_score(proxy_targets, proxy_scores))
-            except (ValueError, ImportError):
-                self._current_frame_proxy = None
+        raw_interval_logits = outputs['interval_logits']
+        if not isinstance(raw_interval_logits, dict):
+            raw_interval_logits = {tasks[0]: raw_interval_logits}
 
-        positive = targets > 0.5
-        frame_terms = []
-        if positive.any():
-            frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
-                mil_logits[positive], torch.ones_like(mil_logits[positive])
-            ))
-        negative = ~positive
-        if negative.any():
-            negative_logits = expanded[negative][frame_masks[negative]]
-            frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
-                negative_logits, torch.zeros_like(negative_logits)
-            ))
-        if frame_terms:
-            # Sum class-specific means so abundant negative frames do not silently
-            # erase the sparse positive-bag supervision.
-            frame_loss = torch.stack(frame_terms).sum()
-            interval_loss = interval_loss + float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
-        return interval_loss, logits, targets
+        total_loss = torch.tensor(0.0, device=slot_valid.device)
+        logits_by_task = {}
+        targets_by_task = {}
+
+        for task in tasks:
+            task_logits = raw_interval_logits[task][slot_valid]
+            task_targets = self._get_task_target(labels, task)[slot_valid]
+            logits_by_task[task] = task_logits
+            targets_by_task[task] = task_targets
+
+            is_trainable = train_heads_cfg.get(task, (task == "creaky"))
+            if training and not is_trainable:
+                continue
+
+            valid_mask = ~torch.isnan(task_targets)
+            if valid_mask.any():
+                loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
+                total_loss = total_loss + loss
+
+        if not total_loss.requires_grad and any(p.requires_grad for p in self.model.parameters()):
+            dummy_grad = sum(p.sum() * 0.0 for p in self.model.parameters() if p.requires_grad)
+            total_loss = total_loss + dummy_grad
+
+        if self.frame_cfg.get('enabled', False) and 'frame_logits' in outputs:
+            from ..model.losses import pool_frame_logits
+            frame_logits = outputs['frame_logits']
+            interval_masks = outputs['interval_masks']
+            frame_masks = interval_masks[slot_valid]
+            expanded = frame_logits.unsqueeze(1).expand_as(interval_masks)[slot_valid]
+            mode = self.frame_cfg.get('mil_mode', 'lse')
+            if mode == 'lse_mean':
+                lse = pool_frame_logits(
+                    expanded, frame_masks, mode='lse',
+                    temperature=self.frame_cfg.get('temperature', 1.0),
+                )
+                mean = (expanded.masked_fill(~frame_masks, 0.0).sum(-1) /
+                        frame_masks.sum(-1).clamp_min(1))
+                mil_logits = self.model.frame_mil_fusion(
+                    torch.stack([lse, mean], dim=-1)
+                ).squeeze(-1)
+            else:
+                mil_logits = pool_frame_logits(
+                    expanded,
+                    frame_masks,
+                    mode=mode,
+                    topk_ratio=self.frame_cfg.get('topk_ratio', 0.2),
+                    temperature=self.frame_cfg.get('temperature', 1.0),
+                )
+            primary_task = "creaky" if "creaky" in tasks else tasks[0]
+            primary_targets = targets_by_task[primary_task]
+            positive = primary_targets > 0.5
+            frame_terms = []
+            if positive.any():
+                frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                    mil_logits[positive], torch.ones_like(mil_logits[positive])
+                ))
+            negative = (~positive) & (~torch.isnan(primary_targets))
+            if negative.any():
+                negative_logits = expanded[negative][frame_masks[negative]]
+                frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                    negative_logits, torch.zeros_like(negative_logits)
+                ))
+            if frame_terms:
+                frame_loss = torch.stack(frame_terms).sum()
+                total_loss = total_loss + float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
+
+        return total_loss, logits_by_task, targets_by_task
 
     def _forward_batch(self, batch, epoch, training):
         if self.paradigm == 'block':
@@ -260,7 +305,7 @@ class Trainer:
             effective_valid = outputs.get('interval_valid', valid)
             if not effective_valid.any():
                 raise RuntimeError("Block batch contains no interval with valid frames")
-            loss, logits, targets = self._compute_block_loss(
+            loss, logits_by_task, targets_by_task = self._compute_block_loss(
                 outputs, labels, effective_valid, training=training
             )
             valid_cpu = effective_valid.detach().cpu().numpy()
@@ -271,20 +316,48 @@ class Trainer:
                     if valid_cpu[b, s]:
                         flat_speakers.append(speakers[b])
                         flat_ids.append(interval_ids[b][s])
-            return loss, logits, targets, flat_speakers, flat_ids, None
+            return loss, logits_by_task, targets_by_task, flat_speakers, flat_ids, None
 
+        # Segment mode
         waveforms, labels, lengths, speakers, meta = batch
         waveforms = waveforms.to(self.device)
         labels = labels.to(self.device)
         lengths = lengths.to(self.device)
         if training and self.augmentor is not None:
             waveforms = self.augmentor.apply(waveforms, epoch, self.device)
-        logits = self.model(waveforms, lengths)
-        loss = self.loss_fn(logits, labels)
-        return loss, logits, labels, list(speakers), list(meta), (waveforms, lengths)
+        logits_dict = self.model(waveforms, lengths)
+        if not isinstance(logits_dict, dict):
+            tasks = getattr(self.model, "tasks", ["creaky"])
+            logits_dict = {tasks[0]: logits_dict}
+
+        train_heads_cfg = self.config.get('training', {}).get('train_heads', {})
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        total_loss = torch.tensor(0.0, device=self.device)
+        logits_by_task = {}
+        targets_by_task = {}
+
+        for task in tasks:
+            task_logits = logits_dict[task]
+            task_targets = self._get_task_target(labels, task)
+            logits_by_task[task] = task_logits
+            targets_by_task[task] = task_targets
+
+            is_trainable = train_heads_cfg.get(task, (task == "creaky"))
+            if training and not is_trainable:
+                continue
+
+            valid_mask = ~torch.isnan(task_targets)
+            if valid_mask.any():
+                loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
+                total_loss = total_loss + loss
+
+        if not total_loss.requires_grad and any(p.requires_grad for p in self.model.parameters()):
+            dummy_grad = sum(p.sum() * 0.0 for p in self.model.parameters() if p.requires_grad)
+            total_loss = total_loss + dummy_grad
+
+        return total_loss, logits_by_task, targets_by_task, list(speakers), list(meta), (waveforms, lengths)
 
     def train_epoch(self, epoch):
-        # Rebuild deterministic epoch-specific samples before the loader iterates.
         if hasattr(self.train_loader.dataset, 'set_epoch'):
             self.train_loader.dataset.set_epoch(epoch)
         batch_sampler = getattr(self.train_loader, 'batch_sampler', None)
@@ -296,22 +369,23 @@ class Trainer:
 
         self.model.train()
         total_loss = 0
-        all_logits = []
-        all_labels = []
-        
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        all_logits = {task: [] for task in tasks}
+        all_labels = {task: [] for task in tasks}
+
         pbar = self.train_loader if self.quiet else tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]")
         for i, batch in enumerate(pbar):
             device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                loss, logits, labels, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
-                
+                loss, logits_dict, labels_dict, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
+
             loss = loss / self.config['training']['gradient_accumulation_steps']
-            
+
             if self.scaler:
                 self.scaler.scale(loss).backward()
             else:
                 loss.backward()
-                
+
             if (i + 1) % self.config['training']['gradient_accumulation_steps'] == 0:
                 if self.scaler:
                     scale_before = self.scaler.get_scale()
@@ -324,19 +398,21 @@ class Trainer:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
                     self.optimizer.step()
                     skip_lr_sched = False
-                
+
                 self.optimizer.zero_grad()
                 if not skip_lr_sched:
                     self.scheduler.step()
-                
+
             total_loss += loss.item() * self.config['training']['gradient_accumulation_steps']
-            all_logits.append(logits.detach().cpu())
-            all_labels.append(labels.detach().cpu())
-            
+            for task in tasks:
+                if task in logits_dict:
+                    all_logits[task].append(logits_dict[task].detach().cpu())
+                    all_labels[task].append(labels_dict[task].detach().cpu())
+
             if not self.quiet:
                 pbar.set_postfix({'loss': loss.item()})
-            
-        # Flush remaining gradients at the end of epoch to prevent leakage
+
+        # Flush remaining gradients
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
             if self.scaler:
                 scale_before = self.scaler.get_scale()
@@ -344,97 +420,129 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
-                skip_lr_sched = (self.scaler.get_scale() < scale_before)
             else:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
                 self.optimizer.step()
-                skip_lr_sched = False
             self.optimizer.zero_grad()
-            if not skip_lr_sched:
-                self.scheduler.step()
-            
-        metrics = compute_metrics(torch.cat(all_logits), torch.cat(all_labels))
-        # Log train PR-AUC and F1 as secondary
+            self.scheduler.step()
+
+        primary_task = "creaky" if "creaky" in tasks else tasks[0]
+        metrics = {}
+        for task in tasks:
+            if all_logits[task]:
+                t_logits = torch.cat(all_logits[task])
+                t_labels = torch.cat(all_labels[task])
+                valid_m = ~torch.isnan(t_labels)
+                if valid_m.sum() > 0:
+                    task_m = compute_metrics(t_logits[valid_m], t_labels[valid_m])
+                    for k, v in task_m.items():
+                        metrics[f"{k}_{task}"] = v
+                    if task == primary_task:
+                        metrics.update(task_m)
+                else:
+                    metrics[f"auc_pr_{task}"] = 0.0
+                    metrics[f"f1_{task}"] = 0.0
+                    if task == primary_task:
+                        metrics["auc_pr"] = 0.0
+                        metrics["f1"] = 0.0
+
         return total_loss / len(self.train_loader), metrics
 
     def validate(self, epoch):
         self.model.eval()
         total_loss = 0
-        all_logits = []
-        all_labels = []
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        all_logits = {task: [] for task in tasks}
+        all_labels = {task: [] for task in tasks}
         all_speaker_ids = []
         frame_proxy_values = []
 
         if not self.val_loader or len(self.val_loader) == 0:
             raise RuntimeError("val_loader is empty or None in Trainer.validate(). Cannot evaluate without validation data.")
 
-        # Issue 8: Collect samples during validation to avoid duplicate traversal
         samples_to_log = {"TP": [], "FP": [], "FN": [], "TN": []}
         count_per_type = self.config['tensorboard'].get('audio_sample_count', 8) // 4
         if count_per_type < 1: count_per_type = 1
-        
-        interval_predictions = {}
+
+        interval_predictions = {task: {} for task in tasks}
         val_iter = self.val_loader if self.quiet else tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]")
         with torch.no_grad():
             for batch in val_iter:
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                    loss, logits, labels, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
+                    loss, logits_dict, labels_dict, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
 
                 total_loss += loss.item()
                 if self._current_frame_proxy is not None:
                     frame_proxy_values.append(self._current_frame_proxy)
+
                 if self.paradigm == 'block':
-                    for logit, label, speaker, interval_id in zip(logits, labels, speaker_ids, item_ids):
-                        value = logit.detach().cpu()
-                        if interval_id not in interval_predictions:
-                            interval_predictions[interval_id] = [value, label.detach().cpu(), speaker, 1]
-                        else:
-                            interval_predictions[interval_id][0] += value
-                            interval_predictions[interval_id][3] += 1
+                    for task in tasks:
+                        t_logits = logits_dict[task]
+                        t_labels = labels_dict[task]
+                        for logit, label, speaker, interval_id in zip(t_logits, t_labels, speaker_ids, item_ids):
+                            val_cpu = logit.detach().cpu()
+                            lab_cpu = label.detach().cpu()
+                            if interval_id not in interval_predictions[task]:
+                                interval_predictions[task][interval_id] = [val_cpu, lab_cpu, speaker, 1]
+                            else:
+                                interval_predictions[task][interval_id][0] += val_cpu
+                                interval_predictions[task][interval_id][3] += 1
                     continue
 
-                all_logits.append(logits.detach().cpu())
-                all_labels.append(labels.detach().cpu())
+                for task in tasks:
+                    all_logits[task].append(logits_dict[task].detach().cpu())
+                    all_labels[task].append(labels_dict[task].detach().cpu())
                 all_speaker_ids.extend(speaker_ids)
-                segment_waveforms, segment_lengths = waveforms
-                probs = torch.sigmoid(logits)
-                preds = (probs >= 0.5).float()
-                for i in range(segment_waveforms.size(0)):
-                    gt = int(labels[i].item())
-                    pr = int(preds[i].item())
-                    cat = "TP" if gt==1 and pr==1 else "TN" if gt==0 and pr==0 else "FP" if gt==0 and pr==1 else "FN"
-                    if len(samples_to_log[cat]) < count_per_type:
-                        samples_to_log[cat].append({
-                            'waveform': segment_waveforms[i, :segment_lengths[i]].detach().cpu(),
-                            'prob': probs[i].item(),
-                            'meta': item_ids[i]
-                        })
 
         if self.paradigm == 'block':
-            if not interval_predictions:
-                raise RuntimeError("Block validation produced no valid intervals")
-            all_logits = [(item[0] / item[3]).reshape(1) for item in interval_predictions.values()]
-            all_labels = [item[1].reshape(1) for item in interval_predictions.values()]
-            all_speaker_ids = [item[2] for item in interval_predictions.values()]
-                
-        logits_cat = torch.cat(all_logits)
-        labels_cat = torch.cat(all_labels)
-        metrics = compute_metrics(logits_cat, labels_cat)
-        
-        # Per-speaker metrics
-        speaker_metrics = {}
-        unique_speakers = sorted(list(set(all_speaker_ids)))
-        for spk in unique_speakers:
-            indices = [i for i, s in enumerate(all_speaker_ids) if s == spk]
-            if indices:
-                spk_logits = logits_cat[indices]
-                spk_labels = labels_cat[indices]
-                speaker_metrics[spk] = compute_metrics(spk_logits, spk_labels)
-        
-        metrics['speaker_metrics'] = speaker_metrics
-        metrics['logits'] = logits_cat
-        metrics['labels'] = labels_cat
+            for task in tasks:
+                t_dict = interval_predictions[task]
+                if t_dict:
+                    all_logits[task] = [(item[0] / item[3]).reshape(1) for item in t_dict.values()]
+                    all_labels[task] = [item[1].reshape(1) for item in t_dict.values()]
+            first_task = next(iter(tasks))
+            if interval_predictions[first_task]:
+                all_speaker_ids = [item[2] for item in interval_predictions[first_task].values()]
+
+        primary_task = "creaky" if "creaky" in tasks else tasks[0]
+        metrics = {}
+        for task in tasks:
+            if all_logits[task]:
+                t_logits_cat = torch.cat(all_logits[task])
+                t_labels_cat = torch.cat(all_labels[task])
+                valid_m = ~torch.isnan(t_labels_cat)
+                if valid_m.sum() > 0:
+                    task_m = compute_metrics(t_logits_cat[valid_m], t_labels_cat[valid_m])
+                    for k, v in task_m.items():
+                        metrics[f"{k}_{task}"] = v
+                    if task == primary_task:
+                        metrics.update(task_m)
+                        metrics['logits'] = t_logits_cat[valid_m]
+                        metrics['labels'] = t_labels_cat[valid_m]
+
+                        # Per-speaker metrics for primary task
+                        speaker_metrics = {}
+                        if len(all_speaker_ids) == len(t_logits_cat):
+                            valid_spks = [all_speaker_ids[idx] for idx in range(len(valid_m)) if valid_m[idx]]
+                            unique_speakers = sorted(list(set(valid_spks)))
+                            for spk in unique_speakers:
+                                spk_indices = [i for i, s in enumerate(valid_spks) if s == spk]
+                                if spk_indices:
+                                    s_logits = t_logits_cat[valid_m][spk_indices]
+                                    s_labels = t_labels_cat[valid_m][spk_indices]
+                                    speaker_metrics[spk] = compute_metrics(s_logits, s_labels)
+                        metrics['speaker_metrics'] = speaker_metrics
+                else:
+                    metrics[f"auc_pr_{task}"] = 0.0
+                    metrics[f"f1_{task}"] = 0.0
+                    if task == primary_task:
+                        metrics["auc_pr"] = 0.0
+                        metrics["f1"] = 0.0
+                        metrics['logits'] = torch.zeros(1)
+                        metrics['labels'] = torch.zeros(1)
+                        metrics['speaker_metrics'] = {}
+
         metrics['samples'] = samples_to_log
         if frame_proxy_values:
             metrics['frame_proxy_auroc'] = float(np.mean(frame_proxy_values))
@@ -442,11 +550,18 @@ class Trainer:
         return total_loss / len(self.val_loader), metrics
 
     def run(self, start_epoch=1):
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        primary_task = "creaky" if "creaky" in tasks else tasks[0]
         for epoch in range(start_epoch, self.epochs + 1):
             train_loss, train_metrics = self.train_epoch(epoch)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
-            self.writer.add_scalar('PR_AUC/train', train_metrics['auc_pr'], epoch)
-            self.writer.add_scalar('F1/train', train_metrics['f1'], epoch)  # secondary
+            self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
+            self.writer.add_scalar('F1/train', train_metrics.get('f1', 0.0), epoch)  # secondary
+            for task in tasks:
+                if f'auc_pr_{task}' in train_metrics:
+                    self.writer.add_scalar(f'PR_AUC_{task}/train', train_metrics[f'auc_pr_{task}'], epoch)
+                if f'f1_{task}' in train_metrics:
+                    self.writer.add_scalar(f'F1_{task}/train', train_metrics[f'f1_{task}'], epoch)
             
             # Learning Rates
             self.writer.add_scalar('LR/backbone', self.optimizer.param_groups[0]['lr'], epoch)
@@ -454,40 +569,54 @@ class Trainer:
 
             val_loss, val_metrics = self.validate(epoch)
             
+            extra_info = []
+            for task in tasks:
+                if task != primary_task and f'auc_pr_{task}' in val_metrics:
+                    extra_info.append(f"{task.capitalize()} Val PR-AUC: {val_metrics[f'auc_pr_{task}']:.4f}")
+            extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
+
             print(
                 f"[Epoch {epoch:02d}/{self.epochs:02d}] "
-                f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics['auc_pr']:.4f}, F1: {train_metrics['f1']:.4f} | "
-                f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics['auc_pr']:.4f}, F1: {val_metrics['f1']:.4f}"
+                f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics.get('auc_pr', 0.0):.4f}, F1: {train_metrics.get('f1', 0.0):.4f} | "
+                f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics.get('auc_pr', 0.0):.4f}, F1: {val_metrics.get('f1', 0.0):.4f}"
+                f"{extra_str}"
             )
             
             # Logging — PR-AUC is primary, F1 is secondary
             self.writer.add_scalar('Loss/val', val_loss, epoch)
-            self.writer.add_scalar('PR_AUC/val', val_metrics['auc_pr'], epoch)  # primary
-            self.writer.add_scalar('F1/val', val_metrics['f1'], epoch)           # secondary
-            self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
-            self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
+            self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)  # primary
+            self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)           # secondary
+            for task in tasks:
+                if f'auc_pr_{task}' in val_metrics:
+                    self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
+                if f'f1_{task}' in val_metrics:
+                    self.writer.add_scalar(f'F1_{task}/val', val_metrics[f'f1_{task}'], epoch)
+            if 'precision' in val_metrics:
+                self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
+            if 'recall' in val_metrics:
+                self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
             if 'frame_proxy_auroc' in val_metrics:
                 self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
 
             # PR Curve
-            if self.config['tensorboard'].get('log_pr_curve', True):
+            if self.config['tensorboard'].get('log_pr_curve', True) and 'labels' in val_metrics and 'logits' in val_metrics and len(val_metrics['labels']) > 1:
                 self.writer.add_pr_curve('PR_Curve/val', val_metrics['labels'], torch.sigmoid(val_metrics['logits']), epoch)
             
             # Per-speaker metrics
-            for spk, spk_m in val_metrics['speaker_metrics'].items():
+            for spk, spk_m in val_metrics.get('speaker_metrics', {}).items():
                 self.writer.add_scalar(f'Speaker_PR_AUC/{spk}', spk_m['auc_pr'], epoch)
                 self.writer.add_scalar(f'Speaker_F1/{spk}', spk_m['f1'], epoch)
             
             # Confusion Matrix
-            self.log_confusion_matrix(val_metrics['cm'], epoch)
+            if 'cm' in val_metrics:
+                self.log_confusion_matrix(val_metrics['cm'], epoch)
             
             # Audio Samples (Error Analysis)
             if self.config['tensorboard'].get('log_audio_samples', True):
                 self.log_audio_samples(epoch, val_metrics.get('samples', {}))
             
             # Early Stopping and Checkpointing — based on configured primary metric
-            current_val = val_metrics[self.primary_metric]
-            import math
+            current_val = val_metrics.get(self.primary_metric, float('nan'))
             if math.isnan(current_val):
                 logger.warning(
                     f"Epoch {epoch}: {self.primary_metric} is NaN (likely single-class validation fold). "
