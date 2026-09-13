@@ -38,6 +38,7 @@ class Trainer:
         self._current_frame_proxy = None
 
         self.epochs = config['training']['epochs']
+        self.quiet = config['training'].get('quiet', False)
         grad_acc = config['training'].get('gradient_accumulation_steps', 1)
         import math
         steps_per_epoch = math.ceil(len(self.train_loader) / grad_acc)
@@ -298,7 +299,7 @@ class Trainer:
         all_logits = []
         all_labels = []
         
-        pbar = tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]")
+        pbar = self.train_loader if self.quiet else tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]")
         for i, batch in enumerate(pbar):
             device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
@@ -332,7 +333,8 @@ class Trainer:
             all_logits.append(logits.detach().cpu())
             all_labels.append(labels.detach().cpu())
             
-            pbar.set_postfix({'loss': loss.item()})
+            if not self.quiet:
+                pbar.set_postfix({'loss': loss.item()})
             
         # Flush remaining gradients at the end of epoch to prevent leakage
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
@@ -372,8 +374,9 @@ class Trainer:
         if count_per_type < 1: count_per_type = 1
         
         interval_predictions = {}
+        val_iter = self.val_loader if self.quiet else tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]")
         with torch.no_grad():
-            for batch in tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]"):
+            for batch in val_iter:
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                     loss, logits, labels, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
@@ -450,6 +453,12 @@ class Trainer:
             self.writer.add_scalar('LR/head', self.optimizer.param_groups[1]['lr'], epoch)
 
             val_loss, val_metrics = self.validate(epoch)
+            
+            print(
+                f"[Epoch {epoch:02d}/{self.epochs:02d}] "
+                f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics['auc_pr']:.4f}, F1: {train_metrics['f1']:.4f} | "
+                f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics['auc_pr']:.4f}, F1: {val_metrics['f1']:.4f}"
+            )
             
             # Logging — PR-AUC is primary, F1 is secondary
             self.writer.add_scalar('Loss/val', val_loss, epoch)

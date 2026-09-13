@@ -543,8 +543,22 @@ def train_model_variant(
         f"evaluating on {len(heldout_loader.dataset)} held-out samples..."
     )
     trainer = Trainer(model, train_loader, heldout_loader, variant_cfg, device)
+
+    # Automatically resume from latest fold checkpoint if present
+    val_speakers = variant_cfg['data']['val_speakers']
+    val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
+    latest_path = variant_ckpt_dir / f"latest_{val_str}.pt"
+    start_epoch = 1
+    if latest_path.exists():
+        try:
+            last_epoch = trainer.load_checkpoint(latest_path)
+            start_epoch = last_epoch + 1
+            logger.info(f"[{variant_name.upper()}] Resumed from checkpoint {latest_path} at epoch {start_epoch}")
+        except Exception as e:
+            logger.warning(f"[{variant_name.upper()}] Failed to resume from {latest_path}: {e}")
+
     try:
-        trainer.run(start_epoch=1)
+        trainer.run(start_epoch=start_epoch)
     finally:
         trainer.writer.close()
 

@@ -58,6 +58,7 @@ training:
   focal_gamma: 2.0
   focal_alpha: 0.75
   mixed_precision: bf16    # Native hardware acceleration on RTX 4060 Ti
+  quiet: true              # Silence per-batch tqdm spam in non-interactive environment
   seed: 42
   paradigm: segment
   pooling_mode: mean

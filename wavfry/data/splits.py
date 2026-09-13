@@ -1,6 +1,74 @@
+from __future__ import annotations
+
+from typing import Any
 import pandas as pd
 
-def make_speaker_split(df, val_speakers):
+
+def isolate_split_speakers(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame | None = None,
+    *,
+    enabled: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Ensure zero speaker overlap between train and evaluation splits (val/test).
+
+    Policy: Contested speakers are removed from val and test, preserving full
+    training size while guaranteeing pure zero-shot evaluation on unseen speakers.
+    """
+    if test_df is None:
+        test_df = train_df.iloc[0:0].copy()
+
+    if "speaker_id" not in train_df.columns or "speaker_id" not in val_df.columns:
+        return train_df, val_df, test_df
+
+    train_spks = set(train_df["speaker_id"].dropna().unique())
+    val_spks = set(val_df["speaker_id"].dropna().unique())
+    test_spks = set(test_df["speaker_id"].dropna().unique()) if not test_df.empty else set()
+
+    overlap_val = train_spks & val_spks
+    overlap_test = train_spks & test_spks
+    total_overlap = overlap_val | overlap_test
+
+    if not enabled:
+        if total_overlap:
+            print(
+                f"[Split] [DATA LEAKAGE WARNING] Overlapping speakers detected between train "
+                f"and val/test splits ({len(total_overlap)} speakers: {sorted(total_overlap)})! "
+                f"Isolation is explicitly disabled."
+            )
+        return train_df, val_df, test_df
+
+    if not total_overlap:
+        print("[Split] Speaker isolation verified: Zero speaker overlap between train and val/test.")
+        return train_df, val_df, test_df
+
+    print(
+        f"[Split] Speaker Isolation: Detected {len(total_overlap)} overlapping "
+        f"speakers between train and val/test splits (purging from val/test to protect zero-shot eval):\n"
+        f"        Overlapping Speakers: {sorted(total_overlap)}"
+    )
+
+    val_clean = val_df[~val_df["speaker_id"].isin(overlap_val)].copy()
+    test_clean = test_df[~test_df["speaker_id"].isin(overlap_test)].copy() if not test_df.empty else test_df
+    print(
+        f"[Split] Dropped {len(val_df) - len(val_clean)} segments from Val (retained {len(val_clean)} segs, "
+        f"{val_clean['speaker_id'].nunique()} unseen speakers)."
+    )
+    if not test_df.empty:
+        print(
+            f"[Split] Dropped {len(test_df) - len(test_clean)} segments from Test (retained {len(test_clean)} segs, "
+            f"{test_clean['speaker_id'].nunique()} unseen speakers)."
+        )
+    return train_df.copy(), val_clean, test_clean
+
+
+def make_speaker_split(
+    df: pd.DataFrame,
+    val_speakers: Any,
+    *,
+    isolate: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Split the manifest DataFrame into train and validation sets based on speaker IDs.
     
@@ -29,6 +97,7 @@ def make_speaker_split(df, val_speakers):
                   f"(full speakers + batch1), Val {len(val_df)} segments (batch2 only).")
         val_df['split']   = 'val'
         train_df['split'] = 'train'
+        train_df, val_df, _ = isolate_split_speakers(train_df, val_df, None, enabled=isolate)
         return train_df, val_df
 
     # ── Special case: 'sampled' keyword ──────────────────────────────────────
@@ -53,6 +122,7 @@ def make_speaker_split(df, val_speakers):
             train_df = df[~df['speaker_id'].isin(val_speakers)].copy()
         val_df['split']   = 'val'
         train_df['split'] = 'train'
+        train_df, val_df, _ = isolate_split_speakers(train_df, val_df, None, enabled=isolate)
         return train_df, val_df
 
     # ── Default: split by explicit speaker ID list ────────────────────────────
@@ -61,11 +131,16 @@ def make_speaker_split(df, val_speakers):
         
     val_df['split']   = 'val'
     train_df['split'] = 'train'
+    train_df, val_df, _ = isolate_split_speakers(train_df, val_df, None, enabled=isolate)
     
     return train_df, val_df
 
 
-def make_batch_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def make_batch_split(
+    df: pd.DataFrame,
+    *,
+    isolate: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Split manifest DataFrame into train, validation, and test sets based on 'batch_split'.
 
     Extracts:
@@ -87,7 +162,11 @@ def make_batch_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.D
     test_df["split"] = "test"
 
     print(
-        f"[Split] Batch Split: Train {len(train_df)} segments, "
+        f"[Split] Batch Split (Raw): Train {len(train_df)} segments, "
         f"Val {len(val_df)} segments, Test {len(test_df)} segments."
+    )
+
+    train_df, val_df, test_df = isolate_split_speakers(
+        train_df, val_df, test_df, enabled=isolate
     )
     return train_df, val_df, test_df

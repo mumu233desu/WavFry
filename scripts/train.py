@@ -37,10 +37,11 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     
     # Split
     val_speakers = config['data'].get('val_speakers', [])
+    isolate_speakers = bool(config['data'].get('isolate_split_speakers', True))
     if val_speakers in ('batch', 'batch_split', ['batch'], ['batch_split']) or (isinstance(val_speakers, list) and 'batch2' in val_speakers):
-        train_df, val_df, test_df = splits_mod.make_batch_split(df)
+        train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate_speakers)
     else:
-        train_df, val_df = splits_mod.make_speaker_split(df, val_speakers)
+        train_df, val_df = splits_mod.make_speaker_split(df, val_speakers, isolate=isolate_speakers)
         test_df = df.iloc[0:0].copy()
 
     print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Split mode: {val_speakers})")

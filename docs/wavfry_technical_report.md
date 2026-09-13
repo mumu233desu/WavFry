@@ -36,7 +36,7 @@ WavFry's architecture consists of a frozen self-supervised backbone, a trainable
                             │
                             ▼
               12-Layer WavLM Encoder Backbone
-       (Layers 0–3, 9–12 Frozen; Layers 4–8 Fine-Tuned)
+       (Layers 0–3, 9–11 Frozen; Layers 4–8 Fine-Tuned)
                             │
                             ▼
        Scalar Mix (Learnable Weighted Sum over all 13 states)
@@ -60,9 +60,9 @@ WavFry's architecture consists of a frozen self-supervised backbone, a trainable
 ```
 
 ### 3.1 Selective Layer-Wise Fine-Tuning
-WavLM-base-plus consists of a 7-layer CNN feature extractor followed by 12 transformer encoder blocks (hidden dimension $D = 768$). Fine-tuning the entire network on localized phonetic quality detection tasks degrades phonetic representations and causes catastrophic forgetting. 
+WavLM-base-plus consists of a 7-layer CNN feature extractor followed by 12 transformer encoder blocks (hidden dimension $D = 768$, indexed from 0 to 11). Fine-tuning the entire network on localized phonetic quality detection tasks degrades phonetic representations and causes catastrophic forgetting. 
 
-Drawing from linguistic probing results which demonstrate that intermediate layers (Layers 4–8) capture phonetic boundaries and phonational features best, WavFry freezes the CNN feature extractor and transformer Layers 0–3 and 9–12. Only transformer Layers 4–8 are fine-tuned.
+Drawing from linguistic probing results which demonstrate that intermediate layers (Layers 4–8) capture phonetic boundaries and phonational features best, WavFry freezes the CNN feature extractor and transformer Layers 0–3 and 9–11 (0-indexed). Only transformer Layers 4–8 are fine-tuned.
 
 ### 3.2 Learnable Scalar Mix
 Rather than relying solely on the final transformer output, a learnable **Scalar Mix** dynamically aggregates the hidden states of all 12 encoder layers plus the input embedding (Layer 0, representing 13 states in total). Let $h_l \in \mathbb{R}^{B \times T \times D}$ be the hidden states of layer $l$, and let $s \in \mathbb{R}^{13}$ be trainable parameters. The aggregated sequence representation $X \in \mathbb{R}^{B \times T \times D}$ is defined as:

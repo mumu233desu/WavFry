@@ -78,6 +78,8 @@ class WavFryClassifier(nn.Module):
     def freeze_layers(self, config: dict[str, Any]) -> None:
         for param in self.wavlm.parameters():
             param.requires_grad = False
+        # fine_tune_layers specifies 0-indexed Transformer encoder layers (0..11).
+        # e.g., "4-8" unfreezes layers 4, 5, 6, 7, 8 (5 layers), keeping 0-3 (4 layers) and 9-11 (3 layers) frozen.
         fine_tune_layers = config["model"].get("fine_tune_layers", "4-8")
         if fine_tune_layers == "all":
             trainable_indices = list(range(self.num_layers))

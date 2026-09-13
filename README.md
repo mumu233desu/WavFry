@@ -42,7 +42,7 @@ uv run tensorboard --logdir runs/
 ```
 
 ## Key Features
-- **WavLM Fine-tuning**: Selective layer fine-tuning (Layer 4-8) with Scalar Mix.
+- **WavLM Fine-tuning**: Selective layer fine-tuning (Layers 4–8, 0-indexed) with Scalar Mix.
 - **Efficiency**: Delta checkpoints (~40MB), Mixed Precision (FP16), Resampler caching.
 - **Robustness**: Focal Loss for class imbalance, speaker-based data splitting.
 - **Observability**: TensorBoard integration with loss, metrics, and error analysis.

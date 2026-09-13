@@ -25,7 +25,7 @@ WavFry is a sub-project designed to detect creaky voice (vocal fry) phenomena wi
 **Description:** As a machine learning engineer, I want to selectively fine-tune specific layers of WavLM and use a scalar mix, so that I can capture phonetic-level features without catastrophic forgetting.
 
 **Acceptance Criteria:**
-- [x] Configuration supports specifying layers to fine-tune (e.g., "4-8").
+- [x] Configuration supports specifying layers to fine-tune (e.g., "4-8" for 0-indexed Transformer layers 4 to 8).
 - [x] CNN feature extractor is frozen.
 - [x] Learnable scalar mix is applied across all layers.
 - [x] Supports switching between WavLM base, base-plus, and large via configuration.

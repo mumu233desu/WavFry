@@ -17,6 +17,8 @@ data:
   min_duration_ms: 30
   # Set to a list of speaker IDs for fixed validation, or 'loocv' for Leave-One-Speaker-Out
   val_speakers: [sampled]
+  # 说话人数据隔离（杜绝 Train 与 Val/Test 说话人重叠泄露）
+  isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
   audio_formats: [wav, flac]
   # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
   # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
@@ -51,6 +53,7 @@ model:
 
 # ── 训练 ──────────────────────────────────────────────
 training:
+  quiet: false                       # 是否静音模式（隐藏 tqdm 进度条，仅输出 epoch 汇总）
   optimizer: adamw_8bit              # adamw_fp32 | adamw_8bit
   epochs: 30
   batch_size: 32
@@ -97,7 +100,7 @@ training:
     topk_ratio: 0.2
 
   # ── 池化策略 ────────────────────────────────────────
-  pooling_mode: mean_attn    # mean | mean_topk (L2-proxy) | mean_attn (learnable)
+  pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk
   topk_ratio: 0.2           # Top-K 取帧比例
   topk_min_frames: 3        # Top-K 最少取几帧
 
