@@ -89,7 +89,7 @@ training:
   block:
     duration_ms: 2000
     hop_ms: 1000
-    batch_size: 64
+    batch_size: 16
     max_intervals: 8
     boundary_trim_frames: 0
   frame_head:
