@@ -108,8 +108,16 @@ class WavFryClassifier(nn.Module):
                 self.frame_mil_fusion = nn.Linear(2, 1)
 
         self.freeze_layers(config)
+        if self.is_backbone_frozen:
+            self.wavlm.eval()
         if training_cfg.get("gradient_checkpointing", False):
             self.wavlm.gradient_checkpointing_enable()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if getattr(self, "is_backbone_frozen", False):
+            self.wavlm.eval()
+        return self
 
     @property
     def head(self) -> nn.Module:
@@ -144,6 +152,7 @@ class WavFryClassifier(nn.Module):
             if i in trainable_indices:
                 for param in layer.parameters():
                     param.requires_grad = True
+        self.is_backbone_frozen = len(trainable_indices) == 0
 
     def _encode_sequence(self, x: torch.Tensor, lengths: torch.Tensor | None = None):
         """Encode waveform batch through WavLM with sample-level padding attention mask."""
@@ -154,17 +163,31 @@ class WavFryClassifier(nn.Module):
         else:
             attention_mask = None
 
-        outputs = self.wavlm(x, attention_mask=attention_mask, output_hidden_states=True)
+        if getattr(self, "is_backbone_frozen", False):
+            with torch.no_grad():
+                outputs = self.wavlm(x, attention_mask=attention_mask, output_hidden_states=True)
+        else:
+            outputs = self.wavlm(x, attention_mask=attention_mask, output_hidden_states=True)
 
         hidden_by_task: dict[str, torch.Tensor] = {}
         if self.use_scalar_mix:
-            hidden_stack = torch.stack(outputs.hidden_states, dim=0)  # [13, B, T, D]
+            hidden_states = (
+                [h.detach() for h in outputs.hidden_states]
+                if getattr(self, "is_backbone_frozen", False)
+                else outputs.hidden_states
+            )
             for task in self.tasks:
                 weights = torch.softmax(self.scalar_mix_weights[task], dim=0)
-                hidden_by_task[task] = (hidden_stack * weights.view(-1, 1, 1, 1)).sum(dim=0)
+                # Layer-by-layer weighted sum avoids allocating a massive [13, B, T, D] tensor
+                hidden_by_task[task] = sum(w * h for w, h in zip(weights, hidden_states))
         else:
+            last_hidden = (
+                outputs.last_hidden_state.detach()
+                if getattr(self, "is_backbone_frozen", False)
+                else outputs.last_hidden_state
+            )
             for task in self.tasks:
-                hidden_by_task[task] = outputs.last_hidden_state
+                hidden_by_task[task] = last_hidden
 
         first_seq = next(iter(hidden_by_task.values()))
         sample_lengths = lengths if lengths is not None else torch.full((batch_size,), max_len, device=x.device)
@@ -233,6 +256,26 @@ class WavFryClassifier(nn.Module):
         weights = torch.softmax(logits, dim=-1)
         return (weights.unsqueeze(-1) * hidden).sum(dim=1)  # [B, D]
 
+    def _pool_batch(
+        self,
+        hidden: torch.Tensor,
+        valid_mask: torch.Tensor | None = None,
+        lengths: torch.Tensor | None = None,
+        task: str = "creaky",
+    ) -> torch.Tensor:
+        """Backward-compatibility pooling method for segment representation."""
+        mask_f = valid_mask.unsqueeze(-1).to(hidden.dtype) if valid_mask is not None else None
+        if self.pooling_mode == "mean":
+            counts = mask_f.sum(dim=1).clamp_min(1.0) if mask_f is not None else hidden.size(1)
+            return (hidden * mask_f).sum(dim=1) / counts if mask_f is not None else hidden.mean(dim=1)
+        elif self.pooling_mode in ("mean_attn", "mean_topk"):
+            counts = mask_f.sum(dim=1).clamp_min(1.0) if mask_f is not None else hidden.size(1)
+            mean_p = (hidden * mask_f).sum(dim=1) / counts if mask_f is not None else hidden.mean(dim=1)
+            attn_p = self._attn_pool(hidden, valid_mask, task)
+            return torch.cat([mean_p, attn_p], dim=-1)
+        else:
+            return self._attn_pool(hidden, valid_mask, task)
+
     def _interval_frame_masks(
         self,
         interval_bounds: torch.Tensor,
@@ -289,14 +332,41 @@ class WavFryClassifier(nn.Module):
         interval_masks = interval_masks & seq_mask.unsqueeze(1)
         slot_valid = slot_valid & interval_masks.any(dim=-1)
         batch, slots, _ = interval_masks.shape
+        has_valid = interval_masks.any(dim=-1, keepdim=True)
+
+        # Precompute positional bias once for all tasks if enabled
+        pos_bias = None
+        if self.use_pos_encoding and self.pooling_mode in ("attn", "mean_attn"):
+            rel = self._relative_positions(interval_masks)
+            pos_emb = self._sinusoidal_pos_encoding(rel, self.pos_dim)
+            pos_bias = self.pos_scorer(pos_emb).squeeze(-1)
 
         interval_logits_by_task: dict[str, torch.Tensor] = {}
         for task in self.tasks:
             sequence = hidden_by_task[task]
             if self.pooling_mode == "mean":
-                mask_expanded = interval_masks.unsqueeze(-1).to(sequence.dtype)
-                counts = mask_expanded.sum(dim=2).clamp_min(1.0)
-                pooled_tensor = (sequence.unsqueeze(1) * mask_expanded).sum(dim=2) / counts
+                counts = interval_masks.sum(dim=-1, keepdim=True).clamp_min(1.0).to(sequence.dtype)
+                norm_mask = interval_masks.to(sequence.dtype) / counts
+                pooled_tensor = torch.bmm(norm_mask, sequence)
+                pooled_tensor = pooled_tensor.masked_fill(~has_valid, 0.0)
+            elif self.pooling_mode in ("attn", "mean_attn"):
+                scores = self.attention_heads[task](sequence).squeeze(-1).unsqueeze(1).expand(-1, slots, -1)
+                if pos_bias is not None:
+                    scores = scores + pos_bias
+                scores = scores.masked_fill(~interval_masks, -1e4)
+                # Under AMP autocast, softmax returns float32; cast to sequence.dtype to ensure safe bmm
+                weights = torch.softmax(scores, dim=-1).to(sequence.dtype)
+                pooled_attn = torch.bmm(weights, sequence)
+                pooled_attn = pooled_attn.masked_fill(~has_valid, 0.0)
+
+                if self.pooling_mode == "mean_attn":
+                    counts = interval_masks.sum(dim=-1, keepdim=True).clamp_min(1.0).to(sequence.dtype)
+                    norm_mask = interval_masks.to(sequence.dtype) / counts
+                    pooled_mean = torch.bmm(norm_mask, sequence)
+                    pooled_mean = pooled_mean.masked_fill(~has_valid, 0.0)
+                    pooled_tensor = torch.cat([pooled_mean, pooled_attn], dim=-1)
+                else:
+                    pooled_tensor = pooled_attn
             else:
                 pooled = []
                 for b in range(batch):

@@ -225,19 +225,23 @@ def extract_dataset_features(model: nn.Module, loader: DataLoader, device: torch
     all_feats = []
     all_logits = []
     all_labels = []
+    task = "creaky"
 
-    for batch in loader:
-        waveforms, targets, lengths, _, _ = batch
-        waveforms = waveforms.to(device)
-        lengths = lengths.to(device)
+    with torch.no_grad():
+        for batch in loader:
+            waveforms, targets, lengths, _, _ = batch
+            waveforms = waveforms.to(device)
+            lengths = lengths.to(device)
 
-        sequence, out_lengths, valid_mask = model._encode_sequence(waveforms, lengths)
-        feats = model._pool_batch(sequence, valid_mask, out_lengths)
-        logits = model.head(feats).view(-1)
+            hidden_by_task, out_lengths, valid_mask = model._encode_sequence(waveforms, lengths)
+            seq = hidden_by_task[task] if task in hidden_by_task else next(iter(hidden_by_task.values()))
+            feats = model._pool_batch(seq, valid_mask, out_lengths, task=task)
+            head = model.heads[task] if hasattr(model, "heads") and task in model.heads else model.head
+            logits = head(feats).view(-1)
 
-        all_feats.append(feats.cpu())
-        all_logits.append(logits.cpu())
-        all_labels.append(targets.cpu())
+            all_feats.append(feats.cpu())
+            all_logits.append(logits.cpu())
+            all_labels.append(targets.cpu())
 
     all_feats = torch.cat(all_feats, dim=0).numpy()
     all_logits = torch.cat(all_logits, dim=0).numpy()
@@ -444,10 +448,12 @@ def run_test_time_adaptation(
     if tta_cfg.get('freeze_backbone', True):
         for param in adapted_model.wavlm.parameters():
             param.requires_grad = False
+        adapted_model.is_backbone_frozen = True
+        adapted_model.wavlm.eval()
 
     # Freeze scalar mix if configured
     if tta_cfg.get('freeze_scalar_mix', True) and hasattr(adapted_model, 'scalar_mix_weights') and adapted_model.scalar_mix_weights is not None:
-        adapted_model.scalar_mix_weights.requires_grad = False
+        adapted_model.scalar_mix_weights.requires_grad_(False)
 
     # Collect trainable parameters (classification head)
     trainable_params = [p for p in adapted_model.parameters() if p.requires_grad]

@@ -562,7 +562,7 @@ class Trainer:
         if not self.history:
             return
         import json
-        import pandas as pd
+        import csv
         
         target_dirs = {self.log_dir, self.ckpt_dir}
         for d in target_dirs:
@@ -572,13 +572,18 @@ class Trainer:
                 tmp_json = json_path.with_suffix(".json.tmp")
                 with open(tmp_json, "w", encoding="utf-8") as f:
                     json.dump(self.history, f, indent=2)
-                os.replace(tmp_json, json_path)
+                if tmp_json.exists():
+                    os.replace(tmp_json, json_path)
 
                 csv_path = d / "epoch_history.csv"
                 tmp_csv = csv_path.with_suffix(".csv.tmp")
-                df_hist = pd.DataFrame(self.history)
-                df_hist.to_csv(tmp_csv, index=False)
-                os.replace(tmp_csv, csv_path)
+                fieldnames = list(self.history[0].keys())
+                with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(self.history)
+                if tmp_csv.exists():
+                    os.replace(tmp_csv, csv_path)
             except Exception as e:
                 logger.warning(f"Failed to save epoch history to {d}: {e}")
 
