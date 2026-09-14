@@ -4,7 +4,7 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from transformers import WavLMModel
+from transformers import AutoModel, WavLMModel
 
 
 class WavFryClassifier(nn.Module):
@@ -21,10 +21,10 @@ class WavFryClassifier(nn.Module):
         super().__init__()
         self.config = config
         self.backbone_name = config["model"]["backbone"]
-        self.wavlm = wavlm_instance or WavLMModel.from_pretrained(self.backbone_name)
-        self.wavlm.config.apply_spec_augment = False
-        self.wavlm.config.mask_time_prob = 0.0
-        self.wavlm.config.mask_feature_prob = 0.0
+        self.wavlm = wavlm_instance or AutoModel.from_pretrained(self.backbone_name)
+        for attr in ["apply_spec_augment", "mask_time_prob", "mask_feature_prob"]:
+            if hasattr(self.wavlm.config, attr):
+                setattr(self.wavlm.config, attr, 0.0 if "prob" in attr else False)
 
         self.hidden_dim = self.wavlm.config.hidden_size
         self.num_layers = self.wavlm.config.num_hidden_layers

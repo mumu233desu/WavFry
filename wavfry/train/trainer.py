@@ -109,26 +109,29 @@ class Trainer:
         weight_decay = self.config['training'].get('weight_decay', 0.01)
         no_decay = ["bias", "LayerNorm.weight"]
         
+        is_backbone = lambda n: n.startswith("wavlm.") or n.startswith("backbone.")
         optimizer_grouped_parameters = [
-            # 1. Backbone (WavLM) - No weight decay to protect pre-trained features
+            # 1. Backbone (WavLM / generic backbone) - No weight decay to protect pre-trained features
             {
-                "params": [p for n, p in self.model.named_parameters() if "wavlm" in n and p.requires_grad],
+                "params": [p for n, p in self.model.named_parameters() if is_backbone(n) and p.requires_grad],
                 "weight_decay": 0.0,
                 "lr": self.config['training']['backbone_lr']
             },
             # 2. Head (Weights) - Normal weight decay
             {
-                "params": [p for n, p in self.model.named_parameters() if "wavlm" not in n and p.requires_grad and not any(nd in n for nd in no_decay)],
+                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and p.requires_grad and not any(nd in n for nd in no_decay)],
                 "weight_decay": weight_decay,
                 "lr": self.config['training']['head_lr']
             },
             # 3. Head (Bias/LayerNorm) - No weight decay
             {
-                "params": [p for n, p in self.model.named_parameters() if "wavlm" not in n and p.requires_grad and any(nd in n for nd in no_decay)],
+                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and p.requires_grad and any(nd in n for nd in no_decay)],
                 "weight_decay": 0.0,
                 "lr": self.config['training']['head_lr']
             },
         ]
+        # Filter out empty parameter groups (e.g. when backbone is 100% frozen)
+        optimizer_grouped_parameters = [g for g in optimizer_grouped_parameters if len(g["params"]) > 0]
         
         optimizer_type = self.config['training'].get('optimizer', 'adamw_fp32')
         if optimizer_type == 'adamw_8bit':

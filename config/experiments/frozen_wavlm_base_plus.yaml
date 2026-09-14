@@ -1,0 +1,35 @@
+# ==============================================================================
+# CSL Benchmark Pilot: Frozen WavLM-Base+ with Block Paradigm
+# ==============================================================================
+
+model:
+  backbone: microsoft/wavlm-base-plus
+  fine_tune_layers: "none"        # 100% frozen backbone (evaluates intrinsic SSL representation)
+  use_scalar_mix: true            # Learnable 13-layer scalar mix weights
+  dropout: 0.1
+  head_hidden_dim: 256
+  tasks: [creaky]
+
+training:
+  paradigm: block                 # 2.0s continuous audio block paradigm
+  pooling_mode: attn              # Temporal attention pooling
+  block:
+    duration_ms: 2000
+    hop_ms: 1000
+    batch_size: 16
+    max_intervals: 8
+    boundary_trim_frames: 0
+  optimizer: adamw_fp32           # Stable standard fp32 AdamW for lightweight head training
+  epochs: 25
+  backbone_lr: 0.0                # Unused when frozen
+  head_lr: 1.0e-4                 # Head and attention learning rate
+  loss: focal
+  focal_gamma: 2.0
+  focal_alpha: 0.75
+  mixed_precision: bf16
+
+checkpoint:
+  dir: checkpoints/csl_frozen_wavlm_base_plus
+
+tensorboard:
+  log_dir: runs/csl_frozen_wavlm_base_plus
