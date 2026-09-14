@@ -93,7 +93,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         train_ds = ContinuousAudioBlockDataset(train_df, **common_block)
         val_ds = ContinuousAudioBlockDataset(val_df, **common_block)
         collate = collate_block_fn
-        train_batch_size = int(block_cfg.get('batch_size', 4))
+        train_batch_size = int(block_cfg.get('batch_size') or config['training'].get('batch_size', 64))
         val_batch_size = train_batch_size
         if config['data'].get('continuous_non_creaky_sampling', {}).get('enabled', False):
             print('[INFO] continuous_non_creaky_sampling is disabled in block paradigm.')
@@ -219,7 +219,8 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
                 ) from e
 
     try:
-        trainer.run(start_epoch=start_epoch)
+        history = trainer.run(start_epoch=start_epoch)
+        return history
     except KeyboardInterrupt:
         print("\nTraining interrupted by user. Gracefully exiting...")
         sys.exit(1)
@@ -244,6 +245,8 @@ def main():
         for item in args.override:
             if '=' in item:
                 key_path, v = item.split('=', 1)
+                if key_path in ('smoketest', 'is_smoketest'):
+                    continue
                 # Parse value
                 if v.lower() == 'true': v = True
                 elif v.lower() == 'false': v = False
@@ -357,8 +360,19 @@ def main():
     # Smoketest overrides
     is_smoketest = "smoketest" in str(args.config) or (args.override and any("smoketest" in str(x) for x in args.override))
     if is_smoketest:
-        print("[INFO] Smoketest detected: Forcing 2-fold LOOCV with limited subsets.")
-        is_loocv = True
+        if (val_speakers_cfg == 'loocv') or args.loocv:
+            print("[INFO] Smoketest detected: Forcing 2-fold LOOCV with limited subsets.")
+            is_loocv = True
+        else:
+            print("[INFO] Smoketest detected in single-split mode.")
+            is_loocv = False
+            seed = config['training'].get('seed', 42)
+            pos = df[df['label'] == 1]
+            neg = df[df['label'] == 0]
+            n_pos = min(len(pos), 64)
+            n_neg = min(len(neg), 64)
+            df = pd.concat([pos.sample(n=n_pos, random_state=seed), neg.sample(n=n_neg, random_state=seed)]).sample(frac=1.0, random_state=seed).reset_index(drop=True)
+            print(f"[INFO] Smoketest dynamic slice: {len(df)} segments total.")
         
     if is_loocv:
         # Exclude non-train batches (e.g. Batch 2 or test batches) from LOOCV folds
@@ -671,8 +685,8 @@ def main():
                 print(f"[INFO] Incremental results saved to {result_path} and {md_path}")
 
     else:
-        run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod,
-                     resume=args.resume, warm_start=args.warm_start)
+        history = run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod,
+                               resume=args.resume, warm_start=args.warm_start)
         
         # Write single fold results to JSON for ablation script compatibility
         base_log_dir = Path(config['tensorboard']['log_dir'])
@@ -712,7 +726,8 @@ def main():
                 'std_auc_pr': 0.0,
                 'mean_peak_vram_mb': 0.0,
                 'folds': [single_fold_res],
-                'best_fold': {'speaker': val_spk_str, 'auc_pr': auc_pr}
+                'best_fold': {'speaker': val_spk_str, 'auc_pr': auc_pr},
+                'epoch_history': history or [],
             }
             import tempfile
             import os

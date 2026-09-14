@@ -85,7 +85,7 @@ eval:
   early_stopping_patience: 0
 
 tensorboard:
-  log_dir: runs/smoketest
+  log_dir: R:/runs/smoketest
   log_audio_samples: true
   log_confusion_matrix: false
   log_pr_curve: false

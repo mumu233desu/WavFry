@@ -21,7 +21,13 @@ class WavFryClassifier(nn.Module):
         super().__init__()
         self.config = config
         self.backbone_name = config["model"]["backbone"]
-        self.wavlm = wavlm_instance or AutoModel.from_pretrained(self.backbone_name)
+        if wavlm_instance is not None:
+            self.wavlm = wavlm_instance
+        else:
+            try:
+                self.wavlm = AutoModel.from_pretrained(self.backbone_name, local_files_only=True)
+            except Exception:
+                self.wavlm = AutoModel.from_pretrained(self.backbone_name)
         for attr in ["apply_spec_augment", "mask_time_prob", "mask_feature_prob"]:
             if hasattr(self.wavlm.config, attr):
                 setattr(self.wavlm.config, attr, 0.0 if "prob" in attr else False)

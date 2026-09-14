@@ -83,8 +83,10 @@ class Trainer:
         self.scaler = torch.amp.GradScaler('cuda') if (self.use_amp and self.mixed_prec == 'fp16') else None
         self.autocast_dtype = torch.bfloat16 if self.mixed_prec == 'bf16' else torch.float16
         
-        # TensorBoard
-        self.writer = SummaryWriter(log_dir=config['tensorboard']['log_dir'])
+        # TensorBoard and log dir
+        self.log_dir = Path(config['tensorboard']['log_dir'])
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.writer = SummaryWriter(log_dir=str(self.log_dir))
         
         # Primary metric for early-stopping — driven by config (supports 'auc_pr' | 'f1')
         _valid_metrics = {'auc_pr', 'f1'}
@@ -103,6 +105,9 @@ class Trainer:
         # Checkpoint dir
         self.ckpt_dir = Path(config['checkpoint']['dir'])
         self.ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+        # Epoch-by-epoch metric history
+        self.history: list[dict[str, Any]] = []
 
     def create_optimizer(self):
         # Issue 4: AdamW weight decay optimization
@@ -552,10 +557,37 @@ class Trainer:
 
         return total_loss / len(self.val_loader), metrics
 
+    def save_history(self):
+        """Save detailed epoch-by-epoch history to JSON and CSV atomically in both log_dir and ckpt_dir."""
+        if not self.history:
+            return
+        import json
+        import pandas as pd
+        
+        target_dirs = {self.log_dir, self.ckpt_dir}
+        for d in target_dirs:
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+                json_path = d / "epoch_history.json"
+                tmp_json = json_path.with_suffix(".json.tmp")
+                with open(tmp_json, "w", encoding="utf-8") as f:
+                    json.dump(self.history, f, indent=2)
+                os.replace(tmp_json, json_path)
+
+                csv_path = d / "epoch_history.csv"
+                tmp_csv = csv_path.with_suffix(".csv.tmp")
+                df_hist = pd.DataFrame(self.history)
+                df_hist.to_csv(tmp_csv, index=False)
+                os.replace(tmp_csv, csv_path)
+            except Exception as e:
+                logger.warning(f"Failed to save epoch history to {d}: {e}")
+
     def run(self, start_epoch=1):
+        import time
         tasks = getattr(self.model, "tasks", ["creaky"])
         primary_task = "creaky" if "creaky" in tasks else tasks[0]
         for epoch in range(start_epoch, self.epochs + 1):
+            epoch_start_time = time.time()
             train_loss, train_metrics = self.train_epoch(epoch)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
@@ -619,6 +651,7 @@ class Trainer:
                 self.log_audio_samples(epoch, val_metrics.get('samples', {}))
             
             # Early Stopping and Checkpointing — based on configured primary metric
+            is_best = False
             current_val = val_metrics.get(self.primary_metric, float('nan'))
             if math.isnan(current_val):
                 logger.warning(
@@ -633,10 +666,34 @@ class Trainer:
                 self._best_val_logits = val_metrics['logits'].clone()
                 self._best_val_labels = val_metrics['labels'].clone()
                 self.save_checkpoint(epoch, val_metrics, is_best=True)
+                is_best = True
             else:
                 self.patience_counter += 1
                 # Save latest anyway even if not best, to support robust resume
                 self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
+
+            epoch_time = time.time() - epoch_start_time
+            lr_backbone = float(self.optimizer.param_groups[0]['lr']) if len(self.optimizer.param_groups) > 0 else 0.0
+            lr_head = float(self.optimizer.param_groups[1]['lr']) if len(self.optimizer.param_groups) > 1 else lr_backbone
+
+            epoch_record = {
+                'epoch': int(epoch),
+                'train_loss': float(train_loss),
+                'train_auc_pr': float(train_metrics.get('auc_pr', 0.0)),
+                'train_f1': float(train_metrics.get('f1', 0.0)),
+                'val_loss': float(val_loss),
+                'val_auc_pr': float(val_metrics.get('auc_pr', 0.0)),
+                'val_f1': float(val_metrics.get('f1', 0.0)),
+                'val_accuracy': float(val_metrics.get('accuracy', 0.0)),
+                'val_precision': float(val_metrics.get('precision', 0.0)),
+                'val_recall': float(val_metrics.get('recall', 0.0)),
+                'lr_head': lr_head,
+                'lr_backbone': lr_backbone,
+                'is_best': bool(is_best),
+                'elapsed_sec': round(epoch_time, 2),
+            }
+            self.history.append(epoch_record)
+            self.save_history()
                 
             patience = self.config['eval'].get('early_stopping_patience', 0)
             if patience > 0 and self.patience_counter >= patience:
@@ -654,6 +711,13 @@ class Trainer:
             print(f"Best threshold (grid search): {best_threshold:.3f}  →  F1={threshold_f1:.4f}")
             # Patch it into the best checkpoint on disk
             self._update_checkpoint_threshold(best_threshold, threshold_f1)
+            for rec in self.history:
+                if rec.get('is_best'):
+                    rec['best_threshold'] = float(best_threshold)
+                    rec['threshold_f1'] = float(threshold_f1)
+            self.save_history()
+
+        return self.history
 
     def log_confusion_matrix(self, cm, epoch):
         plt.figure(figsize=(8, 6))
@@ -887,5 +951,17 @@ class Trainer:
         self.best_primary_metric_val = checkpoint.get('best_primary_metric_val', 0.0)
         if self.scaler is not None and 'scaler_state_dict' in checkpoint:
             self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+
+        # Restore epoch history up to checkpoint['epoch']
+        for hist_cand in (self.ckpt_dir / "epoch_history.json", self.log_dir / "epoch_history.json"):
+            if hist_cand.exists():
+                try:
+                    import json
+                    with open(hist_cand, 'r', encoding='utf-8') as f:
+                        old_hist = json.load(f)
+                    self.history = [h for h in old_hist if h.get('epoch', 0) <= checkpoint['epoch']]
+                    break
+                except Exception as e:
+                    logger.warning(f"Could not reload history from {hist_cand}: {e}")
 
         return checkpoint['epoch']
