@@ -1,35 +1,161 @@
 # ==============================================================================
-# CSL Benchmark Pilot: Frozen WavLM-Base+ with Block Paradigm
+# WavFry Full Experiment Configuration: Frozen WavLM-Base+ with Block Paradigm
+# (Self-contained configuration for CSL benchmark pilot)
 # ==============================================================================
 
+# ── 数据 ──────────────────────────────────────────────
+data:
+  annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
+  include_languages: [en]
+  training_phone_types: [vowel, voiceless_obs, silence, sonorant]  # 可选: vowel | voiceless_obs | silence | sonorant | voiced_obs
+  audio_dirs:
+    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
+    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
+  textgrid_dirs:
+    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/02_en_mfa_aligned
+    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/12_zh_mfa_aligned
+  phone_tier_name: phones
+  creaky_tier_name: creaky
+  context_padding_ms: 30
+  min_duration_ms: 30
+  # Set to a list of speaker IDs for fixed validation, or 'loocv' for Leave-One-Speaker-Out
+  val_speakers: [sampled]
+  # 说话人数据隔离（杜绝 Train 与 Val/Test 说话人重叠泄露）
+  isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
+  audio_formats: [wav, flac]
+  # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
+  num_workers: auto
+  pin_memory: true                   # GPU 训练时加速 Host→Device 传输
+  prefetch_factor: 2                 # num_workers>0 时生效
+  sampler:
+    enabled: false                 # false = 退回到纯 shuffle（baseline 对照）
+    anchor_speakers_per_batch: 2   # 每 batch 抽几个 anchor speaker
+  # 每个 epoch 额外生成连续且全部确认 non-creaky 的随机窗口。
+  continuous_non_creaky_sampling:
+    enabled: false
+    extra_sample_ratio: 0.08
+    min_duration_ms: 150
+    target_duration_ms: 300
+    max_duration_ms: 350  # 限制标签与输入时长的关联，降低长度 shortcut 风险
+    min_intervals: 1
+    max_intervals: 4
+    max_sp_duration_ms: 200
+    max_sp_ratio: 0.35
+    allow_sp_only: false
+
+# ── 模型 ──────────────────────────────────────────────
 model:
   backbone: microsoft/wavlm-base-plus
-  fine_tune_layers: "none"        # 100% frozen backbone (evaluates intrinsic SSL representation)
-  use_scalar_mix: true            # Learnable 13-layer scalar mix weights
+  fine_tune_layers: "none"          # 核心：彻底冻结 100% 骨干参数 (评估大模型内在声学特征)
+  use_scalar_mix: true              # 保持 13 层标量加权参数可学习 (评估各层贡献)
   dropout: 0.1
-  head_hidden_dim: 256
-  tasks: [creaky]
+  head_hidden_dim: 256              # 分类头隐层维度
+  tasks: [creaky]                   # 激活任务头
 
+# ── 训练 ──────────────────────────────────────────────
 training:
-  paradigm: block                 # 2.0s continuous audio block paradigm
-  pooling_mode: attn              # Temporal attention pooling
+  quiet: false                       # 是否静音模式（隐藏 tqdm 进度条，仅输出 epoch 汇总）
+  optimizer: adamw_fp32              # 全冻结下仅训练几十万参数的分类头，原生 FP32 最稳健无额外依赖
+  epochs: 25
+  batch_size: 16
+  gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation = 32
+  backbone_lr: 0.0                   # 全冻结骨干无需更新
+  head_lr: 1.0e-4                    # 分类头 + scalar mix 学习率
+  warmup_steps: 200
+  weight_decay: 0.01                 # 仅应用于分类头权重层
+  grad_clip: 1.0
+  loss: focal                        # focal | weighted_bce
+  focal_gamma: 2.0
+  focal_alpha: 0.75
+  seed: 42
+  # 混合精度：fp16（RTX）/ bf16（A100/Colab TPU）/ no
+  mixed_precision: bf16
+  # 梯度检查点：全冻结状态显存极小，无需开启检查点
+  gradient_checkpointing: false
+  # ── 学习率调度 ──────────────────────────────────────
+  lr_schedule: cosine     # cosine | cosine_restart | linear | none
+  min_lr_ratio: 0.05              # 余弦退火终点 = base_lr × min_lr_ratio，防止衰减到 0
+  # ── 余弦热重启参数（仅 cosine_restart 时生效）──
+  restart_aug_threshold: 0.11     # 触发重启的数据增强强度阈值
+  restart_lr_ratio: 0.45          # 重启后 LR 恢复到峰值的比例
+  restart_warmup_steps: 100       # 重启后平滑爬升 steps
+  # ── 消融测试与消融开关 ──
+  ablation:
+    use_cosine_restart: false
+    use_positional_encoding: true
+    pos_embed_dim: 32
+  # ── 训练范式 ────────────────────────────────────────
+  paradigm: block                 # 2.0s 连续块滑动窗口范式
   block:
     duration_ms: 2000
     hop_ms: 1000
     batch_size: 16
     max_intervals: 8
     boundary_trim_frames: 0
-  optimizer: adamw_fp32           # Stable standard fp32 AdamW for lightweight head training
-  epochs: 25
-  backbone_lr: 0.0                # Unused when frozen
-  head_lr: 1.0e-4                 # Head and attention learning rate
-  loss: focal
-  focal_gamma: 2.0
-  focal_alpha: 0.75
-  mixed_precision: bf16
+  frame_head:
+    enabled: false
+    loss_weight: 0.1
+    mil_mode: lse
+    temperature: 1.0
+    topk_ratio: 0.2
 
-checkpoint:
-  dir: checkpoints/csl_frozen_wavlm_base_plus
+  # ── 池化策略 ────────────────────────────────────────
+  pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk
+  topk_ratio: 0.2
+  topk_min_frames: 3
 
+  # ── 多任务训练头开关 ──
+  train_heads:
+    creaky: true
+    breathy: false
+
+# ── 评估 ──────────────────────────────────────────────
+eval:
+  primary_metric: auc_pr        # auc_pr | f1 — 决定 early-stopping 和最优 ckpt 判断依据
+  early_stopping_patience: 3    # 连续 3 个 epoch 验证集指标不上升则早停
+
+# ── TensorBoard ───────────────────────────────────────
 tensorboard:
   log_dir: runs/csl_frozen_wavlm_base_plus
+  log_audio_samples: true
+  audio_sample_count: 8
+  log_confusion_matrix: true
+  log_pr_curve: true
+
+# ── Checkpoint ────────────────────────────────────────
+checkpoint:
+  dir: checkpoints/csl_frozen_wavlm_base_plus
+  save_mode: delta                   # delta（只存微调权重）| full（完整模型）
+  keep_best_count: 1                 # 每个 speaker 只保留指标最好的 N 个 ckpt
+
+# ── 推理 ──────────────────────────────────────────────
+inference:
+  threshold: 0.5
+  output_confidence: true
+
+# ── 预处理 ───────────────────────────────────────────
+preprocessing:
+  lowpass:
+    enabled: false          # 总开关
+    cutoff_hz: 3000.0       # 截止频率（Hz）
+    Q: 0.707
+
+# ── 数据增强 ───────────────────────────────────────────
+augmentation:
+  enabled: true              # 训练数据增强总开关
+  aug_order: noise_first
+  schedule_power: 2.0
+
+  denoising:
+    enabled: true
+    prob: 0.5
+    atten_lim_db_start: 0.0
+    atten_lim_db_end: 15.0
+
+  noise:
+    enabled: true
+    prob: 0.5
+    type: pink
+    pink_low_cutoff_hz: 10.0
+    snr_db_start: 40.0
+    snr_db_end: 20.0
