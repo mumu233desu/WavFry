@@ -419,6 +419,8 @@ class Trainer:
 
             if not self.quiet:
                 pbar.set_postfix({'loss': loss.item()})
+            elif (i + 1) % 50 == 0 or (i + 1) == len(self.train_loader):
+                print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{len(self.train_loader)} - Batch Loss: {loss.item():.4f}", flush=True)
 
         # Flush remaining gradients
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
@@ -475,12 +477,15 @@ class Trainer:
         interval_predictions = {task: {} for task in tasks}
         val_iter = self.val_loader if self.quiet else tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]")
         with torch.no_grad():
-            for batch in val_iter:
+            for i, batch in enumerate(val_iter):
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                     loss, logits_dict, labels_dict, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
 
                 total_loss += loss.item()
+                if self.quiet and ((i + 1) % 50 == 0 or (i + 1) == len(self.val_loader)):
+                    print(f"  [Epoch {epoch:02d} Val] Step {i+1}/{len(self.val_loader)}", flush=True)
+
                 if self._current_frame_proxy is not None:
                     frame_proxy_values.append(self._current_frame_proxy)
 
@@ -619,7 +624,8 @@ class Trainer:
                 f"[Epoch {epoch:02d}/{self.epochs:02d}] "
                 f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics.get('auc_pr', 0.0):.4f}, F1: {train_metrics.get('f1', 0.0):.4f} | "
                 f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics.get('auc_pr', 0.0):.4f}, F1: {val_metrics.get('f1', 0.0):.4f}"
-                f"{extra_str}"
+                f"{extra_str}",
+                flush=True
             )
             
             # Logging — PR-AUC is primary, F1 is secondary
