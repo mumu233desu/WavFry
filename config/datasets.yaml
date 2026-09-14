@@ -42,56 +42,46 @@ datasets:
     #   all_train    - 全部作为训练集（外部数据集常用）
     #   random       - 随机按比例划分（seed 由全局 training.seed 控制）
 
-  # ── FEMH 2018（Breathy 病理性，GRBAS B 分，utterance-level MIL） ──
-  - dataset_id: femh_2018
-    enabled: false    # 待数据确认后开启
-    display_name: "FEMH 2018 Voice Disorder Challenge"
-    domain: pathological_voice
-
-    annotation_adapter: grbas_csv
-    adapter_params:
-      audio_dir: E:/Corpus/FEMH2018/audio
-      annotation_csv: E:/Corpus/FEMH2018/labels/grbas_ratings.csv
-      # CSV 列名映射
-      csv_columns:
-        file_id: file_id
-        grbas_b: B           # Breathiness 分值列名
-        speaker_id: speaker_id
-      # GRBAS B >= threshold → breathy=1，否则=0
-      breathy_threshold: 1   # 0=normal, 1=mild, 2=moderate, 3=severe
-      # utterance-level 标注，MIL 处理（由 Dataset 层处理，此处只声明粒度）
-      annotation_granularity: utterance   # utterance | segment | frame
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: all_train   # 病理数据全部用于训练，不作 val/test
-
-  # ── PVQD（Breathy，CAPE-V，utterance-level MIL） ──
-  - dataset_id: pvqd
-    enabled: false
-    display_name: "Pediatric Voice Quality Database"
-    domain: pathological_voice
-
-    annotation_adapter: capev_csv
-    adapter_params:
-      audio_dir: E:/Corpus/PVQD/audio
-      annotation_csv: E:/Corpus/PVQD/ratings.csv
-      csv_columns:
-        file_id: file_id
-        capev_breathiness: Breathiness   # 0-100 连续值
-        speaker_id: SpeakerID
-      # 连续分值归一化方式：threshold | soft_label
-      breathy_label_mode: threshold
-      breathy_threshold: 40.0            # CAPE-V >= 40 → breathy=1
-      annotation_granularity: utterance
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: all_train
+  # ── [示例 Example] FEMH 2018（Breathy 病理性，GRBAS B 分，utterance-level MIL） ──
+  # - dataset_id: femh_2018
+  #   enabled: false    # 待数据确认后开启
+  #   display_name: "FEMH 2018 Voice Disorder Challenge"
+  #   domain: pathological_voice
+  #   annotation_adapter: grbas_csv
+  #   adapter_params:
+  #     audio_dir: E:/Corpus/FEMH2018/audio
+  #     annotation_csv: E:/Corpus/FEMH2018/labels/grbas_ratings.csv
+  #     csv_columns:
+  #       file_id: file_id
+  #       grbas_b: B           # Breathiness 分值列名
+  #       speaker_id: speaker_id
+  #     breathy_threshold: 1   # 0=normal, 1=mild, 2=moderate, 3=severe
+  #     annotation_granularity: utterance
+  #   label_schema:
+  #     creaky: false
+  #     breathy: true
+  #   split_strategy: all_train
+  #
+  # ── [示例 Example] 外部 PVQD 模板（Breathy，CAPE-V，utterance-level MIL） ──
+  # - dataset_id: pvqd_example
+  #   enabled: false
+  #   display_name: "Pediatric Voice Quality Database (Example)"
+  #   domain: pathological_voice
+  #   annotation_adapter: capev_csv
+  #   adapter_params:
+  #     audio_dir: E:/Corpus/PVQD/audio
+  #     annotation_csv: E:/Corpus/PVQD/ratings.csv
+  #     csv_columns:
+  #       file_id: file_id
+  #       capev_breathiness: Breathiness   # 0-100 连续值
+  #       speaker_id: SpeakerID
+  #     breathy_label_mode: threshold
+  #     breathy_threshold: 40.0            # CAPE-V >= 40 → breathy=1
+  #     annotation_granularity: utterance
+  #   label_schema:
+  #     creaky: false
+  #     breathy: true
+  #   split_strategy: all_train
 
   # ── CS-Dialogue Breathy（未来：人工精标 breathy 段落，同一语料库） ──
   - dataset_id: cs_dialogue_breathy
