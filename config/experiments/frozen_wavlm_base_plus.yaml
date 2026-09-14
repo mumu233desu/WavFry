@@ -54,11 +54,11 @@ model:
 
 # ── 训练 ──────────────────────────────────────────────
 training:
-  quiet: false                       # 是否静音模式（隐藏 tqdm 进度条，仅输出 epoch 汇总）
+  quiet: true                        # 开启静音模式（隐藏 tqdm 滚屏，仅输出整洁的 Epoch 级汇总）
   optimizer: adamw_fp32              # 全冻结下仅训练几十万参数的分类头，原生 FP32 最稳健无额外依赖
   epochs: 25
-  batch_size: 16
-  gradient_accumulation_steps: 4     # 等效有效 batch = 64 (显存控制在 ~2.0GB，彻底杜绝 8GB 显存 OOM)
+  batch_size: 32
+  gradient_accumulation_steps: 2     # 等效有效 batch = 64 (显存稳在 ~4GB，性能翻倍且杜绝换页)
   backbone_lr: 0.0                   # 全冻结骨干无需更新
   head_lr: 1.0e-4                    # 分类头 + scalar mix 学习率
   warmup_steps: 200
@@ -89,7 +89,7 @@ training:
   block:
     duration_ms: 2000
     hop_ms: 1000
-    batch_size: 16
+    batch_size: 32
     max_intervals: 8
     boundary_trim_frames: 0
   frame_head:
