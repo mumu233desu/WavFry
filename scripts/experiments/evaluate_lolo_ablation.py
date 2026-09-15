@@ -21,7 +21,12 @@ import json
 import os
 import sys
 import time
+import warnings
 from pathlib import Path
+
+warnings.filterwarnings("ignore", message=".*Support for mismatched key_padding_mask and attn_mask is deprecated.*")
+warnings.filterwarnings("ignore", message=".*torchaudio.backend.common.AudioMetaData.*")
+warnings.filterwarnings("ignore", message=".*No positive class found in y_true.*")
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -247,7 +252,7 @@ def evaluate_with_mask(
                     layer_mask=layer_mask,
                 )
                 t_logits = out["interval_logits"]["creaky"]
-                t_labels = labels
+                t_labels = labels[..., 0] if (labels.ndim > 2 and labels.shape[-1] >= 1) else labels
 
                 for logit, label, val_row, item_row in zip(t_logits, t_labels, valid, interval_ids):
                     for l_val, lab_val, v_val, i_id in zip(logit, label, val_row, item_row):
@@ -262,6 +267,8 @@ def evaluate_with_mask(
                 waveforms, labels, lengths, speakers, meta = batch
                 waveforms = waveforms.to(device)
                 labels = labels.to(device)
+                if labels.ndim > 1 and labels.shape[-1] >= 1:
+                    labels = labels[..., 0]
                 lengths = lengths.to(device)
                 out = model(waveforms, lengths=lengths, layer_mask=layer_mask)
                 logits = out["creaky"] if isinstance(out, dict) else out
