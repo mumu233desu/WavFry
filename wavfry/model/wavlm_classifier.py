@@ -154,8 +154,13 @@ class WavFryClassifier(nn.Module):
                     param.requires_grad = True
         self.is_backbone_frozen = len(trainable_indices) == 0
 
-    def _encode_sequence(self, x: torch.Tensor, lengths: torch.Tensor | None = None):
-        """Encode waveform batch through WavLM with sample-level padding attention mask."""
+    def _encode_sequence(
+        self,
+        x: torch.Tensor,
+        lengths: torch.Tensor | None = None,
+        layer_mask: torch.Tensor | None = None,
+    ):
+        """Encode waveform batch through WavLM with sample-level padding attention mask and optional layer mask."""
         batch_size, max_len = x.shape
         if lengths is not None:
             lengths_clamped = lengths.to(x.device).clamp(min=1, max=max_len)
@@ -177,7 +182,13 @@ class WavFryClassifier(nn.Module):
                 else outputs.hidden_states
             )
             for task in self.tasks:
-                weights = torch.softmax(self.scalar_mix_weights[task], dim=0)
+                if layer_mask is not None:
+                    # Dynamic Softmax re-normalization for Leave-One-Layer-Out (LOLO) ablation
+                    masked_logits = self.scalar_mix_weights[task].clone()
+                    masked_logits[~layer_mask.to(masked_logits.device)] = -float("inf")
+                    weights = torch.softmax(masked_logits, dim=0)
+                else:
+                    weights = torch.softmax(self.scalar_mix_weights[task], dim=0)
                 # Layer-by-layer weighted sum avoids allocating a massive [13, B, T, D] tensor
                 hidden_by_task[task] = sum(w * h for w, h in zip(weights, hidden_states))
         else:
@@ -395,6 +406,7 @@ class WavFryClassifier(nn.Module):
         lengths: torch.Tensor | None = None,
         interval_bounds: torch.Tensor | None = None,
         interval_valid: torch.Tensor | None = None,
+        layer_mask: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         """Forward pass supporting multi-task block and segment inference.
 
@@ -404,7 +416,7 @@ class WavFryClassifier(nn.Module):
             In segment mode:
                 Dict with {task: Tensor[B]}
         """
-        hidden_by_task, out_lengths, valid_mask = self._encode_sequence(x, lengths)
+        hidden_by_task, out_lengths, valid_mask = self._encode_sequence(x, lengths, layer_mask=layer_mask)
         if interval_bounds is not None:
             if interval_valid is None:
                 interval_valid = torch.ones(interval_bounds.shape[:2], dtype=torch.bool, device=x.device)
