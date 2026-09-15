@@ -25,7 +25,12 @@ import math
 import os
 import sys
 import time
+import warnings
 from pathlib import Path
+
+warnings.filterwarnings("ignore", message=".*Support for mismatched key_padding_mask and attn_mask is deprecated.*")
+warnings.filterwarnings("ignore", message=".*torchaudio.backend.common.AudioMetaData.*")
+warnings.filterwarnings("ignore", message=".*No positive class found in y_true.*")
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -224,12 +229,20 @@ def build_or_load_prosodic_features(
         print(f"[Features] Loading cached prosodic feature table from: {cache_path}")
         feat_df = pd.read_csv(cache_path)
         # Merge essential labels and split metadata
-        for col in ["label", "label_creaky", "speaker_id", "batch_split", "phone", "file_key"]:
-            if col in manifest_df.columns and col not in feat_df.columns:
+        for col in manifest_df.columns:
+            if col not in feat_df.columns and col in manifest_df.columns:
                 feat_df[col] = manifest_df[col].values[:len(feat_df)]
         return feat_df
 
-    target_df = manifest_df.head(32) if is_smoketest else manifest_df
+    if is_smoketest:
+        # Pick 16 from train speakers and 16 from val speakers (e.g. annotation_type == 'sampled')
+        train_slice = manifest_df[manifest_df["speaker_id"].isin(["U1001", "U0046"])].head(16)
+        val_slice = manifest_df[manifest_df["annotation_type"] == "sampled"].head(16)
+        if len(val_slice) == 0:
+            val_slice = manifest_df.tail(16)
+        target_df = pd.concat([train_slice, val_slice]).reset_index(drop=True)
+    else:
+        target_df = manifest_df
     total = len(target_df)
     print(f"\n[Extraction] Extracting prosodic features for {total} segments (Device: {device})...")
 
@@ -244,11 +257,9 @@ def build_or_load_prosodic_features(
             context_padding_ms=30.0,
             device=device,
         )
-        f_dict["file_key"] = row.get("file_key", "")
-        f_dict["speaker_id"] = row.get("speaker_id", "")
-        f_dict["phone"] = row.get("phone", "")
-        f_dict["label"] = row.get("label", row.get("label_creaky", 0))
-        f_dict["batch_split"] = row.get("batch_split", "train")
+        for col in manifest_df.columns:
+            if col not in f_dict:
+                f_dict[col] = row[col]
         rows.append(f_dict)
 
         if (len(rows) % 200 == 0) or (len(rows) == total):
