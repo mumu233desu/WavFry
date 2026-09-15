@@ -38,7 +38,13 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
+import warnings
 from torch.utils.data import DataLoader
+
+# Suppress upstream PyTorch 2.6+ deprecation warning regarding WavLM's boolean key_padding_mask
+warnings.filterwarnings("ignore", message=".*Support for mismatched key_padding_mask and attn_mask is deprecated.*")
+warnings.filterwarnings("ignore", message=".*torchaudio.backend.common.AudioMetaData.*")
+warnings.filterwarnings("ignore", message=".*No positive class found in y_true.*")
 
 # Add project root to sys.path
 SCRIPT_DIR = Path(__file__).resolve().parent

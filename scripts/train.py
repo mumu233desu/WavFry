@@ -7,6 +7,12 @@ import pandas as pd
 from torch.utils.data import DataLoader
 import copy
 import json
+import warnings
+
+# Suppress upstream PyTorch 2.6+ deprecation warning regarding WavLM's boolean key_padding_mask
+warnings.filterwarnings("ignore", message=".*Support for mismatched key_padding_mask and attn_mask is deprecated.*")
+warnings.filterwarnings("ignore", message=".*torchaudio.backend.common.AudioMetaData.*")
+warnings.filterwarnings("ignore", message=".*No positive class found in y_true.*")
 
 # Add parent of 06_wavfry to sys.path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
