@@ -97,7 +97,7 @@ class WavFryClassifier(nn.Module):
         self.boundary_trim_frames = max(
             0, int(training_cfg.get("block", {}).get("boundary_trim_frames", 0))
         )
-        frame_cfg = training_cfg.get("frame_head", {})
+        frame_cfg = training_cfg.get("block", {}).get("frame_head", {})
         self.frame_head_enabled = bool(frame_cfg.get("enabled", False))
         if self.frame_head_enabled:
             self.frame_head = nn.Sequential(

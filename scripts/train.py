@@ -44,26 +44,21 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         print("[WARNING] 'model.tasks' not configured in config, defaulting to ['creaky']")
         config.setdefault('model', {})['tasks'] = ['creaky']
     
-    # Split
-    val_speakers = config['data'].get('val_speakers', [])
+    # Split: Always use manifest batch_split as single source of truth
     isolate_speakers = bool(config['data'].get('isolate_split_speakers', True))
-    if val_speakers in ('batch', 'batch_split', ['batch'], ['batch_split']) or (isinstance(val_speakers, list) and 'batch2' in val_speakers):
-        train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate_speakers)
-    else:
-        train_df, val_df = splits_mod.make_speaker_split(df, val_speakers, isolate=isolate_speakers)
-        test_df = df.iloc[0:0].copy()
+    train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate_speakers)
 
-    print(f"Train: {len(train_df)} segments, Val: {len(val_df)} segments (Split mode: {val_speakers})")
+    print(f"Data Partition: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)} segments")
     if len(val_df) == 0:
         raise ValueError(
-            f"[DATA SPLIT ERROR] Validation dataset is empty (0 segments)! "
-            f"Configured 'data.val_speakers' ({val_speakers}) matched zero samples in manifest. "
-            f"Training without validation is strictly prohibited as early stopping and best checkpointing cannot function."
+            "[DATA SPLIT ERROR] Validation dataset is empty (0 segments)! "
+            "Please check manifest batch_split column. "
+            "Training without validation is strictly prohibited as early stopping and best checkpointing cannot function."
         )
     if len(train_df) == 0:
         raise ValueError(
-            f"[DATA SPLIT ERROR] Training dataset is empty (0 segments)! "
-            f"Check data and splitting configuration."
+            "[DATA SPLIT ERROR] Training dataset is empty (0 segments)! "
+            "Please check manifest batch_split column."
         )
 
     if not test_df.empty:
@@ -86,7 +81,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     if paradigm == 'block':
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
-        block_cfg = config['training'].get('block', {})
+        block_cfg = config['training']['block']
         common_block = dict(
             duration_ms=block_cfg.get('duration_ms', 2000),
             hop_ms=block_cfg.get('hop_ms', 1000),
@@ -99,88 +94,45 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         train_ds = ContinuousAudioBlockDataset(train_df, **common_block)
         val_ds = ContinuousAudioBlockDataset(val_df, **common_block)
         collate = collate_block_fn
-        train_batch_size = int(block_cfg.get('batch_size') or config['training'].get('batch_size', 64))
+        train_batch_size = int(block_cfg['batch_size'])
         val_batch_size = train_batch_size
-        if config['data'].get('continuous_non_creaky_sampling', {}).get('enabled', False):
-            print('[INFO] continuous_non_creaky_sampling is disabled in block paradigm.')
     else:
+        segment_cfg = config['training']['segment']
         train_ds = dataset_mod.CreakyVowelDataset(
             train_df,
-            context_padding_ms=config['data']['context_padding_ms'],
+            context_padding_ms=segment_cfg['context_padding_ms'],
             lowpass_cfg=lowpass_cfg,
-            continuous_non_creaky_cfg=config['data'].get('continuous_non_creaky_sampling', {}),
+            continuous_non_creaky_cfg=segment_cfg.get('continuous_non_creaky_sampling', {}),
             seed=config['training'].get('seed', 42),
             fold_index=fold_idx,
         )
         val_ds = dataset_mod.CreakyVowelDataset(
             val_df,
-            context_padding_ms=config['data']['context_padding_ms'],
+            context_padding_ms=segment_cfg['context_padding_ms'],
             lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
-        train_batch_size = config['training']['batch_size']
-        val_batch_size = config['training']['batch_size']
+        train_batch_size = int(segment_cfg['batch_size'])
+        val_batch_size = train_batch_size
 
     num_workers = dataset_mod.resolve_num_workers(config['data']['num_workers'])
     prefetch_factor = config['data'].get('prefetch_factor', 2) if num_workers > 0 else None
     
-    sampler_cfg = config['data'].get('sampler', {})
-    if paradigm == 'block':
-        from wavfry.data.epoch_sampler import EpochShuffleSampler
-        epoch_sampler = EpochShuffleSampler(
-            train_ds,
-            seed=config['training'].get('seed', 42),
-            fold_index=fold_idx,
-        )
-        train_loader = DataLoader(
-            train_ds,
-            batch_size=train_batch_size,
-            sampler=epoch_sampler,
-            num_workers=num_workers,
-            collate_fn=collate,
-            pin_memory=config['data']['pin_memory'],
-            prefetch_factor=prefetch_factor,
-        )
-    elif sampler_cfg.get('enabled', False):
-        from wavfry.data.grouped_sampler import GroupedBatchSampler
-        if 'annotation_type' in train_df.columns and (train_df['annotation_type'] == 'full').any():
-            spk_col = 'speaker' if 'speaker' in train_df.columns else 'speaker_id'
-            all_anchors = train_df[train_df['annotation_type'] == 'full'][spk_col].unique().tolist()
-        else:
-            all_anchors = config['data'].get('annotated_speakers', [])
-        active_anchors = [s for s in all_anchors if s not in val_speakers]
-        sampler = GroupedBatchSampler(
-            df=train_df,
-            batch_size=train_batch_size,
-            anchor_speakers=active_anchors,
-            anchor_speakers_per_batch=sampler_cfg.get('anchor_speakers_per_batch', 2),
-            seed=config['training'].get('seed', 42) + fold_idx,
-            dataset=train_ds,
-        )
-        train_loader = DataLoader(
-            train_ds, 
-            batch_sampler=sampler,
-            num_workers=num_workers,
-            collate_fn=collate,
-            pin_memory=config['data']['pin_memory'],
-            prefetch_factor=prefetch_factor
-        )
-    else:
-        from wavfry.data.epoch_sampler import EpochShuffleSampler
-        epoch_sampler = EpochShuffleSampler(
-            train_ds,
-            seed=config['training'].get('seed', 42),
-            fold_index=fold_idx,
-        )
-        train_loader = DataLoader(
-            train_ds,
-            batch_size=train_batch_size,
-            sampler=epoch_sampler,
-            num_workers=num_workers,
-            collate_fn=collate,
-            pin_memory=config['data']['pin_memory'],
-            prefetch_factor=prefetch_factor
-        )
+    from wavfry.data.epoch_sampler import EpochShuffleSampler
+    epoch_sampler = EpochShuffleSampler(
+        train_ds,
+        seed=config['training'].get('seed', 42),
+        fold_index=fold_idx,
+    )
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=train_batch_size,
+        sampler=epoch_sampler,
+        num_workers=num_workers,
+        collate_fn=collate,
+        pin_memory=config['data']['pin_memory'],
+        prefetch_factor=prefetch_factor,
+    )
     
     val_loader = DataLoader(
         val_ds, 
@@ -211,16 +163,15 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     
     start_epoch = 1
     if resume:
-        val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
-        latest_path = Path(config['checkpoint']['dir']) / f"latest_{val_str}.pt"
+        latest_path = Path(config['checkpoint']['dir']) / "latest.pt"
         if latest_path.exists():
             try:
                 last_epoch = trainer.load_checkpoint(latest_path)
                 start_epoch = last_epoch + 1
-                print(f"Resuming {val_speakers} from epoch {start_epoch}")
+                print(f"Resuming from epoch {start_epoch}")
             except Exception as e:
                 raise RuntimeError(
-                    f"[RESUME ERROR] Failed to load resume checkpoint for {val_speakers} from '{latest_path}': {e}. "
+                    f"[RESUME ERROR] Failed to load resume checkpoint from '{latest_path}': {e}. "
                     f"Academic training refuses silent fallback to training from scratch!"
                 ) from e
 
@@ -251,7 +202,8 @@ def main():
         for item in args.override:
             if '=' in item:
                 key_path, v = item.split('=', 1)
-                if key_path in ('smoketest', 'is_smoketest'):
+                if key_path.startswith(('smoketest', 'is_smoketest', 'data.val_speakers', 'sampler', 'training.sampler', 'data.sampler')):
+                    print(f"[DEPRECATED OVERRIDE IGNORED] {key_path} is deprecated and ignored (manifest batch_split is the unified source of truth).")
                     continue
                 # Parse value
                 if v.lower() == 'true': v = True
@@ -360,13 +312,12 @@ def main():
             test_df.to_csv(test_out_path, index=False)
             print(f"[Golden] Golden test set saved to {test_out_path}")
     
-    val_speakers_cfg = config['data'].get('val_speakers', [])
-    is_loocv = (val_speakers_cfg == 'loocv') or args.loocv
+    is_loocv = bool(args.loocv or (config.get('training', {}).get('mode') == 'loocv'))
     
     # Smoketest overrides
     is_smoketest = "smoketest" in str(args.config) or (args.override and any("smoketest" in str(x) for x in args.override))
     if is_smoketest:
-        if (val_speakers_cfg == 'loocv') or args.loocv:
+        if is_loocv:
             print("[INFO] Smoketest detected: Forcing 2-fold LOOCV with limited subsets.")
             is_loocv = True
         else:
@@ -491,7 +442,6 @@ def main():
                 continue
             
             fold_config = copy.deepcopy(config)
-            fold_config['data']['val_speakers'] = [val_speaker]
             # Logs are still best kept in subdirs for TB comparison
             fold_config['tensorboard']['log_dir'] = str(base_log_dir / f"fold_{val_speaker}")
             # Checkpoints will go to the same base dir, but with a speaker-specific name
@@ -520,6 +470,7 @@ def main():
                 val_pos_sampled = val_pos.sample(n=n_val_pos, random_state=seed) if n_val_pos > 0 else val_pos
                 val_neg_sampled = val_neg.sample(n=n_val_neg, random_state=seed) if n_val_neg > 0 else val_neg
                 fold_val_df = pd.concat([val_pos_sampled, val_neg_sampled]).sample(frac=1.0, random_state=seed).reset_index(drop=True)
+                fold_val_df['batch_split'] = 'val'
                 
                 # Train split: speaker != val_speaker (100 segments)
                 train_df_full = df[df['speaker_id'] != val_speaker]
@@ -535,11 +486,14 @@ def main():
                 train_pos_sampled = train_pos.sample(n=n_train_pos, random_state=seed) if n_train_pos > 0 else train_pos
                 train_neg_sampled = train_neg.sample(n=n_train_neg, random_state=seed) if n_train_neg > 0 else train_neg
                 fold_train_df = pd.concat([train_pos_sampled, train_neg_sampled]).sample(frac=1.0, random_state=seed).reset_index(drop=True)
+                fold_train_df['batch_split'] = 'train'
                 
                 fold_df = pd.concat([fold_train_df, fold_val_df]).reset_index(drop=True)
                 print(f"[INFO] Smoketest dynamic slice | Train: {len(fold_train_df)} (Pos: {n_train_pos}, Neg: {n_train_neg}) | Val: {len(fold_val_df)} (Pos: {n_val_pos}, Neg: {n_val_neg})")
             else:
-                fold_df = df
+                import numpy as np
+                fold_df = df.copy()
+                fold_df['batch_split'] = np.where(fold_df['speaker_id'] == val_speaker, 'val', 'train')
             
             run_training(fold_config, fold_df, device, dataset_mod, splits_mod, model_mod, trainer_mod,
                          fold_idx=i, preloaded_wavlm=preloaded_wavlm, resume=args.resume,
@@ -588,7 +542,7 @@ def main():
                 
                 # Cleanup intermediate checkpoints (best_epX_...pt and latest_*.pt) to save disk/ramdisk space
                 try:
-                    latest_path = base_ckpt_dir / f"latest_{val_speaker}.pt"
+                    latest_path = base_ckpt_dir / "latest.pt"
                     if latest_path.exists():
                         latest_path.unlink()
                         print(f"[INFO] Cleaned up intermediate resume checkpoint: {latest_path}")
@@ -706,7 +660,7 @@ def main():
             best_threshold = metrics.get('best_threshold', ckpt.get('best_threshold', 0.5))
             threshold_f1 = metrics.get('threshold_f1', ckpt.get('threshold_f1', 0))
             
-            val_spk_str = "_".join(val_speakers_cfg) if isinstance(val_speakers_cfg, list) else str(val_speakers_cfg)
+            val_spk_str = "batch_split"
             single_fold_res = {
                 'speaker': val_spk_str,
                 'accuracy': metrics.get('accuracy', 0),

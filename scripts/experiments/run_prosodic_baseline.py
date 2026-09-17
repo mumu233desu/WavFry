@@ -336,16 +336,8 @@ def main():
     )
 
     # Partition dataset dynamically according to configuration
-    val_speakers = cfg.get("data", {}).get("val_speakers", ["sampled"])
     isolate = bool(cfg.get("data", {}).get("isolate_split_speakers", True))
-
-    if val_speakers in ("batch", "batch_split", ["batch"], ["batch_split"]) or (
-        isinstance(val_speakers, list) and "batch2" in val_speakers
-    ):
-        train_df, val_df, test_df = splits_mod.make_batch_split(feat_df, isolate=isolate)
-    else:
-        train_df, val_df = splits_mod.make_speaker_split(feat_df, val_speakers, isolate=isolate)
-        test_df = val_df  # Evaluate on val if no distinct test set
+    train_df, val_df, test_df = splits_mod.make_batch_split(feat_df, isolate=isolate)
 
     print(f"\n[Split] Dataset Partition: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
 

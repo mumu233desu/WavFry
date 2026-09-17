@@ -48,15 +48,22 @@ def main():
         
     epochs = config_data.get('training', {}).get('epochs', 25)
     
-    # Helper to check if a group has completed training for all specified speakers
-    def is_group_completed(results_json_path, target_speakers):
+    # Helper to check if a group has completed training
+    def is_group_completed(results_json_path, target_speakers=None):
         if not results_json_path.exists():
             return False
         try:
             with open(results_json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            completed_spks = {fold['speaker'] for fold in data.get('folds', [])}
-            return all(spk in completed_spks for spk in target_speakers)
+            folds = data.get('folds', [])
+            if not folds:
+                return False
+            completed_spks = {fold.get('speaker') for fold in folds}
+            if 'batch_split' in completed_spks:
+                return True
+            if target_speakers:
+                return all(spk in completed_spks for spk in target_speakers)
+            return True
         except Exception as e:
             print(f"Error checking completion status for {results_json_path}: {e}")
             return False
@@ -70,74 +77,74 @@ def main():
         ],
         "Block + LSE (Default)": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=lse",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=lse",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_lse_default",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_lse_default"
         ],
         "Block + Max": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=max",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=max",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_max",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_max"
         ],
         "Block + Top-K Mean": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=top_k_mean",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=top_k_mean",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_topk",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_topk"
         ],
         "Block + Linear Softmax": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=linear_softmax",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=linear_softmax",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_linear_softmax",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_linear_softmax"
         ],
         "Block W/o Frame Head": [
             "training.paradigm=block",
-            "training.frame_head.enabled=false",
+            "training.block.frame_head.enabled=false",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_no_frame_head",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_no_frame_head"
         ],
         "Block + LSE_Mean Fusion": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=lse_mean",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=lse_mean",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_lse_mean",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_lse_mean"
         ],
         "Block + LSE (Temp=2.0)": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=lse",
-            "training.frame_head.temperature=2.0",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=lse",
+            "training.block.frame_head.temperature=2.0",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_lse_temp2",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_lse_temp2"
         ],
         "Block + LSE (Temp=0.5)": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=lse",
-            "training.frame_head.temperature=0.5",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=lse",
+            "training.block.frame_head.temperature=0.5",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_lse_temp05",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_lse_temp05"
         ],
         "Block + LSE (Weight=0.5)": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=lse",
-            "training.frame_head.loss_weight=0.5",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=lse",
+            "training.block.frame_head.loss_weight=0.5",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_lse_weight05",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_lse_weight05"
         ],
         "Block + Top-K Mean (Ratio=0.4)": [
             "training.paradigm=block",
-            "training.frame_head.enabled=true",
-            "training.frame_head.mil_mode=top_k_mean",
-            "training.frame_head.topk_ratio=0.4",
+            "training.block.frame_head.enabled=true",
+            "training.block.frame_head.mil_mode=top_k_mean",
+            "training.block.frame_head.topk_ratio=0.4",
             f"tensorboard.log_dir=R:/runs/{name_dir}/block_topk_ratio04",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/block_topk_ratio04"
         ]
@@ -145,17 +152,13 @@ def main():
     
     # We run a single fold using U0046 and U1001 as the validation set.
     for fold_step in [1]:
-        active_speakers = args.speakers if args.speakers else ["U0046", "U1001"]
-        val_spk_str = "[" + ",".join(active_speakers) + "]"
         common_overrides = [
-            f"data.val_speakers={val_spk_str}",
-            "data.continuous_non_creaky_sampling.enabled=true",
-            "data.sampler.enabled=false",
+            "training.segment.continuous_non_creaky_sampling.enabled=true",
             "eval.early_stopping_patience=4"
         ]
         
         print(f"\n" + "="*80)
-        print(f"ABLATION PHASE: RUNNING GROUPS ON FIXED VAL SPEAKERS: {active_speakers}")
+        print("ABLATION PHASE: RUNNING GROUPS ON BATCH SPLIT")
         print("="*80 + "\n")
         
         for name, specific_overrides in ablations_specific.items():
@@ -192,10 +195,10 @@ def main():
             else:
                 ckpt_dir = None
 
-            # Check if this group has completed the current phase (all active speakers trained)
+            # Check if this group has completed the current phase
             skip_group = False
-            if args.resume and is_group_completed(results_json_path, active_speakers):
-                print(f"Ablation group '{name}' already completed for active speakers {active_speakers}. Skipping training and ensuring checkpoints are cleared.")
+            if args.resume and is_group_completed(results_json_path):
+                print(f"Ablation group '{name}' already completed. Skipping training and ensuring checkpoints are cleared.")
                 skip_group = True
                 
                 # Clean up checkpoints for this fold step to save space

@@ -14,7 +14,6 @@ def main():
     overrides = [
         f"training.epochs={epochs}",
         f"data.annotated_speakers={spk_str}",
-        "data.val_speakers=[U1001]",                  # Only validate on U1001 (Single Fold)
         "training.lr_schedule=cosine",                 # Force standard cosine schedule (no restart)
         "eval.early_stopping_patience=0",              # Disable early stopping to run full 40 epochs
         "tensorboard.log_dir=R:/runs/long_training",

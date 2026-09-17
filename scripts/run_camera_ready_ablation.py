@@ -280,7 +280,7 @@ def evaluate_checkpoint_on_val(
     else:
         val_ds = dataset_mod.CreakyVowelDataset(
             val_df,
-            context_padding_ms=config["data"].get("context_padding_ms", 30),
+            context_padding_ms=config.get("training", {}).get("segment", {}).get("context_padding_ms", 30),
             lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
@@ -662,12 +662,11 @@ def main():
                 patience = 0 if args.smoketest else args.patience
 
                 overrides = [
-                    "data.val_speakers=batch_split",
                     "data.isolate_split_speakers=true",
                     "training.quiet=true",
                     f"training.paradigm={args.paradigm}",
                     f"training.epochs={epochs}",
-                    f"training.batch_size={batch_size}",
+                    f"training.{args.paradigm}.batch_size={batch_size}",
                     f"training.gradient_accumulation_steps={args.grad_accum}",
                     f"eval.early_stopping_patience={patience}",
                     f"tensorboard.log_dir={run_log_dir.as_posix()}",

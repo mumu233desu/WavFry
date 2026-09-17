@@ -36,7 +36,7 @@ class Trainer:
         self.device = device
         self.augmentor = augmentor
         self.paradigm = config['training'].get('paradigm', 'segment')
-        self.frame_cfg = config['training'].get('frame_head', {})
+        self.frame_cfg = config['training'].get('block', {}).get('frame_head', {})
         self._current_frame_proxy = None
 
         self.epochs = config['training']['epochs']
@@ -796,13 +796,8 @@ class Trainer:
         self, best_threshold: float, threshold_f1: float
     ) -> None:
         """Load the best checkpoints from disk, inject threshold fields, and re-save."""
-        val_speakers = self.config['data']['val_speakers']
-        val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
         targets = [self.ckpt_dir / "best_model.pt"]
-        candidate = self.ckpt_dir / f"best_model_{val_str}.pt"
-        if candidate.exists():
-            targets.append(candidate)
-        targets.extend(list(self.ckpt_dir.glob(f"best_ep*_{val_str}.pt")))
+        targets.extend(list(self.ckpt_dir.glob("best_ep*.pt")))
         
         updated_count = 0
         for ckpt_path in set(targets):
@@ -871,14 +866,11 @@ class Trainer:
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
             
         # Construct descriptive filename
-        val_speakers = self.config['data']['val_speakers']
-        val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
-        
         if is_best:
             auc_pr_for_name = metrics.get('auc_pr', 0.0)
-            name = f"best_ep{epoch}_prauc{auc_pr_for_name:.4f}_f1{f1:.4f}_{val_str}.pt"
+            name = f"best_ep{epoch}_prauc{auc_pr_for_name:.4f}_f1{f1:.4f}.pt"
         else:
-            name = f"model_ep{epoch}_{val_str}.pt"
+            name = f"model_ep{epoch}.pt"
             
         if not only_latest:
             path = self.ckpt_dir / name
@@ -907,7 +899,7 @@ class Trainer:
             
             # Cleanup old best checkpoints (keep the N best by PR-AUC)
             keep_count = self.config['checkpoint'].get('keep_best_count', 3)
-            best_files = list(self.ckpt_dir.glob(f"best_ep*_prauc*_{val_str}.pt"))
+            best_files = list(self.ckpt_dir.glob("best_ep*_prauc*.pt"))
             if len(best_files) > keep_count:
                 def extract_prauc(p):
                     try: return float(p.name.split('_prauc')[1].split('_')[0])
@@ -922,7 +914,7 @@ class Trainer:
             checkpoint['optimizer_state_dict'] = self.optimizer.state_dict()
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
             
-        latest_path = self.ckpt_dir / f"latest_{val_str}.pt"
+        latest_path = self.ckpt_dir / "latest.pt"
         import os
         tmp_latest = latest_path.with_suffix('.pt.tmp')
         torch.save(checkpoint, tmp_latest)

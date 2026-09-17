@@ -166,7 +166,7 @@ def main():
         return
 
     # 2. Dataset and Loader
-    padding_ms = config['data'].get('context_padding_ms', 50)
+    padding_ms = config.get('training', {}).get('segment', {}).get('context_padding_ms', 30)
     
     # Simple internal dataset for inference
     class InferenceDataset(torch.utils.data.Dataset):

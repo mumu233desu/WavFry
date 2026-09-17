@@ -15,6 +15,7 @@ def make_dummy_config():
             "tasks": ["creaky"],
         },
         "training": {
+            "paradigm": "block",
             "pooling_mode": "attn",
             "ablation": {
                 "use_positional_encoding": False,
@@ -23,9 +24,9 @@ def make_dummy_config():
                 "duration_ms": 2000,
                 "hop_ms": 1000,
                 "max_intervals": 4,
-            },
-            "frame_head": {
-                "enabled": False,
+                "frame_head": {
+                    "enabled": False,
+                },
             },
         },
     }

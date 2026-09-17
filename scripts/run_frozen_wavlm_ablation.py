@@ -331,7 +331,6 @@ def evaluate_checkpoint_on_val(
     ckpt = robust_load_checkpoint(checkpoint_path, map_location="cpu")
     config = ckpt["config"]
     paradigm = config["training"].get("paradigm", "block")
-    val_speakers = config["data"].get("val_speakers", [])
     isolate = bool(config["data"].get("isolate_split_speakers", True))
 
     eval_df = manifest_df.copy()
@@ -344,10 +343,7 @@ def evaluate_checkpoint_on_val(
             eval_df = eval_df[~eval_df["speaker_id"].isin(golden_spks)].copy()
 
     # Exact matching of train.py dataset split logic
-    if val_speakers in ("batch", "batch_split", ["batch"], ["batch_split"]) or (isinstance(val_speakers, list) and "batch2" in val_speakers):
-        train_df, val_df, test_df = splits_mod.make_batch_split(eval_df, isolate=isolate)
-    else:
-        train_df, val_df = splits_mod.make_speaker_split(eval_df, val_speakers, isolate=isolate)
+    train_df, val_df, test_df = splits_mod.make_batch_split(eval_df, isolate=isolate)
 
     if is_smoketest:
         seed = config["training"].get("seed", 42)
@@ -358,7 +354,7 @@ def evaluate_checkpoint_on_val(
         val_df = pd.concat([pos.sample(n=n_pos, random_state=seed), neg.sample(n=n_neg, random_state=seed)]).sample(frac=1.0, random_state=seed).reset_index(drop=True)
         print(f"[Smoketest Eval] Sliced validation set to {len(val_df)} segments for rapid sanity check.")
 
-    print(f"[Eval] Evaluating on Validation split: {len(val_df)} segments (Split Mode: {val_speakers}, Paradigm: {paradigm}).")
+    print(f"[Eval] Evaluating on Validation split: {len(val_df)} segments (Split Mode: batch_split, Paradigm: {paradigm}).")
 
     lowpass_cfg = config.get("preprocessing", {}).get("lowpass", {})
     if paradigm == "block":
@@ -380,11 +376,11 @@ def evaluate_checkpoint_on_val(
     else:
         val_ds = dataset_mod.CreakyVowelDataset(
             val_df,
-            context_padding_ms=config["data"].get("context_padding_ms", 30),
+            context_padding_ms=config["training"]["segment"].get("context_padding_ms", 30),
             lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
-        batch_size = int(config["training"].get("batch_size", 32))
+        batch_size = int(config["training"]["segment"].get("batch_size", 32))
 
     val_loader = DataLoader(
         val_ds,
@@ -619,7 +615,7 @@ def save_intermediate_summaries(summary_results: List[Dict[str, Any]], base_out_
         ranks[k] = (unique_vals[0] if len(unique_vals) > 0 else -1.0, unique_vals[1] if len(unique_vals) > 1 else -1.0)
 
     paradigm = base_cfg.get("training", {}).get("paradigm", "block")
-    val_spk = base_cfg.get("data", {}).get("val_speakers", "unspecified")
+    val_spk = "batch_split"
 
     summary_md_path = base_out_dir / "ablation_summary.md"
     tmp_md = summary_md_path.with_suffix(".md.tmp")
@@ -716,6 +712,10 @@ def resolve_best_checkpoint(run_ckpt_dir: Path) -> Path | None:
                 return 0.0
         candidates.sort(key=extract_prauc, reverse=True)
         return candidates[0]
+
+    latest_single = run_ckpt_dir / "latest.pt"
+    if latest_single.exists():
+        return latest_single
 
     latest_candidates = list(run_ckpt_dir.glob("latest_*.pt"))
     if latest_candidates:
@@ -873,9 +873,7 @@ def main():
                     if args.grad_accum is not None:
                         overrides.append(f"training.gradient_accumulation_steps={grad_accum}")
                     if args.batch_size is not None:
-                        if paradigm == "block":
-                            overrides.append(f"training.block.batch_size={batch_size}")
-                        overrides.append(f"training.batch_size={batch_size}")
+                        overrides.append(f"training.{paradigm}.batch_size={batch_size}")
                     if args.paradigm is not None:
                         overrides.append(f"training.paradigm={paradigm}")
 

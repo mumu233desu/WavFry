@@ -158,16 +158,8 @@ def prepare_dataloader(
 ) -> tuple[DataLoader, str]:
     df = pd.read_csv(manifest_path, dtype={"speaker_id": str, "phone": str, "file_key": str})
 
-    val_speakers = config.get("data", {}).get("val_speakers", ["sampled"])
     isolate = bool(config.get("data", {}).get("isolate_split_speakers", True))
-
-    if val_speakers in ("batch", "batch_split", ["batch"], ["batch_split"]) or (
-        isinstance(val_speakers, list) and "batch2" in val_speakers
-    ):
-        train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate)
-    else:
-        train_df, val_df = splits_mod.make_speaker_split(df, val_speakers, isolate=isolate)
-        test_df = df.iloc[0:0].copy()
+    train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate)
 
     if split_target == "val":
         eval_df = val_df
@@ -204,7 +196,7 @@ def prepare_dataloader(
     else:
         ds = dataset_mod.CreakyVowelDataset(
             eval_df,
-            context_padding_ms=config.get("data", {}).get("context_padding_ms", 30),
+            context_padding_ms=config.get("training", {}).get("segment", {}).get("context_padding_ms", 30),
             lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn

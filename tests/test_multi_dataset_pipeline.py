@@ -101,6 +101,104 @@ def test_manifest_capev_and_generic_csv_adapters(tmp_path):
     assert np.isnan(records[0]["label_creaky"])
 
 
+def test_manifest_breathy_cache_adapter(tmp_path):
+    import json, hashlib
+    # Mock audio files
+    audio_dir = tmp_path / "breathy_audio"
+    spk1_dir = audio_dir / "spk1"
+    spk1_dir.mkdir(parents=True)
+    (spk1_dir / "aud1.wav").write_bytes(b"RIFF" + b"\x00" * 100)
+    (spk1_dir / "aud2.wav").write_bytes(b"RIFF" + b"\x00" * 100)
+
+    # Mock _breathy_cache
+    cache_dir = audio_dir / "_breathy_cache"
+    shard_dir = cache_dir / "manual_breathy_annotations.json.d"
+    shard_dir.mkdir(parents=True)
+
+    manifest_payload = {
+        "version": 1,
+        "schema": "direct_breathy_annotation",
+        "storage_mode": "sharded_json_v2",
+        "updated_unix_time": 123456.0,
+    }
+    (cache_dir / "manual_breathy_annotations.json").write_text(json.dumps(manifest_payload), encoding="utf-8")
+
+    # Shard 1: aud1 has breathy
+    d1 = hashlib.sha256(b"aud1").hexdigest()
+    s1_payload = {
+        "file_key": "aud1",
+        "speaker_id": "spk1",
+        "annotations": {"0.1000|0.3000|a": "breathy"},
+    }
+    (shard_dir / f"{d1}.json").write_text(json.dumps(s1_payload), encoding="utf-8")
+
+    # Shard 2: aud2 has non_breathy and creaky
+    d2 = hashlib.sha256(b"aud2").hexdigest()
+    s2_payload = {
+        "file_key": "aud2",
+        "speaker_id": "spk1",
+        "annotations": {
+            "0.2000|0.4000|i": "non_breathy",
+            "0.5000|0.7000|u": "creaky",
+        },
+    }
+    (shard_dir / f"{d2}.json").write_text(json.dumps(s2_payload), encoding="utf-8")
+
+    # Test Case 1: Dual task (Mazatec style: creaky=True, breathy=True)
+    ds_cfg_dual = {
+        "dataset_id": "mazatec_mock",
+        "domain": "phonetic_controlled",
+        "enabled": True,
+        "annotation_adapter": "breathy_cache",
+        "split_strategy": "all_train",
+        "label_schema": {"creaky": True, "breathy": True},
+        "adapter_params": {
+            "audio_dir": str(audio_dir),
+            "cache_dir": str(cache_dir),
+            "language": "maj",
+        },
+    }
+    df_dual = build_manifest_multi({"datasets": [ds_cfg_dual]})
+    assert len(df_dual) == 3
+    for col in MANIFEST_COLUMNS:
+        assert col in df_dual.columns
+
+    # Check labels
+    row_aud1 = df_dual[df_dual["file_key"] == "aud1"].iloc[0]
+    assert row_aud1["label_breathy"] == 1.0
+    assert row_aud1["label_creaky"] == 0.0
+
+    row_aud2_modal = df_dual[(df_dual["file_key"] == "aud2") & (df_dual["phone"] == "i")].iloc[0]
+    assert row_aud2_modal["label_breathy"] == 0.0
+    assert row_aud2_modal["label_creaky"] == 0.0
+
+    row_aud2_creaky = df_dual[(df_dual["file_key"] == "aud2") & (df_dual["phone"] == "u")].iloc[0]
+    assert row_aud2_creaky["label_breathy"] == 0.0
+    assert row_aud2_creaky["label_creaky"] == 1.0
+
+    # Test Case 2: Breathy-only (Gujarati style: creaky=False, breathy=True)
+    ds_cfg_breathy_only = {
+        "dataset_id": "gujarati_mock",
+        "domain": "phonetic_controlled",
+        "enabled": True,
+        "annotation_adapter": "breathy_cache",
+        "split_strategy": "all_train",
+        "label_schema": {"creaky": False, "breathy": True},
+        "adapter_params": {
+            "audio_dir": str(audio_dir),
+            "cache_dir": str(cache_dir),
+            "language": "guj",
+        },
+    }
+    df_single = build_manifest_multi({"datasets": [ds_cfg_breathy_only]})
+    # In breathy-only schema, all creaky columns must be strictly NaN
+    assert df_single["label_creaky"].isna().all()
+    # But breathy labels are properly 1.0 or 0.0
+    assert (df_single["label_breathy"] == 1.0).sum() == 1
+    assert (df_single["label_breathy"] == 0.0).sum() == 2
+
+
+
 # =====================================================================
 # 2. Splits & Multi-Dataset Isolation Tests
 # =====================================================================

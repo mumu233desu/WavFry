@@ -30,12 +30,9 @@ experiment:
     weight_decay: 0.01
 
 data:
-  manifest_path: manifests/segments_all.csv
-  context_padding_ms: 30
-  min_duration_ms: 30
+  manifest_path: manifests/segments_multi.csv
   num_workers: auto
   pin_memory: true
-  val_speakers: [U1089]
 
 model:
   backbone: microsoft/wavlm-base-plus
@@ -47,7 +44,6 @@ model:
 
 training:
   epochs: 20
-  batch_size: 16
   gradient_accumulation_steps: 2
   backbone_lr: 1.0e-5
   head_lr: 1.0e-4
@@ -61,6 +57,9 @@ training:
   quiet: true              # Silence per-batch tqdm spam in non-interactive environment
   seed: 42
   paradigm: segment
+  segment:
+    batch_size: 16
+    context_padding_ms: 30
   pooling_mode: mean
 
 tensorboard:

@@ -39,3 +39,8 @@ torchaudio = { index = "pytorch-cu124" }
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider --basetemp=R:/pytest_temp"

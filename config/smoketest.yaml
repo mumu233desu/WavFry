@@ -3,36 +3,10 @@
 
 data:
   annotated_speakers: [U0046, U1001, U2013, U1089, U2002, U2004, U0055]
-  include_languages: [en]
-  training_phone_types: [vowel, voiceless_obs, silence, sonorant]
-  audio_dirs:
-    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
-    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
-  textgrid_dirs:
-    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/02_en_mfa_aligned
-    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/12_zh_mfa_aligned
-  phone_tier_name: phones
-  creaky_tier_name: creaky
-  context_padding_ms: 50
-  min_duration_ms: 40
-  val_speakers: [sampled]
+  isolate_split_speakers: true
   audio_formats: [wav, flac]
   num_workers: 0
   pin_memory: false
-  sampler:
-    enabled: true
-    anchor_speakers_per_batch: 2
-  continuous_non_creaky_sampling:
-    enabled: true
-    extra_sample_ratio: 0.08
-    min_duration_ms: 150
-    target_duration_ms: 300
-    max_duration_ms: 350  # 与正式配置一致，降低长度 shortcut 风险
-    min_intervals: 1
-    max_intervals: 4
-    max_sp_duration_ms: 200
-    max_sp_ratio: 0.35
-    allow_sp_only: false
 
 model:
   backbone: microsoft/wavlm-base-plus
@@ -44,7 +18,6 @@ model:
 training:
   optimizer: adamw_fp32
   epochs: 1
-  batch_size: 32
   gradient_accumulation_steps: 1
   backbone_lr: 1.0e-5
   head_lr: 1.0e-4
@@ -63,19 +36,38 @@ training:
     use_cosine_restart: false
     use_positional_encoding: true
     pos_embed_dim: 32
+  # ── 训练范式主开关 ──────────────────────────────────────
   paradigm: segment
+
+  # ── Segment 范式专属参数 ──────────────────────────────
+  segment:
+    batch_size: 32
+    context_padding_ms: 50
+    continuous_non_creaky_sampling:
+      enabled: true
+      extra_sample_ratio: 0.08
+      min_duration_ms: 150
+      target_duration_ms: 300
+      max_duration_ms: 350
+      min_intervals: 1
+      max_intervals: 4
+      max_sp_duration_ms: 200
+      max_sp_ratio: 0.35
+      allow_sp_only: false
+
+  # ── Block 范式专属参数 ────────────────────────────────
   block:
+    batch_size: 2
     duration_ms: 2000
     hop_ms: 1000
-    batch_size: 2
     max_intervals: 8
     boundary_trim_frames: 0
-  frame_head:
-    enabled: false
-    loss_weight: 0.1
-    mil_mode: lse
-    temperature: 1.0
-    topk_ratio: 0.2
+    frame_head:
+      enabled: false
+      loss_weight: 0.1
+      mil_mode: lse
+      temperature: 1.0
+      topk_ratio: 0.2
   pooling_mode: mean_attn
   topk_ratio: 0.2
   topk_min_frames: 3

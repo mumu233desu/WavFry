@@ -3,24 +3,11 @@
 # ── 数据 ──────────────────────────────────────────────
 data:
   annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
-  audio_dirs:
-    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
-    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/11_zh_dereverb
-  textgrid_dirs:
-    en: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/02_en_mfa_aligned
-    zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/12_zh_hfa_aligned
-  phone_tier_name: phones
-  creaky_tier_name: creaky
-  context_padding_ms: 30
-  min_duration_ms: 30
-  # Set to a list of speaker IDs for fixed validation, or 'loocv' for Leave-One-Speaker-Out
-  val_speakers: loocv
+  isolate_split_speakers: true
   audio_formats: [wav, flac]
-  # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
-  # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
   num_workers: auto
-  pin_memory: true                   # GPU 训练时加速 Host→Device 传输
-  prefetch_factor: 2                 # num_workers>0 时生效
+  pin_memory: true
+  prefetch_factor: 2
 
 # ── 模型 ──────────────────────────────────────────────
 model:
@@ -35,7 +22,6 @@ model:
 # ── 训练 ──────────────────────────────────────────────
 training:
   epochs: 20
-  batch_size: 64
   gradient_accumulation_steps: 1     # 有效 batch = batch_size × accumulation
                                      # 显存不足时设 2/4，等效扩大 batch
   backbone_lr: 1.0e-5                # 微调层 LR（远小于 head）
@@ -54,6 +40,10 @@ training:
   # ── 学习率调度 ──────────────────────────────────────
   lr_schedule: cosine       # cosine（推荐）| linear | none（仅预热，保持当前行为）
   min_lr_ratio: 0.05        # 余弦退火终点 = base_lr × min_lr_ratio，防止衰减到 0
+  paradigm: segment
+  segment:
+    batch_size: 64
+    context_padding_ms: 30
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: mean_attn    # mean | mean_topk (L2-proxy) | mean_attn (learnable)
   topk_ratio: 0.2           # Top-K 取帧比例

@@ -21,8 +21,7 @@ def test_frozen_backbone_parameter_gradients():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": False},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
 
@@ -96,8 +95,7 @@ def test_frozen_backbone_stays_in_eval_mode():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
     model = WavFryClassifier(config)
@@ -131,8 +129,7 @@ def test_scalar_mix_parameter_dict_freezing():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": False},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
     model = WavFryClassifier(config)
@@ -159,8 +156,7 @@ def test_vectorized_block_forward_equivalence():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
     model = WavFryClassifier(config)
@@ -203,8 +199,7 @@ def test_backward_compatible_pool_batch():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": False},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
     model = WavFryClassifier(config)
@@ -235,8 +230,7 @@ def test_forward_block_amp_dtype_safety():
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
             "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
-            "block": {"boundary_trim_frames": 0},
-            "frame_head": {"enabled": False},
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
     model = WavFryClassifier(config)

@@ -499,7 +499,7 @@ def build_dataloader(
     lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     ds = CreakyVowelDataset(
         df,
-        context_padding_ms=config['data'].get('context_padding_ms', 30),
+        context_padding_ms=config.get('training', {}).get('segment', {}).get('context_padding_ms', 30),
         lowpass_cfg=lowpass_cfg,
     )
     workers = config['data'].get('num_workers', 0)
@@ -507,7 +507,7 @@ def build_dataloader(
         import platform
         workers = 0 if platform.system() == 'Windows' else 4
 
-    bs = batch_size if batch_size is not None else int(config['training'].get('batch_size', 16))
+    bs = batch_size if batch_size is not None else int(config.get('training', {}).get('segment', {}).get('batch_size', 16))
     return DataLoader(
         ds,
         batch_size=bs,
@@ -550,10 +550,8 @@ def train_model_variant(
     )
     trainer = Trainer(model, train_loader, heldout_loader, variant_cfg, device)
 
-    # Automatically resume from latest fold checkpoint if present
-    val_speakers = variant_cfg['data']['val_speakers']
-    val_str = "_".join(val_speakers) if isinstance(val_speakers, list) else str(val_speakers)
-    latest_path = variant_ckpt_dir / f"latest_{val_str}.pt"
+    # Automatically resume from latest checkpoint if present
+    latest_path = variant_ckpt_dir / "latest.pt"
     start_epoch = 1
     if latest_path.exists():
         try:

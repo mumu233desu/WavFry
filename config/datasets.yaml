@@ -24,7 +24,6 @@ datasets:
         zh: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/12_zh_hfa_aligned
       phone_tier_name: phones
       creaky_tier_name: creaky
-      context_padding_ms: 30
       min_duration_ms: 30
       include_languages: [en]
       training_phone_types: [vowel, voiceless_obs, silence, sonorant]
@@ -102,6 +101,111 @@ datasets:
       breathy: true
 
     split_strategy: batch_split   # CSV 中有 batch_split 列
+
+  # ── UCLA Mazatec（马萨特克语：breathy / modal / creaky 三向对立，由 _breathy_cache 提供） ──
+  - dataset_id: ucla_mazatec
+    enabled: true
+    display_name: "UCLA Mazatec (Breathy/Modal/Creaky)"
+    domain: phonetic_controlled
+
+    annotation_adapter: breathy_cache
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio
+      cache_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_TextGrids
+      language: maj
+      annotation_granularity: segment
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: true    # Mazatec 同时提供 creaky 标签
+      breathy: true   # 提供 breathy 标签
+
+    split_strategy: random   # 按说话人随机划分 80/10/10
+
+  # ── UCLA Gujarati（古吉拉特语：元音 modal vs breathy 最小对立，由 _breathy_cache 提供） ──
+  - dataset_id: ucla_gujarati
+    enabled: true
+    display_name: "UCLA Gujarati (Breathy/Modal)"
+    domain: phonetic_controlled
+
+    annotation_adapter: breathy_cache
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio
+      cache_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_TextGrids
+      language: guj
+      annotation_granularity: segment
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: false   # Gujarati 不提供 creaky 标签，此列填 NaN
+      breathy: true   # 提供 breathy 标签
+
+    split_strategy: random   # 按说话人随机划分 80/10/10
+
+  # ── UCLA Zapotec（萨波特克语：breathy / modal / creaky 明确三向对立，由 _breathy_cache 提供） ──
+  - dataset_id: ucla_zapotec
+    enabled: true
+    display_name: "UCLA Zapotec (Breathy/Modal/Creaky)"
+    domain: phonetic_controlled
+
+    annotation_adapter: breathy_cache
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio
+      cache_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_TextGrids
+      language: zap
+      annotation_granularity: segment
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: true    # 提供 creaky 标签
+      breathy: true   # 提供 breathy 标签
+
+    split_strategy: random   # 按说话人随机划分 80/10/10
+
+  # ── UCLA Hmong（白苗语：RPA 词尾 -g 高降气声调 vs -m 低平嘎裂调 vs 常态调，由 _breathy_cache 提供） ──
+  - dataset_id: ucla_hmong
+    enabled: true
+    display_name: "UCLA Hmong (Breathy/Modal/Creaky)"
+    domain: phonetic_controlled
+
+    annotation_adapter: breathy_cache
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio
+      cache_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_TextGrids
+      language: hmn
+      annotation_granularity: segment
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: true    # 提供 creaky 标签
+      breathy: true   # 提供 breathy 标签
+
+    split_strategy: random   # 按说话人随机划分 80/10/10
+
+  # ── UCLA Miao（黑苗语/黔东方言：33气声调 vs 11嘎裂调 vs 44/22/45常态调，由 _breathy_cache 提供） ──
+  - dataset_id: ucla_miao
+    enabled: true
+    display_name: "UCLA Black Miao (Breathy/Modal/Creaky)"
+    domain: phonetic_controlled
+
+    annotation_adapter: breathy_cache
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio
+      cache_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Textgrids
+      language: hea
+      annotation_granularity: segment
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: true    # 提供 creaky 标签
+      breathy: true   # 提供 breathy 标签
+
+    split_strategy: random   # 按说话人随机划分 80/10/10
 
 
 # ==============================================================================

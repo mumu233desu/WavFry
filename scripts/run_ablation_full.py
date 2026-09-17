@@ -83,7 +83,7 @@ def main():
             f"checkpoint.dir=R:/checkpoints/{name_dir}/no_sampler"
         ],
         "W/o Continuous Non-Creaky Sampling": [
-            "data.continuous_non_creaky_sampling.enabled=false",
+            "training.segment.continuous_non_creaky_sampling.enabled=false",
             f"tensorboard.log_dir=R:/runs/{name_dir}/no_continuous_non_creaky",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/no_continuous_non_creaky"
         ],
@@ -114,7 +114,7 @@ def main():
         ],
         "All Disabled": [
             "data.sampler.enabled=false",
-            "data.continuous_non_creaky_sampling.enabled=false",
+            "training.segment.continuous_non_creaky_sampling.enabled=false",
             "training.ablation.use_cosine_restart=false",
             "training.ablation.use_positional_encoding=false",
             f"tensorboard.log_dir=R:/runs/{name_dir}/baseline",
@@ -128,8 +128,7 @@ def main():
         spk_str = "[" + ",".join(active_speakers) + "]"
         common_overrides = [
             f"data.annotated_speakers={spk_str}",
-            "data.val_speakers=loocv",
-            "data.continuous_non_creaky_sampling.enabled=true",
+            "training.segment.continuous_non_creaky_sampling.enabled=true",
             "eval.early_stopping_patience=4"
         ]
         

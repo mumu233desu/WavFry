@@ -493,6 +493,9 @@ def adapter_generic_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
         file_key = str(row.get("file_key", audio_path.stem))
         start_s = float(row.get("start_s", 0.0))
         end_s = float(row.get("end_s", 0.0))
+        min_duration_ms = float(params.get("min_duration_ms", 0.0))
+        if min_duration_ms > 0 and (end_s - start_s) * 1000.0 < min_duration_ms:
+            continue
         speaker_id = str(row.get("speaker_id", "UNK"))
         lang = str(row.get("language", "en"))
         phone = str(row.get("phone", "VOWEL"))
@@ -526,6 +529,161 @@ def adapter_generic_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
+def _load_standalone_sharded_annotations(manifest_path: Path) -> dict[str, Any]:
+    shard_dir = manifest_path.with_name(manifest_path.name + ".d")
+    files: dict[str, Any] = {}
+    if shard_dir.exists():
+        for sf in shard_dir.glob("*.json"):
+            try:
+                data = json.loads(sf.read_text(encoding="utf-8"))
+                f_key = data.get("file_key") or sf.stem
+                files[f_key] = data
+            except Exception:
+                pass
+    elif manifest_path.exists():
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            files = data.get("files", {})
+        except Exception:
+            pass
+    return {"version": 1, "schema": "direct_breathy_annotation", "files": files}
+
+
+def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Load annotations from a standardized _breathy_cache directory.
+
+    Expected adapter_params:
+      audio_dir: Path to directory containing audio (.wav/.flac) files.
+      cache_dir: (Optional) Path to _breathy_cache directory. Defaults to <audio_dir>/_breathy_cache.
+      textgrid_dir: (Optional) Path to textgrid directory.
+      language: (Optional) Language code, e.g. "maj", "guj", "hmn".
+      annotation_granularity: (Optional) "segment" (default).
+    """
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "ucla_breathy")
+    domain = ds_cfg.get("domain", "phonetic_controlled")
+    granularity = params.get("annotation_granularity", "segment")
+    language = params.get("language", "und")
+    min_duration_ms = float(params.get("min_duration_ms", 30.0))
+
+    audio_dir = Path(params.get("audio_dir", ""))
+    cache_dir = Path(params.get("cache_dir", "")) if params.get("cache_dir") else (audio_dir / "_breathy_cache")
+    textgrid_dir = Path(params.get("textgrid_dir", "")) if params.get("textgrid_dir") else None
+
+    manifest_file = cache_dir / "manual_breathy_annotations.json"
+    if not manifest_file.exists() and not (manifest_file.with_name(manifest_file.name + ".d")).exists():
+        print(f"[manifest] [{dataset_id}] Notice: Breathy cache manifest not found at {manifest_file}. Returning empty.")
+        return []
+
+    # Load annotations via load_annotations (supports sharded .d and monolith)
+    if _HAS_CREAKY_TOOLS and load_annotations is not None:
+        cache_data = load_annotations(manifest_file)
+    else:
+        cache_data = _load_standalone_sharded_annotations(manifest_file)
+
+    files = cache_data.get("files", {})
+    if not isinstance(files, dict) or not files:
+        print(f"[manifest] [{dataset_id}] Notice: No files in breathy cache {manifest_file}.")
+        return []
+
+    # Map audio files
+    audio_files: dict[str, Path] = {}
+    if audio_dir.exists():
+        for ext in ("*.wav", "*.flac"):
+            for p in audio_dir.rglob(ext):
+                if "_breathy_cache" in p.parts or "_creaky_cache" in p.parts:
+                    continue
+                audio_files[p.stem] = p
+
+    # Map TextGrid files if textgrid_dir exists
+    tg_files: dict[str, Path] = {}
+    if textgrid_dir and textgrid_dir.exists():
+        for p in textgrid_dir.rglob("*.TextGrid"):
+            tg_files[p.stem] = p
+
+    label_schema = ds_cfg.get("label_schema", {})
+    has_breathy_schema = bool(label_schema.get("breathy", True))
+    has_creaky_schema = bool(label_schema.get("creaky", False))
+
+    records: list[dict[str, Any]] = []
+
+    for file_key, entry in files.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
+            continue
+
+        audio_path = audio_files.get(file_key)
+        if audio_path is None:
+            continue
+        tg_path = tg_files.get(file_key, "")
+
+        speaker_id = str(entry.get("speaker_id") or audio_path.parent.name)
+
+        for raw_interval_id, state in entry["annotations"].items():
+            parts = str(raw_interval_id).split("|")
+            if len(parts) != 3:
+                continue
+            try:
+                start_s = float(parts[0])
+                end_s = float(parts[1])
+            except (TypeError, ValueError):
+                continue
+            phone = parts[2]
+            if (end_s - start_s) * 1000.0 < min_duration_ms:
+                continue
+
+            # Determine label_breathy
+            if not has_breathy_schema:
+                l_breathy = float("nan")
+            elif state == "breathy":
+                l_breathy = 1.0
+            elif state in ("non_breathy", "modal", "creaky"):
+                l_breathy = 0.0
+            else:  # uncertain or unknown
+                l_breathy = float("nan")
+
+            # Determine label_creaky
+            if not has_creaky_schema:
+                l_creaky = float("nan")
+            elif state == "creaky":
+                l_creaky = 1.0
+            elif state in ("non_breathy", "modal", "breathy"):
+                l_creaky = 0.0
+            else:
+                l_creaky = float("nan")
+
+            # Skip intervals where neither task has a valid label
+            if math.isnan(l_breathy) and math.isnan(l_creaky):
+                continue
+
+            label_val = l_breathy if not math.isnan(l_breathy) else l_creaky
+
+            records.append({
+                "dataset_id": dataset_id,
+                "domain": domain,
+                "file_key": file_key,
+                "audio_path": str(audio_path),
+                "tg_path": str(tg_path) if tg_path else "",
+                "start_s": start_s,
+                "end_s": end_s,
+                "speaker_id": speaker_id,
+                "language": language,
+                "phone": phone,
+                "phone_type": "vowel",
+                "annotation_granularity": granularity,
+                "label_creaky": l_creaky,
+                "label_breathy": l_breathy,
+                "label": label_val,
+                "batch_split": "unassigned",
+                "annotation_type": "phonological_minimal_pair",
+                "batch_id": float("nan"),
+                "batch_name": "",
+                "is_golden": True,
+            })
+
+    print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from breathy cache ({cache_dir}).")
+    return records
+
+
 # ── 适配器注册表 ─────────────────────────────────────────────────────────────
 
 ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
@@ -533,6 +691,7 @@ ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "grbas_csv": adapter_grbas_csv,
     "capev_csv": adapter_capev_csv,
     "generic_csv": adapter_generic_csv,
+    "breathy_cache": adapter_breathy_cache,
 }
 
 
@@ -660,7 +819,6 @@ def _annotation_records(
             "textgrid_dirs": config.get("data", {}).get("textgrid_dirs", {}),
             "phone_tier_name": config.get("data", {}).get("phone_tier_name", "phones"),
             "creaky_tier_name": config.get("data", {}).get("creaky_tier_name", "creaky"),
-            "context_padding_ms": config.get("data", {}).get("context_padding_ms", 30),
             "min_duration_ms": config.get("data", {}).get("min_duration_ms", 30.0),
             "include_languages": list(include_languages),
             "training_phone_types": list(training_phone_types),
