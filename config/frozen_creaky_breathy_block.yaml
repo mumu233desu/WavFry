@@ -30,7 +30,7 @@ training:
   quiet: true                        # 是否静音模式（隐藏 tqdm 进度条，仅输出 epoch 汇总）
   optimizer: adamw_fp32              # 全冻结下仅训练分类头和标量权重，原生 fp32 最稳健无额外依赖
   epochs: 30
-  gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation
+  gradient_accumulation_steps: 1     # 有效 batch = batch_size × accumulation
   backbone_lr: 0.0                   # 全冻结骨干无需更新
   head_lr: 1.0e-4                    # 分类头 + scalar mix LR
   warmup_steps: 200
@@ -72,7 +72,7 @@ training:
 
   # ── Block 范式专属参数 ────────────────────────────────
   block:
-    batch_size: 16
+    batch_size: 64
     duration_ms: 2000            # 连续音频块窗口长度
     hop_ms: 1000                 # 音频块滑动步长
     max_intervals: 8             # 单块内最多标注区间槽位

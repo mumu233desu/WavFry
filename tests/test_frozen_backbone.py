@@ -308,3 +308,142 @@ def test_fast_save_history_csv_dictwriter():
     shutil.rmtree(test_dir, ignore_errors=True)
 
 
+def test_multitask_vectorized_scalar_mix_and_inv_freq():
+    """Verify that multi-task vectorized GEMM scalar mix and inv_freq buffer work correctly with gradients."""
+    config = {
+        "model": {
+            "backbone": "hf-internal-testing/tiny-random-wavlm",
+            "fine_tune_layers": "none",
+            "use_scalar_mix": True,
+            "dropout": 0.1,
+            "head_hidden_dim": 64,
+            "use_positional_encoding": True,
+            "pos_embed_dim": 32,
+            "tasks": ["creaky", "breathy"],
+        },
+        "training": {
+            "pooling_mode": "attn",
+            "topk_ratio": 0.2,
+            "topk_min_frames": 3,
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": True, "loss_weight": 0.1, "mil_mode": "lse"}},
+        },
+    }
+    model = WavFryClassifier(config)
+    assert hasattr(model, "inv_freq")
+    assert model.inv_freq.numel() == 16  # 32 // 2
+
+    # Forward in block mode
+    x = torch.randn(2, 16000)
+    lengths = torch.tensor([16000, 16000])
+    bounds = torch.tensor([
+        [[0, 4000], [4000, 8000]],
+        [[1000, 5000], [5000, 9000]],
+    ])
+    valid = torch.tensor([[True, True], [True, True]])
+    out = model(x, lengths=lengths, interval_bounds=bounds, interval_valid=valid)
+
+    assert "creaky" in out["interval_logits"]
+    assert "breathy" in out["interval_logits"]
+    assert "frame_logits" in out
+
+    # Check backprop updates scalar mix and heads
+    loss = out["interval_logits"]["creaky"].sum() + out["interval_logits"]["breathy"].sum()
+    loss.backward()
+
+    assert model.scalar_mix_weights["creaky"].grad is not None
+    assert model.scalar_mix_weights["breathy"].grad is not None
+    assert any(p.grad is not None for p in model.heads["creaky"].parameters())
+    assert any(p.grad is not None for p in model.heads["breathy"].parameters())
+    # Backbone must have zero grad
+    for p in model.wavlm.parameters():
+        assert p.grad is None
+
+
+def test_audio_info_cache_dict_exists():
+    """Verify that both datasets have the _AUDIO_INFO_CACHE class dictionary."""
+    from wavfry.data.paradigm_block import ContinuousAudioBlockDataset
+    from wavfry.data.dataset import CreakyVowelDataset
+
+    assert isinstance(ContinuousAudioBlockDataset._AUDIO_INFO_CACHE, dict)
+    assert isinstance(CreakyVowelDataset._AUDIO_INFO_CACHE, dict)
+
+
+def test_trainer_trainable_params_and_forward_batch_guard():
+    """Verify trainer trainable_params filtering and host sync guard in block mode."""
+    from wavfry.train.trainer import Trainer
+
+    config = {
+        "model": {
+            "backbone": "hf-internal-testing/tiny-random-wavlm",
+            "fine_tune_layers": "none",
+            "use_scalar_mix": True,
+            "dropout": 0.1,
+            "head_hidden_dim": 64,
+            "use_positional_encoding": False,
+            "tasks": ["creaky", "breathy"],
+        },
+        "training": {
+            "paradigm": "block",
+            "epochs": 1,
+            "optimizer": "adamw_fp32",
+            "backbone_lr": 0.0,
+            "head_lr": 1e-4,
+            "loss": "weighted_bce",
+            "gradient_accumulation_steps": 1,
+            "grad_clip": 1.0,
+            "warmup_steps": 10,
+            "lr_schedule": "cosine",
+            "min_lr_ratio": 0.05,
+            "mixed_precision": "no",
+            "pooling_mode": "mean",
+            "topk_ratio": 0.2,
+            "topk_min_frames": 3,
+            "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
+        },
+        "eval": {"primary_metric": "auc_pr"},
+        "checkpoint": {"dir": "scratch/test_ckpt"},
+        "tensorboard": {"log_dir": "scratch/test_tb"},
+    }
+    model = WavFryClassifier(config)
+    dummy_block = type("DummyBlock", (), {
+        "blocks": [{"intervals": [{"label_creaky": 1.0, "label_breathy": 0.0}]}],
+    })()
+    dummy_loader = type("DummyLoader", (), {"dataset": dummy_block, "__len__": lambda s: 1, "__iter__": lambda s: iter([])})()
+
+    trainer = Trainer(
+        model=model,
+        train_loader=dummy_loader,
+        val_loader=dummy_loader,
+        config=config,
+        device=torch.device("cpu"),
+    )
+
+    # Check trainable_params only has requires_grad == True
+    assert len(trainer.trainable_params) > 0
+    assert all(p.requires_grad for p in trainer.trainable_params)
+    assert len(trainer.trainable_params) < sum(1 for _ in model.parameters())
+
+    # Check _forward_batch guards host sync
+    waveforms = torch.randn(2, 16000)
+    bounds = torch.tensor([[[0, 4000], [4000, 8000]], [[0, 4000], [0, 0]]])
+    labels = torch.tensor([[[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]])
+    valid = torch.tensor([[True, True], [True, False]])
+    lengths = torch.tensor([16000, 8000])
+    speakers = ["spk1", "spk2"]
+    block_ids = ["b1", "b2"]
+    interval_ids = [["i1", "i2"], ["i3", "i4"]]
+    batch = (waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids)
+
+    # In training mode, flat_speakers and flat_ids must be None (no CPU sync)
+    loss, l_dict, t_dict, spks, ids, _ = trainer._forward_batch(batch, epoch=1, training=True)
+    assert spks is None
+    assert ids is None
+
+    # In validation mode, flat_speakers and flat_ids must be populated
+    loss, l_dict, t_dict, spks, ids, _ = trainer._forward_batch(batch, epoch=1, training=False)
+    assert spks is not None
+    assert ids is not None
+    assert len(spks) == 3  # 2 in b1, 1 in b2
+
+
+

@@ -9,6 +9,8 @@ from .continuous_non_creaky_sampling import ContinuousNonCreakyWindowGenerator
 
 
 class CreakyVowelDataset(Dataset):
+    _AUDIO_INFO_CACHE: dict[str, tuple[int, int]] = {}
+
     def __init__(
         self,
         df,
@@ -70,10 +72,11 @@ class CreakyVowelDataset(Dataset):
         
         import time
         try:
-            # We need the original sample rate to know how many samples to skip
-            info = torchaudio.info(audio_path)
-            orig_sr = info.sample_rate
-            total_frames = info.num_frames
+            # Memoize audio metadata to avoid repeated stat/header syscalls
+            if audio_path not in self._AUDIO_INFO_CACHE:
+                info = torchaudio.info(audio_path)
+                self._AUDIO_INFO_CACHE[audio_path] = (info.sample_rate, info.num_frames)
+            orig_sr, total_frames = self._AUDIO_INFO_CACHE[audio_path]
             
             # Bound the end_s + padding
             end_with_padding = min(end_s + padding_s, total_frames / orig_sr)

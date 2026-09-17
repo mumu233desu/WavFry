@@ -48,6 +48,7 @@ class Trainer:
         
         # Optimizer with differential learning rate
         self.optimizer = self.create_optimizer()
+        self.trainable_params = [p for p in self.model.parameters() if p.requires_grad]
         
         # Scheduler
         self.scheduler = self.create_scheduler()
@@ -311,15 +312,17 @@ class Trainer:
             loss, logits_by_task, targets_by_task = self._compute_block_loss(
                 outputs, labels, effective_valid, training=training
             )
-            valid_cpu = effective_valid.detach().cpu().numpy()
-            flat_speakers = []
-            flat_ids = []
-            for b in range(valid_cpu.shape[0]):
-                for s in range(valid_cpu.shape[1]):
-                    if valid_cpu[b, s]:
-                        flat_speakers.append(speakers[b])
-                        flat_ids.append(interval_ids[b][s])
-            return loss, logits_by_task, targets_by_task, flat_speakers, flat_ids, None
+            if not training:
+                valid_cpu = effective_valid.detach().cpu().numpy()
+                flat_speakers = []
+                flat_ids = []
+                for b in range(valid_cpu.shape[0]):
+                    for s in range(valid_cpu.shape[1]):
+                        if valid_cpu[b, s]:
+                            flat_speakers.append(speakers[b])
+                            flat_ids.append(interval_ids[b][s])
+                return loss, logits_by_task, targets_by_task, flat_speakers, flat_ids, None
+            return loss, logits_by_task, targets_by_task, None, None, None
 
         # Segment mode
         waveforms, labels, lengths, speakers, meta = batch
@@ -393,12 +396,12 @@ class Trainer:
                 if self.scaler:
                     scale_before = self.scaler.get_scale()
                     self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
+                    torch.nn.utils.clip_grad_norm_(self.trainable_params, self.config['training']['grad_clip'])
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     skip_lr_sched = (self.scaler.get_scale() < scale_before)
                 else:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
+                    torch.nn.utils.clip_grad_norm_(self.trainable_params, self.config['training']['grad_clip'])
                     self.optimizer.step()
                     skip_lr_sched = False
 
@@ -409,8 +412,8 @@ class Trainer:
             total_loss += loss.item() * self.config['training']['gradient_accumulation_steps']
             for task in tasks:
                 if task in logits_dict:
-                    all_logits[task].append(logits_dict[task].detach().cpu())
-                    all_labels[task].append(labels_dict[task].detach().cpu())
+                    all_logits[task].append(logits_dict[task].detach())
+                    all_labels[task].append(labels_dict[task].detach())
 
             if not self.quiet:
                 pbar.set_postfix({'loss': loss.item()})
@@ -422,11 +425,11 @@ class Trainer:
             if self.scaler:
                 scale_before = self.scaler.get_scale()
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
+                torch.nn.utils.clip_grad_norm_(self.trainable_params, self.config['training']['grad_clip'])
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['grad_clip'])
+                torch.nn.utils.clip_grad_norm_(self.trainable_params, self.config['training']['grad_clip'])
                 self.optimizer.step()
             self.optimizer.zero_grad()
             self.scheduler.step()
@@ -435,8 +438,8 @@ class Trainer:
         metrics = {}
         for task in tasks:
             if all_logits[task]:
-                t_logits = torch.cat(all_logits[task])
-                t_labels = torch.cat(all_labels[task])
+                t_logits = torch.cat(all_logits[task]).cpu()
+                t_labels = torch.cat(all_labels[task]).cpu()
                 valid_m = ~torch.isnan(t_labels)
                 if valid_m.sum() > 0:
                     task_m = compute_metrics(t_logits[valid_m], t_labels[valid_m])

@@ -173,6 +173,8 @@ class BlockIndex:
 class ContinuousAudioBlockDataset(Dataset):
     """Load fixed blocks and return interval bounds relative to each block."""
 
+    _AUDIO_INFO_CACHE: dict[str, tuple[int, float]] = {}
+
     def __init__(
         self,
         df: pd.DataFrame,
@@ -222,14 +224,16 @@ class ContinuousAudioBlockDataset(Dataset):
 
     def __getitem__(self, idx: int):
         block = self.blocks[idx]
-        info = torchaudio.info(block["audio_path"])
-        orig_sr = info.sample_rate
-        total_duration = info.num_frames / orig_sr
+        audio_path = block["audio_path"]
+        if audio_path not in self._AUDIO_INFO_CACHE:
+            info = torchaudio.info(audio_path)
+            self._AUDIO_INFO_CACHE[audio_path] = (info.sample_rate, float(info.num_frames) / float(info.sample_rate))
+        orig_sr, total_duration = self._AUDIO_INFO_CACHE[audio_path]
         start_s = float(block["start_s"])
         end_s = min(float(block["end_s"]), total_duration)
         start_frame = max(0, int(round(start_s * orig_sr)))
         num_frames = max(1, int(round((end_s - start_s) * orig_sr)))
-        waveform, sr = torchaudio.load(block["audio_path"], frame_offset=start_frame, num_frames=num_frames)
+        waveform, sr = torchaudio.load(audio_path, frame_offset=start_frame, num_frames=num_frames)
         if waveform.shape[0] > 1:
             waveform = waveform.mean(dim=0, keepdim=True)
         if sr != self.target_sr:

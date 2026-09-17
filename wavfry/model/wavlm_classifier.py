@@ -79,6 +79,8 @@ class WavFryClassifier(nn.Module):
             if self.use_pos_encoding:
                 self.pos_scorer = nn.Linear(self.pos_dim, 1, bias=False)
                 nn.init.zeros_(self.pos_scorer.weight)
+                inv_freq = 1.0 / (10000.0 ** (torch.arange(0, self.pos_dim // 2, dtype=torch.float32) * 2.0 / self.pos_dim))
+                self.register_buffer("inv_freq", inv_freq, persistent=False)
 
         head_hidden = config["model"].get("head_hidden_dim", 256)
         dropout = config["model"].get("dropout", 0.1)
@@ -111,6 +113,8 @@ class WavFryClassifier(nn.Module):
         self.freeze_layers(config)
         if self.is_backbone_frozen:
             self.wavlm.eval()
+            if training_cfg.get("mixed_precision") == "bf16":
+                self.wavlm.to(torch.bfloat16)
         if training_cfg.get("gradient_checkpointing", False):
             self.wavlm.gradient_checkpointing_enable()
 
@@ -171,7 +175,9 @@ class WavFryClassifier(nn.Module):
 
         if getattr(self, "is_backbone_frozen", False):
             with torch.no_grad():
-                outputs = self.wavlm(x, attention_mask=attention_mask, output_hidden_states=True)
+                wavlm_dtype = next(self.wavlm.parameters()).dtype
+                x_in = x.to(wavlm_dtype) if x.dtype != wavlm_dtype else x
+                outputs = self.wavlm(x_in, attention_mask=attention_mask, output_hidden_states=True)
         else:
             outputs = self.wavlm(x, attention_mask=attention_mask, output_hidden_states=True)
 
@@ -182,16 +188,24 @@ class WavFryClassifier(nn.Module):
                 if getattr(self, "is_backbone_frozen", False)
                 else outputs.hidden_states
             )
+            task_weight_list = []
             for task in self.tasks:
                 if layer_mask is not None:
                     # Dynamic Softmax re-normalization for Leave-One-Layer-Out (LOLO) ablation
                     masked_logits = self.scalar_mix_weights[task].clone()
                     masked_logits[~layer_mask.to(masked_logits.device)] = -float("inf")
-                    weights = torch.softmax(masked_logits, dim=0)
+                    task_weight_list.append(torch.softmax(masked_logits, dim=0))
                 else:
-                    weights = torch.softmax(self.scalar_mix_weights[task], dim=0)
-                # Layer-by-layer weighted sum avoids allocating a massive [13, B, T, D] tensor
-                hidden_by_task[task] = sum(w * h for w, h in zip(weights, hidden_states))
+                    task_weight_list.append(torch.softmax(self.scalar_mix_weights[task], dim=0))
+            task_weights = torch.stack(task_weight_list, dim=0)  # [num_tasks, num_layers]
+
+            # Vectorized layer scalar mix via GEMM across all tasks
+            H = torch.stack(hidden_states, dim=0)
+            num_layers, b_sz, t_sz, d_sz = H.shape
+            flat_H = H.view(num_layers, -1)
+            mixed = (task_weights.to(flat_H.dtype) @ flat_H).view(len(self.tasks), b_sz, t_sz, d_sz)
+            for idx, task in enumerate(self.tasks):
+                hidden_by_task[task] = mixed[idx]
         else:
             last_hidden = (
                 outputs.last_hidden_state.detach()
@@ -200,6 +214,12 @@ class WavFryClassifier(nn.Module):
             )
             for task in self.tasks:
                 hidden_by_task[task] = last_hidden
+
+        if not torch.is_autocast_enabled():
+            head_dtype = next(self.heads.parameters()).dtype
+            for task in self.tasks:
+                if hidden_by_task[task].dtype != head_dtype:
+                    hidden_by_task[task] = hidden_by_task[task].to(head_dtype)
 
         first_seq = next(iter(hidden_by_task.values()))
         sample_lengths = lengths if lengths is not None else torch.full((batch_size,), max_len, device=x.device)
@@ -441,9 +461,11 @@ class WavFryClassifier(nn.Module):
             outputs[task] = self.heads[task](pooled).squeeze(-1)
         return outputs
 
-    @staticmethod
-    def _sinusoidal_pos_encoding(pos: torch.Tensor, d_model: int) -> torch.Tensor:
-        i = torch.arange(d_model // 2, device=pos.device, dtype=pos.dtype)
-        freq = 1.0 / (10000.0 ** (2.0 * i / d_model))
+    def _sinusoidal_pos_encoding(self, pos: torch.Tensor, d_model: int) -> torch.Tensor:
+        if hasattr(self, "inv_freq") and self.inv_freq is not None and self.inv_freq.numel() == d_model // 2:
+            freq = self.inv_freq.to(dtype=pos.dtype, device=pos.device)
+        else:
+            i = torch.arange(d_model // 2, device=pos.device, dtype=pos.dtype)
+            freq = 1.0 / (10000.0 ** (2.0 * i / d_model))
         angles = pos.unsqueeze(-1) * freq
         return torch.cat([angles.sin(), angles.cos()], dim=-1)
