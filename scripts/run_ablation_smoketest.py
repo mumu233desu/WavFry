@@ -66,7 +66,7 @@ def main():
             "checkpoint.dir=R:/checkpoints/smoketest_ablation/no_continuous_non_creaky"
         ],
         "W/o Positional Encoding (M3 Ablated)": [
-            "training.ablation.use_positional_encoding=false",
+            "model.use_positional_encoding=false",
             "tensorboard.log_dir=R:/runs/smoketest_ablation/no_pos",
             "checkpoint.dir=R:/checkpoints/smoketest_ablation/no_pos"
         ],
@@ -91,10 +91,9 @@ def main():
             "checkpoint.dir=R:/checkpoints/smoketest_ablation/topk_pooling"
         ],
         "All Disabled": [
-            "data.sampler.enabled=false",
             "training.segment.continuous_non_creaky_sampling.enabled=false",
-            "training.ablation.use_cosine_restart=false",
-            "training.ablation.use_positional_encoding=false",
+            "training.lr_schedule=cosine",
+            "model.use_positional_encoding=false",
             "tensorboard.log_dir=R:/runs/smoketest_ablation/baseline",
             "checkpoint.dir=R:/checkpoints/smoketest_ablation/baseline"
         ]

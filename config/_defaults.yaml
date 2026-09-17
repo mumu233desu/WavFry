@@ -2,9 +2,7 @@
 
 # ── 数据 ──────────────────────────────────────────────
 data:
-  annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
   isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
-  audio_formats: [wav, flac]
   # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
   # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
   num_workers: auto
@@ -20,7 +18,9 @@ model:
   use_scalar_mix: true               # 所有层学习加权聚合
   dropout: 0.1
   head_hidden_dim: 256               # 分类头隐层（自动适配 backbone 输出维度）
-  tasks: [creaky]                    # 默认激活的任务头列表（多任务可配置如 [creaky, breathy]）
+  use_positional_encoding: true      # 是否在注意力池化前注入时间位置编码
+  pos_embed_dim: 32                  # 位置编码维度
+  tasks: [creaky]                    # 激活的任务头列表（多任务可配置如 [creaky, breathy]）
 
 # ── 训练 ──────────────────────────────────────────────
 training:
@@ -49,11 +49,6 @@ training:
   restart_aug_threshold: 0.11     # 触发重启的数据增强强度阈值（自动推算 epoch）
   restart_lr_ratio: 0.45          # 重启后 LR 恢复到峰值的比例（保守值 0.35~0.5）
   restart_warmup_steps: 100       # 重启后约 1 epoch 的平滑爬升
-  # ── 消融测试与消融开关 ──
-  ablation:
-    use_cosine_restart: false         # false = 退回到标准 cosine
-    use_positional_encoding: true    # false = 禁用位置编码
-    pos_embed_dim: 32                # 位置编码维度
   # ── 训练范式主开关 ──────────────────────────────────────
   paradigm: segment              # segment（单片段分类）| block（连续音频块分类）
 
@@ -92,10 +87,10 @@ training:
   topk_ratio: 0.2           # Top-K 取帧比例
   topk_min_frames: 3        # Top-K 最少取几帧
 
-  # ── 多任务训练头开关（必须显式设为 true 才计算对应 head 的损失并更新） ──
-  train_heads:
-    creaky: true            # 训练 creaky 检测头
-    breathy: false          # 训练 breathy 检测头（接入气声数据后开启）
+  # ── 多任务训练头开关（可选覆盖项；默认情况下 model.tasks 中的所有头均自动参与训练） ──
+  # train_heads:
+  #   creaky: true
+  #   breathy: false
 
 # ── 评估 ──────────────────────────────────────────────
 eval:
@@ -114,19 +109,7 @@ tensorboard:
 checkpoint:
   dir: R:/checkpoints/
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
-  keep_best_count: 1                 # 每个 speaker 只保留指标最好的 N 个 ckpt
-
-# ── 推理 ──────────────────────────────────────────────
-inference:
-  threshold: 0.5
-  output_confidence: true
-
-# ── 预处理（训练+验证+推理均应用）──────────────────────
-preprocessing:
-  lowpass:
-    enabled: false          # 总开关
-    cutoff_hz: 3000.0       # 截止频率（Hz）；等效于 6dB/oct @ 2kHz 的视觉效果
-    Q: 0.707                # Butterworth Q 值（0.707 = 最平坦通带）
+  keep_best_count: 1                 # 保留验证集指标最好的前 N 个 ckpt
 
 # ── 数据增强（训练专用，推理不使用）────────────────────
 augmentation:

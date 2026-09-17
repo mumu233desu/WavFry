@@ -5,9 +5,7 @@
 
 # ── 数据 ──────────────────────────────────────────────
 data:
-  annotated_speakers: [U1001, U0046, U2013, U1089, U2002, U2004, U1067, U0037]
   isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
-  audio_formats: [wav, flac]
   # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
   num_workers: auto
   pin_memory: true                   # GPU 训练时加速 Host→Device 传输
@@ -20,6 +18,8 @@ model:
   use_scalar_mix: true              # 保持 13 层标量加权参数可学习 (评估各层贡献)
   dropout: 0.1
   head_hidden_dim: 256              # 分类头隐层维度
+  use_positional_encoding: true     # 是否在注意力池化前注入时间位置编码
+  pos_embed_dim: 32                 # 位置编码维度
   tasks: [creaky]                   # 激活任务头
 
 # ── 训练 ──────────────────────────────────────────────
@@ -48,11 +48,6 @@ training:
   restart_aug_threshold: 0.11     # 触发重启的数据增强强度阈值
   restart_lr_ratio: 0.45          # 重启后 LR 恢复到峰值的比例
   restart_warmup_steps: 100       # 重启后平滑爬升 steps
-  # ── 消融测试与消融开关 ──
-  ablation:
-    use_cosine_restart: false
-    use_positional_encoding: true
-    pos_embed_dim: 32
   # ── 训练范式主开关 ──────────────────────────────────────
   paradigm: block                 # 2.0s 连续块滑动窗口范式
 
@@ -91,11 +86,6 @@ training:
   topk_ratio: 0.2
   topk_min_frames: 3
 
-  # ── 多任务训练头开关 ──
-  train_heads:
-    creaky: true
-    breathy: false
-
 # ── 评估 ──────────────────────────────────────────────
 eval:
   primary_metric: auc_pr        # auc_pr | f1 — 决定 early-stopping 和最优 ckpt 判断依据
@@ -114,18 +104,6 @@ checkpoint:
   dir: R:/checkpoints/csl_frozen_wavlm_base_plus
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
   keep_best_count: 1                 # 每个 speaker 只保留指标最好的 N 个 ckpt
-
-# ── 推理 ──────────────────────────────────────────────
-inference:
-  threshold: 0.5
-  output_confidence: true
-
-# ── 预处理 ───────────────────────────────────────────
-preprocessing:
-  lowpass:
-    enabled: false          # 总开关
-    cutoff_hz: 3000.0       # 截止频率（Hz）
-    Q: 0.707
 
 # ── 数据增强 ───────────────────────────────────────────
 augmentation:

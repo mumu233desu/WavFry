@@ -69,7 +69,7 @@ def main():
             f"checkpoint.dir=R:/checkpoints/{name_dir}/no_sampler"
         ],
         "W/o Positional Encoding (M3 Ablated)": [
-            "training.ablation.use_positional_encoding=false",
+            "model.use_positional_encoding=false",
             f"tensorboard.log_dir=R:/runs/{name_dir}/no_pos",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/no_pos"
         ],
@@ -94,9 +94,8 @@ def main():
             f"checkpoint.dir=R:/checkpoints/{name_dir}/topk_pooling"
         ],
         "All Disabled": [
-            "data.sampler.enabled=false",
-            "training.ablation.use_cosine_restart=false",
-            "training.ablation.use_positional_encoding=false",
+            "training.lr_schedule=cosine",
+            "model.use_positional_encoding=false",
             f"tensorboard.log_dir=R:/runs/{name_dir}/baseline",
             f"checkpoint.dir=R:/checkpoints/{name_dir}/baseline"
         ]

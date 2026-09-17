@@ -14,13 +14,13 @@ def test_frozen_backbone_parameter_gradients():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": False,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": False},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
@@ -88,13 +88,14 @@ def test_frozen_backbone_stays_in_eval_mode():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": True,
+            "pos_embed_dim": 32,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
@@ -122,13 +123,13 @@ def test_scalar_mix_parameter_dict_freezing():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": False,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": False},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
@@ -149,13 +150,14 @@ def test_vectorized_block_forward_equivalence():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": True,
+            "pos_embed_dim": 32,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
@@ -192,13 +194,13 @@ def test_backward_compatible_pool_batch():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": False,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": False},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }
@@ -223,13 +225,14 @@ def test_forward_block_amp_dtype_safety():
             "use_scalar_mix": True,
             "dropout": 0.1,
             "head_hidden_dim": 64,
+            "use_positional_encoding": True,
+            "pos_embed_dim": 32,
             "tasks": ["creaky"],
         },
         "training": {
             "pooling_mode": "attn",
             "topk_ratio": 0.2,
             "topk_min_frames": 3,
-            "ablation": {"use_positional_encoding": True, "pos_embed_dim": 32},
             "block": {"boundary_trim_frames": 0, "frame_head": {"enabled": False}},
         },
     }

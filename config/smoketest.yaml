@@ -2,9 +2,7 @@
 # Inherits from _defaults.yaml (manually here for simplicity in the test)
 
 data:
-  annotated_speakers: [U0046, U1001, U2013, U1089, U2002, U2004, U0055]
   isolate_split_speakers: true
-  audio_formats: [wav, flac]
   num_workers: 0
   pin_memory: false
 
@@ -14,6 +12,8 @@ model:
   use_scalar_mix: true
   dropout: 0.1
   head_hidden_dim: 64
+  use_positional_encoding: true
+  pos_embed_dim: 32
 
 training:
   optimizer: adamw_fp32
@@ -32,10 +32,6 @@ training:
   seed: 42
   mixed_precision: no # Disable for smoketest safety
   gradient_checkpointing: false
-  ablation:
-    use_cosine_restart: false
-    use_positional_encoding: true
-    pos_embed_dim: 32
   # ── 训练范式主开关 ──────────────────────────────────────
   paradigm: segment
 

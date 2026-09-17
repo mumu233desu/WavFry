@@ -12,14 +12,12 @@ def make_dummy_config():
             "use_scalar_mix": True,
             "dropout": 0.0,
             "head_hidden_dim": 64,
+            "use_positional_encoding": False,
             "tasks": ["creaky"],
         },
         "training": {
             "paradigm": "block",
             "pooling_mode": "attn",
-            "ablation": {
-                "use_positional_encoding": False,
-            },
             "block": {
                 "duration_ms": 2000,
                 "hop_ms": 1000,

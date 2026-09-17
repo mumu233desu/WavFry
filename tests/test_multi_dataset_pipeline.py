@@ -536,7 +536,7 @@ def test_collate_block_fn_empty_batch():
 
 
 def test_defaults_yaml_contains_tasks():
-    """Verify _defaults.yaml has model.tasks and training.train_heads declared."""
+    """Verify _defaults.yaml has model.tasks and positional encoding in model, and no dead keys."""
     import yaml
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
@@ -544,5 +544,65 @@ def test_defaults_yaml_contains_tasks():
         cfg = yaml.safe_load(f)
     assert "tasks" in cfg["model"]
     assert cfg["model"]["tasks"] == ["creaky"]
-    assert "train_heads" in cfg["training"]
-    assert cfg["training"]["train_heads"]["creaky"] is True
+    assert "use_positional_encoding" in cfg["model"]
+    assert "pos_embed_dim" in cfg["model"]
+
+    # Obsolete keys must be absent
+    assert "annotated_speakers" not in cfg["data"]
+    assert "audio_formats" not in cfg["data"]
+    assert "ablation" not in cfg["training"]
+    assert "inference" not in cfg
+    assert "preprocessing" not in cfg
+
+
+def test_multitask_heads_train_by_default_without_train_heads():
+    """Verify multi-task model trains all declared model.tasks by default without training.train_heads."""
+    config = {
+        "model": {"backbone": "dummy", "tasks": ["creaky", "breathy"], "hidden_dim": 32, "num_classes": 1},
+        "training": {"paradigm": "segment"}
+    }
+    dummy_wavlm = DummyWavLM(hidden_dim=32)
+    model = WavFryClassifier(config, wavlm_instance=dummy_wavlm)
+
+    trainer = Trainer.__new__(Trainer)
+    trainer.model = model
+    trainer.config = config
+    trainer.paradigm = "segment"
+    trainer.augmentor = None
+    trainer.device = torch.device("cpu")
+    trainer.loss_fn = nn.BCEWithLogitsLoss()
+    trainer.frame_cfg = {}
+
+    # 1. Test segment loss computation via _forward_batch
+    batch = (
+        torch.randn(2, 40),
+        torch.tensor([[1.0, 0.0], [0.0, 1.0]]),
+        torch.tensor([40, 30]),
+        ["spk1", "spk2"],
+        [{}, {}],
+    )
+    loss, logits_dict, targets_dict, _, _, _ = trainer._forward_batch(batch, epoch=0, training=True)
+    assert not torch.isnan(loss)
+    assert "creaky" in logits_dict and "breathy" in logits_dict
+    assert "creaky" in targets_dict and "breathy" in targets_dict
+    assert loss.item() > 0
+
+    # 2. Test block loss computation
+    outputs = {
+        "interval_logits": {
+            "creaky": torch.tensor([[0.5, -0.5], [0.2, -0.1]]),
+            "breathy": torch.tensor([[1.2, -0.8], [-0.5, 0.3]]),
+        }
+    }
+    labels = torch.tensor([
+        [[1.0, 0.0], [0.0, 1.0]],
+        [[1.0, 1.0], [0.0, 0.0]],
+    ])
+    slot_valid = torch.tensor([[True, True], [True, True]])
+
+    loss_block, block_logits, block_targets = trainer._compute_block_loss(outputs, labels, slot_valid, training=True)
+    assert not torch.isnan(loss_block)
+    assert "creaky" in block_logits and "breathy" in block_logits
+    assert "creaky" in block_targets and "breathy" in block_targets
+    assert loss_block.item() > 0
+

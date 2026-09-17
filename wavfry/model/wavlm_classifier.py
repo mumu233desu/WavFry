@@ -66,8 +66,9 @@ class WavFryClassifier(nn.Module):
 
         self.topk_ratio = float(training_cfg.get("topk_ratio", 0.2))
         self.topk_min_frames = int(training_cfg.get("topk_min_frames", 3))
-        self.use_pos_encoding = training_cfg.get("ablation", {}).get("use_positional_encoding", False)
-        self.pos_dim = int(training_cfg.get("ablation", {}).get("pos_embed_dim", 32))
+        model_cfg = config.get("model", {})
+        self.use_pos_encoding = bool(model_cfg.get("use_positional_encoding", False))
+        self.pos_dim = int(model_cfg.get("pos_embed_dim", 32))
 
         # Task-specific attention heads
         if "attn" in self.pooling_mode:

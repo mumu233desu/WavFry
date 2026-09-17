@@ -133,8 +133,8 @@ def main():
             msg += f"  (val F1={threshold_f1:.4f})"
         print(msg)
     else:
-        threshold = float(config.get('inference', {}).get('threshold', 0.5))
-        print(f"[Threshold] Using config.inference.threshold fallback: {threshold:.3f}")
+        threshold = 0.5
+        print(f"[Threshold] Using default fallback: {threshold:.3f}")
     
     audio_dir = Path(args.audio_dir)
     tg_dir = Path(args.textgrid_dir)
@@ -170,16 +170,11 @@ def main():
     
     # Simple internal dataset for inference
     class InferenceDataset(torch.utils.data.Dataset):
-        def __init__(self, segments, padding_ms, lowpass_cfg=None):
+        def __init__(self, segments, padding_ms):
             self.segments = segments
             self.padding_ms = padding_ms
             self.target_sr = 16000
             self.resamplers = {}
-            # Lowpass filter config (deterministic)
-            self.lowpass_cfg = lowpass_cfg or {}
-            self.lowpass_enabled = self.lowpass_cfg.get('enabled', False)
-            self.lowpass_cutoff  = self.lowpass_cfg.get('cutoff_hz', 3000.0)
-            self.lowpass_Q       = self.lowpass_cfg.get('Q', 0.707)
             
         def __len__(self):
             return len(self.segments)
@@ -194,15 +189,6 @@ def main():
                     if sr not in self.resamplers:
                         self.resamplers[sr] = torchaudio.transforms.Resample(sr, self.target_sr)
                     waveform = self.resamplers[sr](waveform)
-                
-                # [Lowpass] Deterministic high-cut filter
-                if self.lowpass_enabled:
-                    waveform = torchaudio.functional.lowpass_biquad(
-                        waveform, # [1, T]
-                        sample_rate=self.target_sr,
-                        cutoff_freq=self.lowpass_cutoff,
-                        Q=self.lowpass_Q
-                    )
                 
                 waveform = waveform.squeeze(0)
                 total_len_s = waveform.shape[0] / self.target_sr
@@ -230,8 +216,7 @@ def main():
         padded_waveforms = torch.nn.utils.rnn.pad_sequence(waveforms, batch_first=True)
         return padded_waveforms, lengths, list(indices)
 
-    lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
-    dataset = InferenceDataset(all_segments, padding_ms, lowpass_cfg=lowpass_cfg)
+    dataset = InferenceDataset(all_segments, padding_ms)
     loader = torch.utils.data.DataLoader(
         dataset, 
         batch_size=args.batch_size, 

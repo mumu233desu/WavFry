@@ -14,7 +14,6 @@ class CreakyVowelDataset(Dataset):
         df,
         context_padding_ms=50,
         target_sr=16000,
-        lowpass_cfg=None,
         continuous_non_creaky_cfg=None,
         seed=42,
         fold_index=0,
@@ -31,12 +30,6 @@ class CreakyVowelDataset(Dataset):
             fold_index=fold_index,
         )
         self.df = self._build_epoch_df(self.current_epoch)
-        
-        # Lowpass filter config (deterministic, applied to ALL samples)
-        self.lowpass_cfg = lowpass_cfg or {}
-        self.lowpass_enabled = self.lowpass_cfg.get('enabled', False)
-        self.lowpass_cutoff  = self.lowpass_cfg.get('cutoff_hz', 3000.0)
-        self.lowpass_Q       = self.lowpass_cfg.get('Q', 0.707)
 
     def _build_epoch_df(self, epoch: int):
         generated_df = self.continuous_non_creaky.generate(epoch)
@@ -106,15 +99,6 @@ class CreakyVowelDataset(Dataset):
                 if sr not in self.resamplers:
                     self.resamplers[sr] = torchaudio.transforms.Resample(sr, self.target_sr)
                 waveform = self.resamplers[sr](waveform)
-                
-            # [Lowpass] Deterministic high-cut filter (applied to all sets)
-            if self.lowpass_enabled:
-                waveform = torchaudio.functional.lowpass_biquad(
-                    waveform, # [1, T]
-                    sample_rate=self.target_sr,
-                    cutoff_freq=self.lowpass_cutoff,
-                    Q=self.lowpass_Q
-                )
                 
             # Squeeze to [T]
             waveform = waveform.squeeze(0)

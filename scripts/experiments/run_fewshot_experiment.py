@@ -496,11 +496,9 @@ def build_dataloader(
     batch_size: int | None = None,
 ) -> DataLoader:
     """Builds a standard CreakyVowelDataset DataLoader."""
-    lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     ds = CreakyVowelDataset(
         df,
         context_padding_ms=config.get('training', {}).get('segment', {}).get('context_padding_ms', 30),
-        lowpass_cfg=lowpass_cfg,
     )
     workers = config['data'].get('num_workers', 0)
     if workers == 'auto':

@@ -356,7 +356,6 @@ def evaluate_checkpoint_on_val(
 
     print(f"[Eval] Evaluating on Validation split: {len(val_df)} segments (Split Mode: batch_split, Paradigm: {paradigm}).")
 
-    lowpass_cfg = config.get("preprocessing", {}).get("lowpass", {})
     if paradigm == "block":
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
         block_cfg = config["training"].get("block", {})
@@ -365,7 +364,6 @@ def evaluate_checkpoint_on_val(
             hop_ms=block_cfg.get("hop_ms", 1000),
             max_intervals=block_cfg.get("max_intervals", 8),
             boundary_trim_frames=block_cfg.get("boundary_trim_frames", 0),
-            lowpass_cfg=lowpass_cfg,
             seed=42,
             fold_index=0,
         )
@@ -377,7 +375,6 @@ def evaluate_checkpoint_on_val(
         val_ds = dataset_mod.CreakyVowelDataset(
             val_df,
             context_padding_ms=config["training"]["segment"].get("context_padding_ms", 30),
-            lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
         batch_size = int(config["training"]["segment"].get("batch_size", 32))

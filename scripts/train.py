@@ -78,7 +78,6 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         augmentor = AudioAugmentor(aug_cfg)
         print("Data augmentation enabled for training.")
 
-    lowpass_cfg = config.get('preprocessing', {}).get('lowpass', {})
     if paradigm == 'block':
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
         block_cfg = config['training']['block']
@@ -87,7 +86,6 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             hop_ms=block_cfg.get('hop_ms', 1000),
             max_intervals=block_cfg.get('max_intervals', 8),
             boundary_trim_frames=block_cfg.get('boundary_trim_frames', 0),
-            lowpass_cfg=lowpass_cfg,
             seed=config['training'].get('seed', 42),
             fold_index=fold_idx,
         )
@@ -101,7 +99,6 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         train_ds = dataset_mod.CreakyVowelDataset(
             train_df,
             context_padding_ms=segment_cfg['context_padding_ms'],
-            lowpass_cfg=lowpass_cfg,
             continuous_non_creaky_cfg=segment_cfg.get('continuous_non_creaky_sampling', {}),
             seed=config['training'].get('seed', 42),
             fold_index=fold_idx,
@@ -109,7 +106,6 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         val_ds = dataset_mod.CreakyVowelDataset(
             val_df,
             context_padding_ms=segment_cfg['context_padding_ms'],
-            lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
         train_batch_size = int(segment_cfg['batch_size'])
@@ -189,6 +185,7 @@ def main():
     parser.add_argument('--config', type=str, default=str(root / 'config' / '_defaults.yaml'))
     parser.add_argument('--override', type=str, nargs='*', help='Override config keys: key.subkey=value')
     parser.add_argument('--loocv', action='store_true', help='Run Leave-One-Speaker-Out Cross Validation')
+    parser.add_argument('--speakers', type=str, default=None, help='Comma-separated list of speakers for LOOCV')
     parser.add_argument('--resume', action='store_true', help='Resume training from the last checkpoint')
     parser.add_argument('--warm-start', type=str, default=None, help='Load compatible model weights only')
     args = parser.parse_args()
@@ -345,9 +342,12 @@ def main():
             if len(df) < original_len:
                 print(f"[INFO] LOOCV Mode: Excluded {original_len - len(df)} Batch 2 segments to maintain dataset consistency.")
 
-        # Get all annotated speakers
-        speakers = config['data']['annotated_speakers']
-        if is_smoketest:
+        # Get all speakers to iterate over (from CLI --speakers, or dynamically from dataset)
+        if args.speakers:
+            speakers = [s.strip() for s in args.speakers.split(',') if s.strip()]
+        else:
+            speakers = sorted(df['speaker_id'].dropna().unique())
+        if is_smoketest and not args.speakers:
             print(f"[INFO] Limiting LOOCV to the first two folds (speakers: {speakers[:2]})")
             speakers = speakers[:2]
         print(f"Starting LOOCV for speakers: {speakers}")

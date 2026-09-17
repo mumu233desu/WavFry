@@ -155,11 +155,6 @@ class Trainer:
         min_lr_ratio = self.config['training'].get('min_lr_ratio', 0.05)
         lr_schedule = self.config['training'].get('lr_schedule', 'cosine')
 
-        # Ablation check
-        use_cosine_restart = self.config['training'].get('ablation', {}).get('use_cosine_restart', True)
-        if lr_schedule == 'cosine_restart' and not use_cosine_restart:
-            lr_schedule = 'cosine'
-
         def lr_lambda(current_step: int) -> float:
             if current_step < warmup_steps:
                 return float(current_step) / float(max(1, warmup_steps))
@@ -241,7 +236,7 @@ class Trainer:
             logits_by_task[task] = task_logits
             targets_by_task[task] = task_targets
 
-            is_trainable = train_heads_cfg.get(task, (task == "creaky"))
+            is_trainable = train_heads_cfg.get(task, True)
             if training and not is_trainable:
                 continue
 
@@ -350,7 +345,7 @@ class Trainer:
             logits_by_task[task] = task_logits
             targets_by_task[task] = task_targets
 
-            is_trainable = train_heads_cfg.get(task, (task == "creaky"))
+            is_trainable = train_heads_cfg.get(task, True)
             if training and not is_trainable:
                 continue
 

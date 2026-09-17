@@ -177,8 +177,6 @@ def prepare_dataloader(
         print(f"[Smoketest] Sliced evaluation dataset to {len(eval_df)} segments.")
 
     paradigm = config.get("training", {}).get("paradigm", "block")
-    lowpass_cfg = config.get("preprocessing", {}).get("lowpass", {})
-
     if paradigm == "block":
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
         block_cfg = config.get("training", {}).get("block", {})
@@ -188,7 +186,6 @@ def prepare_dataloader(
             hop_ms=block_cfg.get("hop_ms", 1000),
             max_intervals=block_cfg.get("max_intervals", 8),
             boundary_trim_frames=block_cfg.get("boundary_trim_frames", 0),
-            lowpass_cfg=lowpass_cfg,
             seed=42,
             fold_index=0,
         )
@@ -197,7 +194,6 @@ def prepare_dataloader(
         ds = dataset_mod.CreakyVowelDataset(
             eval_df,
             context_padding_ms=config.get("training", {}).get("segment", {}).get("context_padding_ms", 30),
-            lowpass_cfg=lowpass_cfg,
         )
         collate = dataset_mod.collate_fn
 

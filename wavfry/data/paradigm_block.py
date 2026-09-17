@@ -181,7 +181,6 @@ class ContinuousAudioBlockDataset(Dataset):
         max_intervals: int = 8,
         boundary_trim_frames: int = 0,
         target_sr: int = 16000,
-        lowpass_cfg: dict[str, Any] | None = None,
         seed: int = 42,
         fold_index: int = 0,
     ) -> None:
@@ -199,10 +198,6 @@ class ContinuousAudioBlockDataset(Dataset):
         self.index = self._make_index(self.current_epoch)
         self.blocks = self.index.blocks
         self.resamplers: dict[int, torchaudio.transforms.Resample] = {}
-        lowpass_cfg = lowpass_cfg or {}
-        self.lowpass_enabled = bool(lowpass_cfg.get("enabled", False))
-        self.lowpass_cutoff = float(lowpass_cfg.get("cutoff_hz", 3000.0))
-        self.lowpass_q = float(lowpass_cfg.get("Q", 0.707))
 
     def _make_index(self, epoch: int) -> BlockIndex:
         return BlockIndex(
@@ -241,10 +236,6 @@ class ContinuousAudioBlockDataset(Dataset):
             if sr not in self.resamplers:
                 self.resamplers[sr] = torchaudio.transforms.Resample(sr, self.target_sr)
             waveform = self.resamplers[sr](waveform)
-        if self.lowpass_enabled:
-            waveform = torchaudio.functional.lowpass_biquad(
-                waveform, self.target_sr, self.lowpass_cutoff, self.lowpass_q
-            )
         waveform = waveform.squeeze(0)
 
         bounds, labels, ids = [], [], []
