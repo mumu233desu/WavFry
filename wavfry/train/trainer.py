@@ -489,7 +489,6 @@ class Trainer:
         val_frame_loss_count = 0
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
-        all_speaker_ids = []
         frame_proxy_values = []
 
         if not self.val_loader or len(self.val_loader) == 0:
@@ -527,30 +526,26 @@ class Trainer:
                     for task in tasks:
                         t_logits = logits_dict[task]
                         t_labels = labels_dict[task]
-                        for logit, label, speaker, interval_id in zip(t_logits, t_labels, speaker_ids, item_ids):
+                        for logit, label, interval_id in zip(t_logits, t_labels, item_ids):
                             val_cpu = logit.detach().cpu()
                             lab_cpu = label.detach().cpu()
                             if interval_id not in interval_predictions[task]:
-                                interval_predictions[task][interval_id] = [val_cpu, lab_cpu, speaker, 1]
+                                interval_predictions[task][interval_id] = [val_cpu, lab_cpu, 1]
                             else:
                                 interval_predictions[task][interval_id][0] += val_cpu
-                                interval_predictions[task][interval_id][3] += 1
+                                interval_predictions[task][interval_id][2] += 1
                     continue
 
                 for task in tasks:
                     all_logits[task].append(logits_dict[task].detach().cpu())
                     all_labels[task].append(labels_dict[task].detach().cpu())
-                all_speaker_ids.extend(speaker_ids)
 
         if self.paradigm == 'block':
             for task in tasks:
                 t_dict = interval_predictions[task]
                 if t_dict:
-                    all_logits[task] = [(item[0] / item[3]).reshape(1) for item in t_dict.values()]
+                    all_logits[task] = [(item[0] / item[2]).reshape(1) for item in t_dict.values()]
                     all_labels[task] = [item[1].reshape(1) for item in t_dict.values()]
-            first_task = next(iter(tasks))
-            if interval_predictions[first_task]:
-                all_speaker_ids = [item[2] for item in interval_predictions[first_task].values()]
 
         primary_task = "creaky" if "creaky" in tasks else tasks[0]
         metrics = {}
@@ -569,32 +564,22 @@ class Trainer:
                     task_m = compute_metrics(t_logits_cat[valid_m], t_labels_cat[valid_m])
                     for k, v in task_m.items():
                         metrics[f"{k}_{task}"] = v
+                    metrics[f'logits_{task}'] = t_logits_cat[valid_m]
+                    metrics[f'labels_{task}'] = t_labels_cat[valid_m]
                     if task == primary_task:
                         metrics.update(task_m)
                         metrics['logits'] = t_logits_cat[valid_m]
                         metrics['labels'] = t_labels_cat[valid_m]
-
-                        # Per-speaker metrics for primary task
-                        speaker_metrics = {}
-                        if len(all_speaker_ids) == len(t_logits_cat):
-                            valid_spks = [all_speaker_ids[idx] for idx in range(len(valid_m)) if valid_m[idx]]
-                            unique_speakers = sorted(list(set(valid_spks)))
-                            for spk in unique_speakers:
-                                spk_indices = [i for i, s in enumerate(valid_spks) if s == spk]
-                                if spk_indices:
-                                    s_logits = t_logits_cat[valid_m][spk_indices]
-                                    s_labels = t_labels_cat[valid_m][spk_indices]
-                                    speaker_metrics[spk] = compute_metrics(s_logits, s_labels)
-                        metrics['speaker_metrics'] = speaker_metrics
                 else:
                     metrics[f"auc_pr_{task}"] = 0.0
                     metrics[f"f1_{task}"] = 0.0
+                    metrics[f'logits_{task}'] = torch.zeros(1)
+                    metrics[f'labels_{task}'] = torch.zeros(1)
                     if task == primary_task:
                         metrics["auc_pr"] = 0.0
                         metrics["f1"] = 0.0
                         metrics['logits'] = torch.zeros(1)
                         metrics['labels'] = torch.zeros(1)
-                        metrics['speaker_metrics'] = {}
 
         metrics['samples'] = samples_to_log
         if frame_proxy_values:
@@ -645,8 +630,9 @@ class Trainer:
             train_loss, train_metrics = self.train_epoch(epoch)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('total_loss/train', train_loss, epoch)
-            self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
-            self.writer.add_scalar('F1/train', train_metrics.get('f1', 0.0), epoch)  # secondary
+            if len(tasks) == 1:
+                self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
+                self.writer.add_scalar('F1/train', train_metrics.get('f1', 0.0), epoch)
             for task in tasks:
                 if f'auc_pr_{task}' in train_metrics:
                     self.writer.add_scalar(f'PR_AUC_{task}/train', train_metrics[f'auc_pr_{task}'], epoch)
@@ -693,11 +679,12 @@ class Trainer:
                 flush=True
             )
             
-            # Logging — PR-AUC is primary, F1 is secondary
+            # Logging
             self.writer.add_scalar('Loss/val', val_loss, epoch)
             self.writer.add_scalar('total_loss/val', val_loss, epoch)
-            self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)  # primary
-            self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)           # secondary
+            if len(tasks) == 1:
+                self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)
+                self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)
             for task in tasks:
                 if f'auc_pr_{task}' in val_metrics:
                     self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
@@ -715,21 +702,18 @@ class Trainer:
                 c_val_tot = val_metrics['loss_creaky'] + val_metrics.get('loss_creaky_frame', 0.0)
                 self.writer.add_scalar('creaky_total_loss/val', c_val_tot, epoch)
                 self.writer.add_scalar('Loss/creaky_total_val', c_val_tot, epoch)
-            if 'precision' in val_metrics:
-                self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
-            if 'recall' in val_metrics:
-                self.writer.add_scalar('Recall/val', val_metrics['recall'], epoch)
             if 'frame_proxy_auroc' in val_metrics:
                 self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
 
-            # PR Curve
-            if self.config['tensorboard'].get('log_pr_curve', True) and 'labels' in val_metrics and 'logits' in val_metrics and len(val_metrics['labels']) > 1:
-                self.writer.add_pr_curve('PR_Curve/val', val_metrics['labels'], torch.sigmoid(val_metrics['logits']), epoch)
-            
-            # Per-speaker metrics
-            for spk, spk_m in val_metrics.get('speaker_metrics', {}).items():
-                self.writer.add_scalar(f'Speaker_PR_AUC/{spk}', spk_m['auc_pr'], epoch)
-                self.writer.add_scalar(f'Speaker_F1/{spk}', spk_m['f1'], epoch)
+            # PR Curves per task
+            if self.config['tensorboard'].get('log_pr_curve', True):
+                for task in tasks:
+                    t_labels = val_metrics.get(f'labels_{task}', val_metrics.get('labels') if task == primary_task else None)
+                    t_logits = val_metrics.get(f'logits_{task}', val_metrics.get('logits') if task == primary_task else None)
+                    if t_labels is not None and t_logits is not None and len(t_labels) > 1:
+                        if (t_labels > 0.5).any() and (t_labels <= 0.5).any():
+                            curve_tag = f'PR_Curve_{task}/val' if len(tasks) > 1 else 'PR_Curve/val'
+                            self.writer.add_pr_curve(curve_tag, t_labels, torch.sigmoid(t_logits), epoch)
             
             # Confusion Matrix
             if 'cm' in val_metrics:
@@ -927,7 +911,10 @@ class Trainer:
             state_dict = self.model.state_dict()
             
         # Clean up raw tensors/arrays to reduce checkpoint size
-        metrics_to_save = {k: v for k, v in metrics.items() if k not in ('logits', 'labels', 'samples', 'cm', 'speaker_metrics')}
+        metrics_to_save = {
+            k: v for k, v in metrics.items()
+            if k not in ('logits', 'labels', 'samples', 'cm') and not k.startswith(('logits_', 'labels_'))
+        }
         
         auc_pr = metrics.get('auc_pr', 0.0)
         checkpoint = {
