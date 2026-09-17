@@ -113,6 +113,8 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
 
     num_workers = dataset_mod.resolve_num_workers(config['data']['num_workers'])
     prefetch_factor = config['data'].get('prefetch_factor', 2) if num_workers > 0 else None
+    persistent_workers = bool(config['data'].get('persistent_workers', True)) if num_workers > 0 else False
+    loader_timeout = float(config['data'].get('timeout', 60.0)) if num_workers > 0 else 0.0
     
     from wavfry.data.epoch_sampler import EpochShuffleSampler
     epoch_sampler = EpochShuffleSampler(
@@ -128,6 +130,8 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         collate_fn=collate,
         pin_memory=config['data']['pin_memory'],
         prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+        timeout=loader_timeout,
     )
     
     val_loader = DataLoader(
@@ -137,7 +141,9 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         num_workers=num_workers,
         collate_fn=collate,
         pin_memory=config['data']['pin_memory'],
-        prefetch_factor=prefetch_factor
+        prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+        timeout=loader_timeout,
     )
     
     # Model
@@ -171,14 +177,34 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
                     f"Academic training refuses silent fallback to training from scratch!"
                 ) from e
 
-    try:
-        history = trainer.run(start_epoch=start_epoch)
-        return history
-    except KeyboardInterrupt:
-        print("\nTraining interrupted by user. Gracefully exiting...")
-        sys.exit(1)
-    finally:
-        trainer.writer.close()
+    max_watchdog_retries = int(config.get('data', {}).get('max_watchdog_retries', 3))
+    attempt = 0
+    while True:
+        try:
+            history = trainer.run(start_epoch=start_epoch)
+            return history
+        except RuntimeError as e:
+            err_msg = str(e).lower()
+            is_timeout = ("timed out" in err_msg or "dataloader" in err_msg)
+            if is_timeout and attempt < max_watchdog_retries:
+                attempt += 1
+                print(
+                    f"\n[WATCHDOG RECOVERY ALERT] DataLoader worker timeout/deadlock detected: {e}\n"
+                    f"Attempting self-healing restart ({attempt}/{max_watchdog_retries})...",
+                    flush=True
+                )
+                latest_path = Path(config['checkpoint']['dir']) / "latest.pt"
+                if latest_path.exists():
+                    last_epoch = trainer.load_checkpoint(latest_path)
+                    start_epoch = last_epoch + 1
+                    print(f"[WATCHDOG RECOVERY] Rebuilt loader and resuming from epoch {start_epoch}...", flush=True)
+                continue
+            raise
+        except KeyboardInterrupt:
+            print("\nTraining interrupted by user. Gracefully exiting...")
+            sys.exit(1)
+        finally:
+            trainer.writer.close()
 
 def main():
     parser = argparse.ArgumentParser()

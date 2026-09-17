@@ -301,11 +301,11 @@ class Trainer:
     def _forward_batch(self, batch, epoch, training):
         if self.paradigm == 'block':
             waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
-            waveforms = waveforms.to(self.device)
-            bounds = bounds.to(self.device)
-            labels = labels.to(self.device)
-            valid = valid.to(self.device)
-            lengths = lengths.to(self.device)
+            waveforms = waveforms.to(self.device, non_blocking=True)
+            bounds = bounds.to(self.device, non_blocking=True)
+            labels = labels.to(self.device, non_blocking=True)
+            valid = valid.to(self.device, non_blocking=True)
+            lengths = lengths.to(self.device, non_blocking=True)
             if training and self.augmentor is not None:
                 waveforms = self.augmentor.apply(waveforms, epoch, self.device)
             outputs = self.model(waveforms, lengths, interval_bounds=bounds, interval_valid=valid)
@@ -329,9 +329,9 @@ class Trainer:
 
         # Segment mode
         waveforms, labels, lengths, speakers, meta = batch
-        waveforms = waveforms.to(self.device)
-        labels = labels.to(self.device)
-        lengths = lengths.to(self.device)
+        waveforms = waveforms.to(self.device, non_blocking=True)
+        labels = labels.to(self.device, non_blocking=True)
+        lengths = lengths.to(self.device, non_blocking=True)
         if training and self.augmentor is not None:
             waveforms = self.augmentor.apply(waveforms, epoch, self.device)
         logits_dict = self.model(waveforms, lengths)
