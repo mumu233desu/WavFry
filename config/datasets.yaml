@@ -41,71 +41,10 @@ datasets:
     #   all_train    - 全部作为训练集（外部数据集常用）
     #   random       - 随机按比例划分（seed 由全局 training.seed 控制）
 
-  # ── [示例 Example] FEMH 2018（Breathy 病理性，GRBAS B 分，utterance-level MIL） ──
-  # - dataset_id: femh_2018
-  #   enabled: false    # 待数据确认后开启
-  #   display_name: "FEMH 2018 Voice Disorder Challenge"
-  #   domain: pathological_voice
-  #   annotation_adapter: grbas_csv
-  #   adapter_params:
-  #     audio_dir: E:/Corpus/FEMH2018/audio
-  #     annotation_csv: E:/Corpus/FEMH2018/labels/grbas_ratings.csv
-  #     csv_columns:
-  #       file_id: file_id
-  #       grbas_b: B           # Breathiness 分值列名
-  #       speaker_id: speaker_id
-  #     breathy_threshold: 1   # 0=normal, 1=mild, 2=moderate, 3=severe
-  #     annotation_granularity: utterance
-  #   label_schema:
-  #     creaky: false
-  #     breathy: true
-  #   split_strategy: all_train
-  #
-  # ── [示例 Example] 外部 PVQD 模板（Breathy，CAPE-V，utterance-level MIL） ──
-  # - dataset_id: pvqd_example
-  #   enabled: false
-  #   display_name: "Pediatric Voice Quality Database (Example)"
-  #   domain: pathological_voice
-  #   annotation_adapter: capev_csv
-  #   adapter_params:
-  #     audio_dir: E:/Corpus/PVQD/audio
-  #     annotation_csv: E:/Corpus/PVQD/ratings.csv
-  #     csv_columns:
-  #       file_id: file_id
-  #       capev_breathiness: Breathiness   # 0-100 连续值
-  #       speaker_id: SpeakerID
-  #     breathy_label_mode: threshold
-  #     breathy_threshold: 40.0            # CAPE-V >= 40 → breathy=1
-  #     annotation_granularity: utterance
-  #   label_schema:
-  #     creaky: false
-  #     breathy: true
-  #   split_strategy: all_train
-
-  # ── CS-Dialogue Breathy（未来：人工精标 breathy 段落，同一语料库） ──
-  - dataset_id: cs_dialogue_breathy
-    enabled: false    # 等待标注完成后开启
-    display_name: "CS-Dialogue (Breathy, Manual)"
-    domain: conversational_efl
-
-    annotation_adapter: generic_csv    # 通用 CSV 适配器
-    adapter_params:
-      csv_path: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/breathy_annotations/segments.csv
-      # CSV 必须包含: audio_path, start_s, end_s, label_breathy, speaker_id
-      # 可选列: label_creaky, language, phone, batch_split
-      audio_base_dir: E:/Corpus/CS-Dialogue/data/short_wav/WAVE/01_en_dereverb
-      annotation_granularity: segment
-
-    label_schema:
-      creaky: false   # 此批标注只标 breathy，creaky 列留 NaN
-      breathy: true
-
-    split_strategy: batch_split   # CSV 中有 batch_split 列
-
-  # ── UCLA Mazatec（马萨特克语：breathy / modal / creaky 三向对立，由 _breathy_cache 提供） ──
+  # ── UCLA Mazatec（马萨特克语：breathy 学习，creaky 关闭） ──
   - dataset_id: ucla_mazatec
     enabled: true
-    display_name: "UCLA Mazatec (Breathy/Modal/Creaky)"
+    display_name: "UCLA Mazatec (Breathy)"
     domain: phonetic_controlled
 
     annotation_adapter: breathy_cache
@@ -118,8 +57,8 @@ datasets:
       min_duration_ms: 30
 
     label_schema:
-      creaky: true    # Mazatec 同时提供 creaky 标签
-      breathy: true   # 提供 breathy 标签
+      creaky: false
+      breathy: true
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
@@ -144,10 +83,10 @@ datasets:
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
-  # ── UCLA Zapotec（萨波特克语：breathy / modal / creaky 明确三向对立，由 _breathy_cache 提供） ──
+  # ── UCLA Zapotec（萨波特克语：breathy 学习，creaky 关闭） ──
   - dataset_id: ucla_zapotec
     enabled: true
-    display_name: "UCLA Zapotec (Breathy/Modal/Creaky)"
+    display_name: "UCLA Zapotec (Breathy)"
     domain: phonetic_controlled
 
     annotation_adapter: breathy_cache
@@ -160,15 +99,15 @@ datasets:
       min_duration_ms: 30
 
     label_schema:
-      creaky: true    # 提供 creaky 标签
-      breathy: true   # 提供 breathy 标签
+      creaky: false
+      breathy: true
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
-  # ── UCLA Hmong（白苗语：RPA 词尾 -g 高降气声调 vs -m 低平嘎裂调 vs 常态调，由 _breathy_cache 提供） ──
+  # ── UCLA Hmong（白苗语：breathy 学习，creaky 关闭） ──
   - dataset_id: ucla_hmong
     enabled: true
-    display_name: "UCLA Hmong (Breathy/Modal/Creaky)"
+    display_name: "UCLA Hmong (Breathy)"
     domain: phonetic_controlled
 
     annotation_adapter: breathy_cache
@@ -181,15 +120,15 @@ datasets:
       min_duration_ms: 30
 
     label_schema:
-      creaky: true    # 提供 creaky 标签
-      breathy: true   # 提供 breathy 标签
+      creaky: false
+      breathy: true
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
-  # ── UCLA Miao（黑苗语/黔东方言：33气声调 vs 11嘎裂调 vs 44/22/45常态调，由 _breathy_cache 提供） ──
+  # ── UCLA Miao（黑苗语/黔东方言：breathy 学习，creaky 关闭） ──
   - dataset_id: ucla_miao
     enabled: true
-    display_name: "UCLA Black Miao (Breathy/Modal/Creaky)"
+    display_name: "UCLA Black Miao (Breathy)"
     domain: phonetic_controlled
 
     annotation_adapter: breathy_cache
@@ -202,8 +141,8 @@ datasets:
       min_duration_ms: 30
 
     label_schema:
-      creaky: true    # 提供 creaky 标签
-      breathy: true   # 提供 breathy 标签
+      creaky: false
+      breathy: true
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
