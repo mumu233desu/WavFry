@@ -677,7 +677,7 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 "annotation_type": "phonological_minimal_pair",
                 "batch_id": float("nan"),
                 "batch_name": "",
-                "is_golden": True,
+                "is_golden": False,
             })
 
     print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from breathy cache ({cache_dir}).")

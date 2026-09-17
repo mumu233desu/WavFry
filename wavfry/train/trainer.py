@@ -230,6 +230,7 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=slot_valid.device)
         logits_by_task = {}
         targets_by_task = {}
+        current_losses = {}
 
         for task in tasks:
             task_logits = raw_interval_logits[task][slot_valid]
@@ -237,14 +238,13 @@ class Trainer:
             logits_by_task[task] = task_logits
             targets_by_task[task] = task_targets
 
-            is_trainable = train_heads_cfg.get(task, True)
-            if training and not is_trainable:
-                continue
-
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
                 loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
-                total_loss = total_loss + loss
+                current_losses[task] = loss.detach().item()
+                is_trainable = train_heads_cfg.get(task, True)
+                if not (training and not is_trainable):
+                    total_loss = total_loss + loss
 
         if not total_loss.requires_grad and any(p.requires_grad for p in self.model.parameters()):
             dummy_grad = sum(p.sum() * 0.0 for p in self.model.parameters() if p.requires_grad)
@@ -291,8 +291,11 @@ class Trainer:
                 ))
             if frame_terms:
                 frame_loss = torch.stack(frame_terms).sum()
-                total_loss = total_loss + float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
+                w_frame_loss = float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
+                total_loss = total_loss + w_frame_loss
+                current_losses['creaky_frame'] = w_frame_loss.detach().item()
 
+        self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task
 
     def _forward_batch(self, batch, epoch, training):
@@ -341,6 +344,7 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=self.device)
         logits_by_task = {}
         targets_by_task = {}
+        current_losses = {}
 
         for task in tasks:
             task_logits = logits_dict[task]
@@ -348,19 +352,19 @@ class Trainer:
             logits_by_task[task] = task_logits
             targets_by_task[task] = task_targets
 
-            is_trainable = train_heads_cfg.get(task, True)
-            if training and not is_trainable:
-                continue
-
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
                 loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
-                total_loss = total_loss + loss
+                current_losses[task] = loss.detach().item()
+                is_trainable = train_heads_cfg.get(task, True)
+                if not (training and not is_trainable):
+                    total_loss = total_loss + loss
 
         if not total_loss.requires_grad and any(p.requires_grad for p in self.model.parameters()):
             dummy_grad = sum(p.sum() * 0.0 for p in self.model.parameters() if p.requires_grad)
             total_loss = total_loss + dummy_grad
 
+        self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task, list(speakers), list(meta), (waveforms, lengths)
 
     def train_epoch(self, epoch):
@@ -376,6 +380,10 @@ class Trainer:
         self.model.train()
         total_loss = 0
         tasks = getattr(self.model, "tasks", ["creaky"])
+        task_loss_sums = {task: 0.0 for task in tasks}
+        task_loss_counts = {task: 0 for task in tasks}
+        frame_loss_sum = 0.0
+        frame_loss_count = 0
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
 
@@ -410,6 +418,15 @@ class Trainer:
                     self.scheduler.step()
 
             total_loss += loss.item() * self.config['training']['gradient_accumulation_steps']
+            if hasattr(self, "_current_losses") and self._current_losses:
+                for task in tasks:
+                    if task in self._current_losses:
+                        task_loss_sums[task] += self._current_losses[task]
+                        task_loss_counts[task] += 1
+                if 'creaky_frame' in self._current_losses:
+                    frame_loss_sum += self._current_losses['creaky_frame']
+                    frame_loss_count += 1
+
             for task in tasks:
                 if task in logits_dict:
                     all_logits[task].append(logits_dict[task].detach())
@@ -437,6 +454,12 @@ class Trainer:
         primary_task = "creaky" if "creaky" in tasks else tasks[0]
         metrics = {}
         for task in tasks:
+            if task_loss_counts[task] > 0:
+                metrics[f"loss_{task}"] = task_loss_sums[task] / task_loss_counts[task]
+        if frame_loss_count > 0:
+            metrics["loss_creaky_frame"] = frame_loss_sum / frame_loss_count
+
+        for task in tasks:
             if all_logits[task]:
                 t_logits = torch.cat(all_logits[task]).cpu()
                 t_labels = torch.cat(all_labels[task]).cpu()
@@ -460,6 +483,10 @@ class Trainer:
         self.model.eval()
         total_loss = 0
         tasks = getattr(self.model, "tasks", ["creaky"])
+        val_task_loss_sums = {task: 0.0 for task in tasks}
+        val_task_loss_counts = {task: 0 for task in tasks}
+        val_frame_loss_sum = 0.0
+        val_frame_loss_count = 0
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
         all_speaker_ids = []
@@ -481,6 +508,15 @@ class Trainer:
                     loss, logits_dict, labels_dict, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
 
                 total_loss += loss.item()
+                if hasattr(self, "_current_losses") and self._current_losses:
+                    for task in tasks:
+                        if task in self._current_losses:
+                            val_task_loss_sums[task] += self._current_losses[task]
+                            val_task_loss_counts[task] += 1
+                    if 'creaky_frame' in self._current_losses:
+                        val_frame_loss_sum += self._current_losses['creaky_frame']
+                        val_frame_loss_count += 1
+
                 if self.quiet and ((i + 1) % 50 == 0 or (i + 1) == len(self.val_loader)):
                     print(f"  [Epoch {epoch:02d} Val] Step {i+1}/{len(self.val_loader)}", flush=True)
 
@@ -518,6 +554,12 @@ class Trainer:
 
         primary_task = "creaky" if "creaky" in tasks else tasks[0]
         metrics = {}
+        for task in tasks:
+            if val_task_loss_counts[task] > 0:
+                metrics[f"loss_{task}"] = val_task_loss_sums[task] / val_task_loss_counts[task]
+        if val_frame_loss_count > 0:
+            metrics["loss_creaky_frame"] = val_frame_loss_sum / val_frame_loss_count
+
         for task in tasks:
             if all_logits[task]:
                 t_logits_cat = torch.cat(all_logits[task])
@@ -580,7 +622,11 @@ class Trainer:
 
                 csv_path = d / "epoch_history.csv"
                 tmp_csv = csv_path.with_suffix(".csv.tmp")
-                fieldnames = list(self.history[0].keys())
+                fieldnames = []
+                for record in self.history:
+                    for k in record.keys():
+                        if k not in fieldnames:
+                            fieldnames.append(k)
                 with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
@@ -598,6 +644,7 @@ class Trainer:
             epoch_start_time = time.time()
             train_loss, train_metrics = self.train_epoch(epoch)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
+            self.writer.add_scalar('total_loss/train', train_loss, epoch)
             self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
             self.writer.add_scalar('F1/train', train_metrics.get('f1', 0.0), epoch)  # secondary
             for task in tasks:
@@ -605,6 +652,18 @@ class Trainer:
                     self.writer.add_scalar(f'PR_AUC_{task}/train', train_metrics[f'auc_pr_{task}'], epoch)
                 if f'f1_{task}' in train_metrics:
                     self.writer.add_scalar(f'F1_{task}/train', train_metrics[f'f1_{task}'], epoch)
+                if f'loss_{task}' in train_metrics:
+                    self.writer.add_scalar(f'{task}_loss/train', train_metrics[f'loss_{task}'], epoch)
+                    self.writer.add_scalar(f'Loss/{task}_train', train_metrics[f'loss_{task}'], epoch)
+
+            if 'loss_creaky_frame' in train_metrics:
+                self.writer.add_scalar('creaky_frame_loss/train', train_metrics['loss_creaky_frame'], epoch)
+                self.writer.add_scalar('Loss/creaky_frame_train', train_metrics['loss_creaky_frame'], epoch)
+
+            if 'loss_creaky' in train_metrics:
+                c_train_tot = train_metrics['loss_creaky'] + train_metrics.get('loss_creaky_frame', 0.0)
+                self.writer.add_scalar('creaky_total_loss/train', c_train_tot, epoch)
+                self.writer.add_scalar('Loss/creaky_total_train', c_train_tot, epoch)
             
             # Learning Rates
             self.writer.add_scalar('LR/backbone', self.optimizer.param_groups[0]['lr'], epoch)
@@ -614,8 +673,16 @@ class Trainer:
             
             extra_info = []
             for task in tasks:
-                if task != primary_task and f'auc_pr_{task}' in val_metrics:
-                    extra_info.append(f"{task.capitalize()} Val PR-AUC: {val_metrics[f'auc_pr_{task}']:.4f}")
+                t_tr_l = train_metrics.get(f'loss_{task}')
+                t_val_l = val_metrics.get(f'loss_{task}')
+                t_val_pr = val_metrics.get(f'auc_pr_{task}')
+                parts = []
+                if t_tr_l is not None and t_val_l is not None:
+                    parts.append(f"L: {t_tr_l:.4f}/{t_val_l:.4f}")
+                if t_val_pr is not None:
+                    parts.append(f"PR: {t_val_pr:.4f}")
+                if parts:
+                    extra_info.append(f"{task.capitalize()} ({', '.join(parts)})")
             extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
 
             print(
@@ -628,6 +695,7 @@ class Trainer:
             
             # Logging — PR-AUC is primary, F1 is secondary
             self.writer.add_scalar('Loss/val', val_loss, epoch)
+            self.writer.add_scalar('total_loss/val', val_loss, epoch)
             self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)  # primary
             self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)           # secondary
             for task in tasks:
@@ -635,6 +703,18 @@ class Trainer:
                     self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
                 if f'f1_{task}' in val_metrics:
                     self.writer.add_scalar(f'F1_{task}/val', val_metrics[f'f1_{task}'], epoch)
+                if f'loss_{task}' in val_metrics:
+                    self.writer.add_scalar(f'{task}_loss/val', val_metrics[f'loss_{task}'], epoch)
+                    self.writer.add_scalar(f'Loss/{task}_val', val_metrics[f'loss_{task}'], epoch)
+
+            if 'loss_creaky_frame' in val_metrics:
+                self.writer.add_scalar('creaky_frame_loss/val', val_metrics['loss_creaky_frame'], epoch)
+                self.writer.add_scalar('Loss/creaky_frame_val', val_metrics['loss_creaky_frame'], epoch)
+
+            if 'loss_creaky' in val_metrics:
+                c_val_tot = val_metrics['loss_creaky'] + val_metrics.get('loss_creaky_frame', 0.0)
+                self.writer.add_scalar('creaky_total_loss/val', c_val_tot, epoch)
+                self.writer.add_scalar('Loss/creaky_total_val', c_val_tot, epoch)
             if 'precision' in val_metrics:
                 self.writer.add_scalar('Precision/val', val_metrics['precision'], epoch)
             if 'recall' in val_metrics:
@@ -701,6 +781,19 @@ class Trainer:
                 'is_best': bool(is_best),
                 'elapsed_sec': round(epoch_time, 2),
             }
+            for task in tasks:
+                if f'loss_{task}' in train_metrics:
+                    epoch_record[f'train_loss_{task}'] = float(train_metrics[f'loss_{task}'])
+                if f'loss_{task}' in val_metrics:
+                    epoch_record[f'val_loss_{task}'] = float(val_metrics[f'loss_{task}'])
+                if f'auc_pr_{task}' in train_metrics:
+                    epoch_record[f'train_auc_pr_{task}'] = float(train_metrics[f'auc_pr_{task}'])
+                if f'auc_pr_{task}' in val_metrics:
+                    epoch_record[f'val_auc_pr_{task}'] = float(val_metrics[f'auc_pr_{task}'])
+            if 'loss_creaky_frame' in train_metrics:
+                epoch_record['train_loss_creaky_frame'] = float(train_metrics['loss_creaky_frame'])
+            if 'loss_creaky_frame' in val_metrics:
+                epoch_record['val_loss_creaky_frame'] = float(val_metrics['loss_creaky_frame'])
             self.history.append(epoch_record)
             self.save_history()
                 
