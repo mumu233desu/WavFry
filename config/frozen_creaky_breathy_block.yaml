@@ -77,9 +77,9 @@ training:
     hop_ms: 1000                 # 音频块滑动步长
     max_intervals: 8             # 单块内最多标注区间槽位
     boundary_trim_frames: 0      # 边缘帧收缩
-    frame_head:                  # 块级逐帧弱监督多示例学习头
+    frame_head:                  # 块级逐帧弱监督多示例学习头（自动对 model.tasks 中所有激活任务独立构建帧级头）
       enabled: true
-      loss_weight: 0.1
+      loss_weight: 0.1           # 帧级弱监督损失权重（支持全局浮点数 0.1，或按任务独立配置如 {creaky: 0.1, breathy: 0.1}）
       mil_mode: lse              # lse | top_k_mean | linear_softmax | max | lse_mean
       temperature: 1.0
       topk_ratio: 0.2

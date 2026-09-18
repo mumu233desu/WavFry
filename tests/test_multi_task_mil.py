@@ -271,3 +271,38 @@ def test_linear_softmax_pool_fp16_stability():
     assert pooled.dtype == torch.float16
     assert not torch.isnan(pooled).any()
     assert not torch.isinf(pooled).any()
+
+
+def test_dict_loss_weight_support():
+    """Verify loss_weight as a dict applies per-task weights correctly."""
+    config = _make_dummy_config()
+    config["training"]["block"]["frame_head"]["loss_weight"] = {"creaky": 0.2, "breathy": 0.05}
+    model = WavFryClassifier(config)
+
+    trainer = object.__new__(Trainer)
+    trainer.config = config
+    trainer.model = model
+    trainer.loss_fn = nn.BCEWithLogitsLoss()
+    trainer.frame_head_enabled = True
+    trainer.frame_cfg = config["training"]["block"]["frame_head"]
+    trainer.device = torch.device("cpu")
+
+    B, slots, T = 2, 2, 20
+    interval_masks = torch.zeros(B, slots, T, dtype=torch.bool)
+    interval_masks[:, :, 5:15] = True
+    slot_valid = torch.ones(B, slots, dtype=torch.bool)
+
+    raw_audio = torch.randn(B, 16000)
+    lengths = torch.tensor([16000, 16000])
+    bounds = torch.tensor([[[0, 4000], [4000, 8000]], [[0, 4000], [4000, 8000]]])
+
+    outputs = model(raw_audio, lengths=lengths, interval_bounds=bounds, interval_valid=slot_valid)
+
+    labels = torch.zeros(B, slots, 2)
+    labels[0, 0, 0] = 1.0  # creaky pos
+    labels[1, 0, 1] = 1.0  # breathy pos
+
+    loss, _, _ = trainer._compute_block_loss(outputs, labels, slot_valid, training=True)
+    assert not torch.isnan(loss)
+    assert "creaky_frame" in trainer._current_losses
+    assert "breathy_frame" in trainer._current_losses

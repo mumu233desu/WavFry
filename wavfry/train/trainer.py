@@ -256,9 +256,14 @@ class Trainer:
             interval_masks = outputs['interval_masks']
             frame_masks = interval_masks[slot_valid]
             mode = self.frame_cfg.get('mil_mode', 'lse')
-            loss_weight = float(self.frame_cfg.get('loss_weight', 0.1))
+            lw_cfg = self.frame_cfg.get('loss_weight', 0.1)
 
             for task in tasks:
+                if isinstance(lw_cfg, dict):
+                    loss_weight = float(lw_cfg.get(task, 0.1))
+                else:
+                    loss_weight = float(lw_cfg)
+
                 if isinstance(raw_frame_logits, dict):
                     if task not in raw_frame_logits:
                         continue
