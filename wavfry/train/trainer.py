@@ -252,48 +252,65 @@ class Trainer:
 
         if self.frame_cfg.get('enabled', False) and 'frame_logits' in outputs:
             from ..model.losses import pool_frame_logits
-            frame_logits = outputs['frame_logits']
+            raw_frame_logits = outputs['frame_logits']
             interval_masks = outputs['interval_masks']
             frame_masks = interval_masks[slot_valid]
-            expanded = frame_logits.unsqueeze(1).expand_as(interval_masks)[slot_valid]
             mode = self.frame_cfg.get('mil_mode', 'lse')
-            if mode == 'lse_mean':
-                lse = pool_frame_logits(
-                    expanded, frame_masks, mode='lse',
-                    temperature=self.frame_cfg.get('temperature', 1.0),
-                )
-                mean = (expanded.masked_fill(~frame_masks, 0.0).sum(-1) /
-                        frame_masks.sum(-1).clamp_min(1))
-                mil_logits = self.model.frame_mil_fusion(
-                    torch.stack([lse, mean], dim=-1)
-                ).squeeze(-1)
-            else:
-                mil_logits = pool_frame_logits(
-                    expanded,
-                    frame_masks,
-                    mode=mode,
-                    topk_ratio=self.frame_cfg.get('topk_ratio', 0.2),
-                    temperature=self.frame_cfg.get('temperature', 1.0),
-                )
-            primary_task = "creaky" if "creaky" in tasks else tasks[0]
-            primary_targets = targets_by_task[primary_task]
-            positive = primary_targets > 0.5
-            frame_terms = []
-            if positive.any():
-                frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
-                    mil_logits[positive], torch.ones_like(mil_logits[positive])
-                ))
-            negative = (~positive) & (~torch.isnan(primary_targets))
-            if negative.any():
-                negative_logits = expanded[negative][frame_masks[negative]]
-                frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
-                    negative_logits, torch.zeros_like(negative_logits)
-                ))
-            if frame_terms:
-                frame_loss = torch.stack(frame_terms).sum()
-                w_frame_loss = float(self.frame_cfg.get('loss_weight', 0.1)) * frame_loss
-                total_loss = total_loss + w_frame_loss
-                current_losses['creaky_frame'] = w_frame_loss.detach().item()
+            loss_weight = float(self.frame_cfg.get('loss_weight', 0.1))
+
+            for task in tasks:
+                if isinstance(raw_frame_logits, dict):
+                    if task not in raw_frame_logits:
+                        continue
+                    t_frame_logits = raw_frame_logits[task]
+                else:
+                    if task != ("creaky" if "creaky" in tasks else tasks[0]):
+                        continue
+                    t_frame_logits = raw_frame_logits
+
+                expanded = t_frame_logits.unsqueeze(1).expand_as(interval_masks)[slot_valid]
+                if mode == 'lse_mean':
+                    lse = pool_frame_logits(
+                        expanded, frame_masks, mode='lse',
+                        temperature=self.frame_cfg.get('temperature', 1.0),
+                    )
+                    mean = (expanded.masked_fill(~frame_masks, 0.0).sum(-1) /
+                            frame_masks.sum(-1).clamp_min(1))
+                    fusion_layer = (
+                        self.model.frame_mil_fusions[task]
+                        if hasattr(self.model, "frame_mil_fusions") and task in self.model.frame_mil_fusions
+                        else getattr(self.model, "frame_mil_fusion", None)
+                    )
+                    mil_logits = fusion_layer(
+                        torch.stack([lse, mean], dim=-1)
+                    ).squeeze(-1)
+                else:
+                    mil_logits = pool_frame_logits(
+                        expanded,
+                        frame_masks,
+                        mode=mode,
+                        topk_ratio=self.frame_cfg.get('topk_ratio', 0.2),
+                        temperature=self.frame_cfg.get('temperature', 1.0),
+                    )
+
+                task_targets = targets_by_task[task]
+                positive = task_targets > 0.5
+                frame_terms = []
+                if positive.any():
+                    frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                        mil_logits[positive], torch.ones_like(mil_logits[positive])
+                    ))
+                negative = (~positive) & (~torch.isnan(task_targets))
+                if negative.any():
+                    negative_logits = expanded[negative][frame_masks[negative]]
+                    frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                        negative_logits, torch.zeros_like(negative_logits)
+                    ))
+                if frame_terms:
+                    task_frame_loss = torch.stack(frame_terms).sum()
+                    w_task_frame_loss = loss_weight * task_frame_loss
+                    total_loss = total_loss + w_task_frame_loss
+                    current_losses[f'{task}_frame'] = w_task_frame_loss.detach().item()
 
         self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task
@@ -382,8 +399,8 @@ class Trainer:
         tasks = getattr(self.model, "tasks", ["creaky"])
         task_loss_sums = {task: 0.0 for task in tasks}
         task_loss_counts = {task: 0 for task in tasks}
-        frame_loss_sum = 0.0
-        frame_loss_count = 0
+        frame_loss_sums = {task: 0.0 for task in tasks}
+        frame_loss_counts = {task: 0 for task in tasks}
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
 
@@ -423,9 +440,10 @@ class Trainer:
                     if task in self._current_losses:
                         task_loss_sums[task] += self._current_losses[task]
                         task_loss_counts[task] += 1
-                if 'creaky_frame' in self._current_losses:
-                    frame_loss_sum += self._current_losses['creaky_frame']
-                    frame_loss_count += 1
+                for task in tasks:
+                    if f'{task}_frame' in self._current_losses:
+                        frame_loss_sums[task] += self._current_losses[f'{task}_frame']
+                        frame_loss_counts[task] += 1
 
             for task in tasks:
                 if task in logits_dict:
@@ -456,8 +474,11 @@ class Trainer:
         for task in tasks:
             if task_loss_counts[task] > 0:
                 metrics[f"loss_{task}"] = task_loss_sums[task] / task_loss_counts[task]
-        if frame_loss_count > 0:
-            metrics["loss_creaky_frame"] = frame_loss_sum / frame_loss_count
+        for task in tasks:
+            if frame_loss_counts[task] > 0:
+                metrics[f"loss_{task}_frame"] = frame_loss_sums[task] / frame_loss_counts[task]
+        if "loss_creaky_frame" in metrics:
+            metrics["loss_frame"] = metrics["loss_creaky_frame"]
 
         for task in tasks:
             if all_logits[task]:
@@ -485,8 +506,8 @@ class Trainer:
         tasks = getattr(self.model, "tasks", ["creaky"])
         val_task_loss_sums = {task: 0.0 for task in tasks}
         val_task_loss_counts = {task: 0 for task in tasks}
-        val_frame_loss_sum = 0.0
-        val_frame_loss_count = 0
+        val_frame_loss_sums = {task: 0.0 for task in tasks}
+        val_frame_loss_counts = {task: 0 for task in tasks}
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
         frame_proxy_values = []
@@ -512,9 +533,10 @@ class Trainer:
                         if task in self._current_losses:
                             val_task_loss_sums[task] += self._current_losses[task]
                             val_task_loss_counts[task] += 1
-                    if 'creaky_frame' in self._current_losses:
-                        val_frame_loss_sum += self._current_losses['creaky_frame']
-                        val_frame_loss_count += 1
+                    for task in tasks:
+                        if f'{task}_frame' in self._current_losses:
+                            val_frame_loss_sums[task] += self._current_losses[f'{task}_frame']
+                            val_frame_loss_counts[task] += 1
 
                 if self.quiet and ((i + 1) % 50 == 0 or (i + 1) == len(self.val_loader)):
                     print(f"  [Epoch {epoch:02d} Val] Step {i+1}/{len(self.val_loader)}", flush=True)
@@ -552,8 +574,11 @@ class Trainer:
         for task in tasks:
             if val_task_loss_counts[task] > 0:
                 metrics[f"loss_{task}"] = val_task_loss_sums[task] / val_task_loss_counts[task]
-        if val_frame_loss_count > 0:
-            metrics["loss_creaky_frame"] = val_frame_loss_sum / val_frame_loss_count
+        for task in tasks:
+            if val_frame_loss_counts[task] > 0:
+                metrics[f"loss_{task}_frame"] = val_frame_loss_sums[task] / val_frame_loss_counts[task]
+        if "loss_creaky_frame" in metrics:
+            metrics["loss_frame"] = metrics["loss_creaky_frame"]
 
         for task in tasks:
             if all_logits[task]:
@@ -642,14 +667,14 @@ class Trainer:
                     self.writer.add_scalar(f'{task}_loss/train', train_metrics[f'loss_{task}'], epoch)
                     self.writer.add_scalar(f'Loss/{task}_train', train_metrics[f'loss_{task}'], epoch)
 
-            if 'loss_creaky_frame' in train_metrics:
-                self.writer.add_scalar('creaky_frame_loss/train', train_metrics['loss_creaky_frame'], epoch)
-                self.writer.add_scalar('Loss/creaky_frame_train', train_metrics['loss_creaky_frame'], epoch)
-
-            if 'loss_creaky' in train_metrics:
-                c_train_tot = train_metrics['loss_creaky'] + train_metrics.get('loss_creaky_frame', 0.0)
-                self.writer.add_scalar('creaky_total_loss/train', c_train_tot, epoch)
-                self.writer.add_scalar('Loss/creaky_total_train', c_train_tot, epoch)
+            for task in tasks:
+                if f'loss_{task}_frame' in train_metrics:
+                    self.writer.add_scalar(f'{task}_frame_loss/train', train_metrics[f'loss_{task}_frame'], epoch)
+                    self.writer.add_scalar(f'Loss/{task}_frame_train', train_metrics[f'loss_{task}_frame'], epoch)
+                if f'loss_{task}' in train_metrics:
+                    t_train_tot = train_metrics[f'loss_{task}'] + train_metrics.get(f'loss_{task}_frame', 0.0)
+                    self.writer.add_scalar(f'{task}_total_loss/train', t_train_tot, epoch)
+                    self.writer.add_scalar(f'Loss/{task}_total_train', t_train_tot, epoch)
             
             # Learning Rates
             self.writer.add_scalar('LR/backbone', self.optimizer.param_groups[0]['lr'], epoch)
@@ -694,14 +719,14 @@ class Trainer:
                     self.writer.add_scalar(f'{task}_loss/val', val_metrics[f'loss_{task}'], epoch)
                     self.writer.add_scalar(f'Loss/{task}_val', val_metrics[f'loss_{task}'], epoch)
 
-            if 'loss_creaky_frame' in val_metrics:
-                self.writer.add_scalar('creaky_frame_loss/val', val_metrics['loss_creaky_frame'], epoch)
-                self.writer.add_scalar('Loss/creaky_frame_val', val_metrics['loss_creaky_frame'], epoch)
-
-            if 'loss_creaky' in val_metrics:
-                c_val_tot = val_metrics['loss_creaky'] + val_metrics.get('loss_creaky_frame', 0.0)
-                self.writer.add_scalar('creaky_total_loss/val', c_val_tot, epoch)
-                self.writer.add_scalar('Loss/creaky_total_val', c_val_tot, epoch)
+            for task in tasks:
+                if f'loss_{task}_frame' in val_metrics:
+                    self.writer.add_scalar(f'{task}_frame_loss/val', val_metrics[f'loss_{task}_frame'], epoch)
+                    self.writer.add_scalar(f'Loss/{task}_frame_val', val_metrics[f'loss_{task}_frame'], epoch)
+                if f'loss_{task}' in val_metrics:
+                    t_val_tot = val_metrics[f'loss_{task}'] + val_metrics.get(f'loss_{task}_frame', 0.0)
+                    self.writer.add_scalar(f'{task}_total_loss/val', t_val_tot, epoch)
+                    self.writer.add_scalar(f'Loss/{task}_total_val', t_val_tot, epoch)
             if 'frame_proxy_auroc' in val_metrics:
                 self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
 
@@ -774,10 +799,10 @@ class Trainer:
                     epoch_record[f'train_auc_pr_{task}'] = float(train_metrics[f'auc_pr_{task}'])
                 if f'auc_pr_{task}' in val_metrics:
                     epoch_record[f'val_auc_pr_{task}'] = float(val_metrics[f'auc_pr_{task}'])
-            if 'loss_creaky_frame' in train_metrics:
-                epoch_record['train_loss_creaky_frame'] = float(train_metrics['loss_creaky_frame'])
-            if 'loss_creaky_frame' in val_metrics:
-                epoch_record['val_loss_creaky_frame'] = float(val_metrics['loss_creaky_frame'])
+                if f'loss_{task}_frame' in train_metrics:
+                    epoch_record[f'train_loss_{task}_frame'] = float(train_metrics[f'loss_{task}_frame'])
+                if f'loss_{task}_frame' in val_metrics:
+                    epoch_record[f'val_loss_{task}_frame'] = float(val_metrics[f'loss_{task}_frame'])
             self.history.append(epoch_record)
             self.save_history()
                 

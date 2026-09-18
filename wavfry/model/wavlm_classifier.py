@@ -103,12 +103,17 @@ class WavFryClassifier(nn.Module):
         frame_cfg = training_cfg.get("block", {}).get("frame_head", {})
         self.frame_head_enabled = bool(frame_cfg.get("enabled", False))
         if self.frame_head_enabled:
-            self.frame_head = nn.Sequential(
-                nn.LayerNorm(self.hidden_dim),
-                nn.Linear(self.hidden_dim, 1),
-            )
+            self.frame_heads = nn.ModuleDict({
+                task: nn.Sequential(
+                    nn.LayerNorm(self.hidden_dim),
+                    nn.Linear(self.hidden_dim, 1),
+                )
+                for task in self.tasks
+            })
             if frame_cfg.get("mil_mode", "lse") == "lse_mean":
-                self.frame_mil_fusion = nn.Linear(2, 1)
+                self.frame_mil_fusions = nn.ModuleDict({
+                    task: nn.Linear(2, 1) for task in self.tasks
+                })
 
         self.freeze_layers(config)
         if self.is_backbone_frozen:
@@ -139,6 +144,48 @@ class WavFryClassifier(nn.Module):
                 return self.attention_heads["creaky"]
             return next(iter(self.attention_heads.values()))
         raise AttributeError("attention_heads not configured for current pooling mode")
+
+    @property
+    def frame_head(self) -> nn.Module | None:
+        """Backward compatibility alias for primary frame head."""
+        if not getattr(self, "frame_head_enabled", False):
+            return None
+        if hasattr(self, "frame_heads"):
+            if "creaky" in self.frame_heads:
+                return self.frame_heads["creaky"]
+            return next(iter(self.frame_heads.values()))
+        return None
+
+    @property
+    def frame_mil_fusion(self) -> nn.Module | None:
+        """Backward compatibility alias for primary frame MIL fusion."""
+        if hasattr(self, "frame_mil_fusions"):
+            if "creaky" in self.frame_mil_fusions:
+                return self.frame_mil_fusions["creaky"]
+            return next(iter(self.frame_mil_fusions.values()))
+        return None
+
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
+        """Remap legacy single-head frame_head keys to multi-task frame_heads.creaky."""
+        legacy_frame_head_prefix = prefix + "frame_head."
+        legacy_keys = [k for k in list(state_dict.keys()) if k.startswith(legacy_frame_head_prefix)]
+        for k in legacy_keys:
+            new_k = prefix + "frame_heads.creaky." + k[len(legacy_frame_head_prefix):]
+            if new_k not in state_dict:
+                state_dict[new_k] = state_dict[k]
+
+        legacy_fusion_prefix = prefix + "frame_mil_fusion."
+        legacy_fusion_keys = [k for k in list(state_dict.keys()) if k.startswith(legacy_fusion_prefix)]
+        for k in legacy_fusion_keys:
+            new_k = prefix + "frame_mil_fusions.creaky." + k[len(legacy_fusion_prefix):]
+            if new_k not in state_dict:
+                state_dict[new_k] = state_dict[k]
+
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def freeze_layers(self, config: dict[str, Any]) -> None:
         for param in self.wavlm.parameters():
@@ -418,7 +465,10 @@ class WavFryClassifier(nn.Module):
             "tasks": self.tasks,
         }
         if self.frame_head_enabled:
-            result["frame_logits"] = self.frame_head(first_seq).squeeze(-1)
+            result["frame_logits"] = {
+                task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
+                for task in self.tasks
+            }
         return result
 
     def forward(
