@@ -175,6 +175,7 @@ class WavFryClassifier(nn.Module):
             new_k = prefix + "frame_heads.creaky." + k[len(legacy_frame_head_prefix):]
             if new_k not in state_dict:
                 state_dict[new_k] = state_dict[k]
+            state_dict.pop(k, None)
 
         legacy_fusion_prefix = prefix + "frame_mil_fusion."
         legacy_fusion_keys = [k for k in list(state_dict.keys()) if k.startswith(legacy_fusion_prefix)]
@@ -182,6 +183,7 @@ class WavFryClassifier(nn.Module):
             new_k = prefix + "frame_mil_fusions.creaky." + k[len(legacy_fusion_prefix):]
             if new_k not in state_dict:
                 state_dict[new_k] = state_dict[k]
+            state_dict.pop(k, None)
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs

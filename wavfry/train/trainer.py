@@ -309,7 +309,9 @@ class Trainer:
                 if frame_terms:
                     task_frame_loss = torch.stack(frame_terms).sum()
                     w_task_frame_loss = loss_weight * task_frame_loss
-                    total_loss = total_loss + w_task_frame_loss
+                    is_trainable = train_heads_cfg.get(task, True)
+                    if not (training and not is_trainable):
+                        total_loss = total_loss + w_task_frame_loss
                     current_losses[f'{task}_frame'] = w_task_frame_loss.detach().item()
 
         self._current_losses = current_losses

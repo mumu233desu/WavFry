@@ -110,6 +110,21 @@ def test_legacy_checkpoint_remapping():
     # Check that frame_heads.creaky.* are NOT in missing keys!
     creaky_missing = [k for k in missing if k.startswith("frame_heads.creaky.")]
     assert len(creaky_missing) == 0
+    # Old keys must be popped, so unexpected should NOT contain frame_head.*
+    legacy_unexpected = [k for k in unexpected if k.startswith("frame_head.")]
+    assert len(legacy_unexpected) == 0
+
+    # Also test strict=True on a single-task model
+    single_cfg = copy.deepcopy(config)
+    single_cfg["model"]["tasks"] = ["creaky"]
+    single_model = WavFryClassifier(single_cfg)
+    single_sd = single_model.state_dict()
+    legacy_single_sd = copy.deepcopy(single_sd)
+    for k in [k for k in legacy_single_sd if k.startswith("frame_heads.creaky.")]:
+        val = legacy_single_sd.pop(k)
+        legacy_single_sd["frame_head." + k[len("frame_heads.creaky."):]] = val
+    # In strict=True, must load without raising unexpected keys error!
+    single_model.load_state_dict(legacy_single_sd, strict=True)
 
 
 def test_trainer_compute_block_loss_nan_handling():
@@ -196,3 +211,63 @@ def test_trainer_compute_block_loss_nan_handling():
     assert not torch.isnan(loss_mix)
     assert "creaky_frame" in trainer._current_losses
     assert "breathy_frame" in trainer._current_losses
+
+
+def test_train_heads_gating_on_frame_loss():
+    """Verify that when train_heads specifies a task as False, frame loss does NOT propagate to total_loss."""
+    config = _make_dummy_config()
+    config["training"]["train_heads"] = {"creaky": True, "breathy": False}
+    model = WavFryClassifier(config)
+
+    trainer = object.__new__(Trainer)
+    trainer.config = config
+    trainer.model = model
+    trainer.loss_fn = nn.BCEWithLogitsLoss()
+    trainer.frame_head_enabled = True
+    trainer.frame_cfg = config["training"]["block"]["frame_head"]
+    trainer.device = torch.device("cpu")
+
+    B, slots, T = 2, 2, 20
+    interval_masks = torch.zeros(B, slots, T, dtype=torch.bool)
+    interval_masks[:, :, 5:15] = True
+    slot_valid = torch.ones(B, slots, dtype=torch.bool)
+
+    raw_audio = torch.randn(B, 16000)
+    lengths = torch.tensor([16000, 16000])
+    bounds = torch.tensor([[[0, 4000], [4000, 8000]], [[0, 4000], [4000, 8000]]])
+
+    outputs = model(raw_audio, lengths=lengths, interval_bounds=bounds, interval_valid=slot_valid)
+
+    # Batch with labeled breathy and labeled creaky
+    labels = torch.zeros(B, slots, 2)
+    labels[0, 0, 0] = 1.0  # creaky pos
+    labels[0, 1, 0] = 0.0  # creaky neg
+    labels[1, 0, 1] = 1.0  # breathy pos
+    labels[1, 1, 1] = 0.0  # breathy neg
+
+    total_loss, _, _ = trainer._compute_block_loss(outputs, labels, slot_valid, training=True)
+    total_loss.backward()
+
+    # Creaky heads must receive gradients
+    assert any(p.grad is not None for p in model.heads["creaky"].parameters())
+    assert any(p.grad is not None for p in model.frame_heads["creaky"].parameters())
+
+    # Breathy heads must have ZERO grad because train_heads: breathy: False!
+    for p in model.heads["breathy"].parameters():
+        assert p.grad is None
+    for p in model.frame_heads["breathy"].parameters():
+        assert p.grad is None
+
+
+def test_linear_softmax_pool_fp16_stability():
+    """Verify linear_softmax_pool does not underflow to NaN under FP16 with extreme negative logits."""
+    from wavfry.model.losses import linear_softmax_pool
+
+    logits_fp16 = torch.full((4, 50), -60.0, dtype=torch.float16)
+    mask = torch.ones((4, 50), dtype=torch.bool)
+    mask[:, 25:] = False
+
+    pooled = linear_softmax_pool(logits_fp16, mask)
+    assert pooled.dtype == torch.float16
+    assert not torch.isnan(pooled).any()
+    assert not torch.isinf(pooled).any()

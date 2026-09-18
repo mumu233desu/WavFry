@@ -50,10 +50,13 @@ def logmeanexp_pool(logits, mask, temperature=1.0):
 
 
 def linear_softmax_pool(logits, mask):
-    """Pool frame logits using probability-weighted averaging."""
-    probs = torch.sigmoid(logits).masked_fill(~mask, 0.0)
-    weights = probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-8)
-    return (logits * weights).sum(dim=-1)
+    """Pool frame logits using probability-weighted averaging (numerically stable)."""
+    orig_dtype = logits.dtype
+    logits_fp32 = logits.float()
+    probs = torch.sigmoid(logits_fp32).masked_fill(~mask, 0.0)
+    weights = probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-7)
+    pooled = (logits_fp32 * weights).sum(dim=-1)
+    return pooled.to(dtype=orig_dtype)
 
 
 def pool_frame_logits(logits, mask, mode="lse", topk_ratio=0.2, temperature=1.0):
