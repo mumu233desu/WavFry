@@ -90,23 +90,29 @@ MANIFEST_COLUMNS = [
 ]
 
 
-def _build_batch_lookup(sampling_state_path: Path) -> dict[str, int]:
-    """Return ``file_key -> batch_id`` from sampling_state.json."""
-    lookup: dict[str, int] = {}
+def _build_batch_lookup(sampling_state_path: Path) -> dict[str, dict[str, Any]]:
+    """Return ``file_key -> {batch_id, batch_name, batch_split}`` from sampling_state.json."""
+    lookup: dict[str, dict[str, Any]] = {}
     if not sampling_state_path.exists():
         print(
             f"[manifest] WARNING: sampling_state.json not found at "
-            f"{sampling_state_path}; sampled rows will have no batch_id."
+            f"{sampling_state_path}; sampled rows will have no batch metadata."
         )
         return lookup
     try:
         state = json.loads(sampling_state_path.read_text(encoding="utf-8"))
         for batch in state.get("batches", []):
             batch_id = int(batch.get("batch_id", 0))
+            batch_name = batch.get("name") or f"Batch {batch_id}"
+            batch_split = batch.get("split") or "unassigned"
             for file_entry in batch.get("files", []):
                 file_key = file_entry.get("file_key")
                 if file_key:
-                    lookup[str(file_key)] = batch_id
+                    lookup[str(file_key)] = {
+                        "batch_id": batch_id,
+                        "batch_name": batch_name,
+                        "batch_split": batch_split,
+                    }
         print(
             f"[manifest] Loaded batch lookup: {len(lookup)} file_keys across "
             f"{len(state.get('batches', []))} batches."
@@ -191,7 +197,7 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
         batches_dir = textgrid_dir / "_creaky_cache" / "batches"
 
         batch_items = []
-        if batches_dir.exists() and sampling_state_path.exists():
+        if batches_dir.exists() and sampling_state_path.exists() and any(batches_dir.glob("batch_*")):
             try:
                 state = json.loads(sampling_state_path.read_text(encoding="utf-8"))
                 for b in state.get("batches", []):
@@ -204,11 +210,13 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                 print(f"[manifest] WARNING: Could not read batches from {sampling_state_path}: {e}")
 
         if not batch_items:
+            # All annotations aggregated in single storage (manual_creaky_annotations.json / .d)
+            # Batch metadata (batch_id, batch_name, batch_split) will be resolved per-file via batch_lookup
             annotation_path = annotation_storage_path(textgrid_dir)
-            batch_items.append((None, "legacy", "train", annotation_path))
+            batch_items.append((None, "aggregated", None, annotation_path))
 
         for b_id, b_name, b_split, annotation_path in batch_items:
-            if b_split not in {"train", "val", "test"}:
+            if b_split is not None and b_split not in {"train", "val", "test"}:
                 continue
 
             if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
@@ -222,17 +230,31 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
 
             for file_key, entry in tqdm(
                 files_with_annotations.items(),
-                desc=f"Processing Batch {b_id} ({store_language})",
+                desc=f"Processing {b_name} ({store_language})",
             ):
                 file_key = str(file_key)
+                if b_split is None:
+                    # Dynamically resolve batch info per file from sampling_state metadata
+                    meta = batch_lookup.get(file_key, {})
+                    file_b_id = meta.get("batch_id", None)
+                    file_b_name = meta.get("batch_name", "legacy")
+                    file_b_split = meta.get("batch_split", "train")
+                else:
+                    file_b_id = b_id
+                    file_b_name = b_name
+                    file_b_split = b_split
+
+                if file_b_split not in {"train", "val", "test"}:
+                    continue
+
                 if file_key in seen_file_splits:
                     prev_id, prev_split = seen_file_splits[file_key]
-                    if prev_split != b_split:
+                    if prev_split != file_b_split:
                         raise ValueError(
                             f"[manifest] Split Exclusivity Violation: File '{file_key}' assigned to conflicting splits "
-                            f"('{prev_split}' in Batch [{prev_id}] vs '{b_split}' in Batch [{b_id}])."
+                            f"('{prev_split}' in Batch [{prev_id}] vs '{file_b_split}' in Batch [{file_b_id}])."
                         )
-                seen_file_splits[file_key] = (b_id, b_split)
+                seen_file_splits[file_key] = (file_b_id, file_b_split)
 
                 language = _language_from_file_key(file_key)
                 if language is None or language not in include_languages:
@@ -307,10 +329,10 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                                 0.0 if (phone_type == IntervalType.SILENCE and breathy_silence_as_neg) else float("nan")
                             ),
                             "label": creak_val,
-                            "batch_split": b_split,
+                            "batch_split": file_b_split,
                             "annotation_type": annotation_type,
-                            "batch_id": b_id,
-                            "batch_name": b_name,
+                            "batch_id": file_b_id,
+                            "batch_name": file_b_name,
                             "is_golden": is_golden,
                         }
                     )
