@@ -606,3 +606,37 @@ def test_multitask_heads_train_by_default_without_train_heads():
     assert "creaky" in block_targets and "breathy" in block_targets
     assert loss_block.item() > 0
 
+
+def test_dict_label_schema_silence_as_negative(tmp_path):
+    """Verify that a dataset with label_schema: {breathy: {enabled: False, silence_as_negative: True}}
+    correctly discovers 'breathy' as an active task in build_manifest_multi."""
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    (audio_dir / "s_001.wav").write_bytes(b"RIFF" + b"\x00" * 100)
+    csv_file = tmp_path / "ann.csv"
+    pd.DataFrame([
+        {"file_id": "s_001", "B": 0, "speaker_id": "spk1"},
+    ]).to_csv(csv_file, index=False)
+
+    ds_cfg = {
+        "dataset_id": "test_ds",
+        "domain": "test",
+        "enabled": True,
+        "annotation_adapter": "grbas_csv",
+        "split_strategy": "all_train",
+        "label_schema": {
+            "creaky": True,
+            "breathy": {"enabled": False, "silence_as_negative": True},
+        },
+        "adapter_params": {
+            "annotation_granularity": "utterance",
+            "audio_dir": str(audio_dir),
+            "annotation_csv": str(csv_file),
+            "csv_columns": {"file_id": "file_id", "grbas_b": "B", "speaker_id": "speaker_id"},
+        }
+    }
+    df = build_manifest_multi({"datasets": [ds_cfg]})
+    assert "breathy" in df.attrs["tasks"]
+    assert "creaky" in df.attrs["tasks"]
+
+

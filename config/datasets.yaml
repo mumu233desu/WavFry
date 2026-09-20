@@ -31,7 +31,9 @@ datasets:
     # 任务标签声明：此数据集提供哪些任务的标签
     label_schema:
       creaky: true    # 提供 creaky 精标
-      breathy: false  # 不提供 breathy 标签（manifest 中对应列填 NaN）
+      breathy:
+        enabled: false             # 不提供元音气声精标（元音标签保持 NaN）
+        silence_as_negative: true  # 显式声明：将静音(SP)作为确定性负样本（标签赋予 0.0）
 
     # 划分策略
     split_strategy: batch_split   # 使用 batch_split 列（来自 sampling_state.json）

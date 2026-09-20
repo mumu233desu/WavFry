@@ -149,6 +149,12 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
     domain = ds_cfg.get("domain", "conversational_efl")
     granularity = params.get("annotation_granularity", "segment")
 
+    label_schema = ds_cfg.get("label_schema", {})
+    breathy_spec = label_schema.get("breathy", False)
+    breathy_silence_as_neg = (
+        isinstance(breathy_spec, dict) and bool(breathy_spec.get("silence_as_negative", False))
+    )
+
     speakers = {str(s) for s in params.get("annotated_speakers", [])}
     audio_dirs = params.get("audio_dirs", {})
     textgrid_dirs = params.get("textgrid_dirs", {})
@@ -297,7 +303,9 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                             "phone_type": phone_type.value,
                             "annotation_granularity": granularity,
                             "label_creaky": creak_val,
-                            "label_breathy": float("nan"),
+                            "label_breathy": (
+                                0.0 if (phone_type == IntervalType.SILENCE and breathy_silence_as_neg) else float("nan")
+                            ),
                             "label": creak_val,
                             "batch_split": b_split,
                             "annotation_type": annotation_type,
@@ -782,8 +790,13 @@ def build_manifest_multi(
             raise ValueError(f"Unknown annotation_adapter: '{adapter_name}'. Registered: {list(ADAPTERS.keys())}")
 
         schema = ds.get("label_schema", {})
-        for task_name, has_task in schema.items():
-            if has_task:
+        for task_name, task_spec in schema.items():
+            is_active = (
+                task_spec.get("enabled", True) or task_spec.get("silence_as_negative", False)
+                if isinstance(task_spec, dict)
+                else bool(task_spec)
+            )
+            if is_active:
                 active_tasks.add(task_name)
 
         adapter_fn = ADAPTERS[adapter_name]

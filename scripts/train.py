@@ -280,8 +280,13 @@ def main():
                 ds_items = ds_items.values()
             for ds_info in ds_items:
                 if isinstance(ds_info, dict) and ds_info.get('enabled', False):
-                    for task, is_labeled in ds_info.get('label_schema', {}).items():
-                        if is_labeled:
+                    for task, task_spec in ds_info.get('label_schema', {}).items():
+                        task_active = (
+                            task_spec.get('enabled', True) or task_spec.get('silence_as_negative', False)
+                            if isinstance(task_spec, dict)
+                            else bool(task_spec)
+                        )
+                        if task_active:
                             inferred_tasks.add(task)
             canonical_order = ["creaky", "breathy"]
             if inferred_tasks:
