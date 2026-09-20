@@ -106,7 +106,7 @@ def main():
         
     print("="*80)
     
-    report_path_e = root / "runs" / "full_ablation" / "ablation_2folds_report.md"
+    report_path_e = root / "exp_results" / "runs" / "full_ablation" / "ablation_2folds_report.md"
     report_path_e.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path_e, 'w', encoding='utf-8') as f:
         f.write("# Ablation Study Report (2 Folds)\n\n")

@@ -99,7 +99,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: runs/
+  log_dir: exp_results/runs/
   log_audio_samples: true
   audio_sample_count: 8
   log_confusion_matrix: true

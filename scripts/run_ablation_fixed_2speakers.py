@@ -265,7 +265,7 @@ def main():
     print("="*80)
     
     # Save Report to file
-    report_path_e = root / "runs" / name_dir / "ablation_fixed_report.md"
+    report_path_e = root / "exp_results" / "runs" / name_dir / "ablation_fixed_report.md"
     report_path_r = Path(f"R:/runs/{name_dir}/ablation_fixed_report.md")
     
     for report_path in [report_path_e, report_path_r]:

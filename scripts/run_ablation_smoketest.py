@@ -120,7 +120,7 @@ def main():
             print("="*60)
             
             # Parse results path safely
-            log_dir_sub = "runs/smoketest_ablation/full"
+            log_dir_sub = "exp_results/runs/smoketest_ablation/full"
             for ov in specific_overrides:
                 if ov.startswith("tensorboard.log_dir="):
                     log_dir_sub = ov.split('=', 1)[1]
@@ -193,7 +193,7 @@ def main():
     # Collect final results for all completed groups
     results = {}
     for name, specific_overrides in ablations_specific.items():
-        log_dir_sub = "runs/smoketest_ablation/full"
+        log_dir_sub = "exp_results/runs/smoketest_ablation/full"
         for ov in specific_overrides:
             if ov.startswith("tensorboard.log_dir="):
                 log_dir_sub = ov.split('=', 1)[1]
@@ -289,7 +289,7 @@ def main():
     print("="*80)
     
     # Save Report to file
-    report_path = root / "runs" / "smoketest_ablation" / "ablation_report.md"
+    report_path = root / "exp_results" / "runs" / "smoketest_ablation" / "ablation_report.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("# Ablation Study Report (Smoketest)\n\n")

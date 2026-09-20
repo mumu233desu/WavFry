@@ -13,8 +13,8 @@ if str(root) not in sys.path:
 from wavfry.model import wavlm_classifier as model_mod
 
 def test_export():
-    pt_path = root / 'checkpoints' / 'wavfry_full.pt'
-    onnx_path = root / 'checkpoints' / 'wavfry_model.onnx'
+    pt_path = root / 'exp_results' / 'checkpoints' / 'wavfry_full.pt'
+    onnx_path = root / 'exp_results' / 'checkpoints' / 'wavfry_model.onnx'
     
     print("1. Loading PyTorch model...")
     ckpt = torch.load(pt_path, map_location='cpu', weights_only=True)

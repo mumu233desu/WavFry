@@ -110,9 +110,10 @@ def resolve_checkpoint(ckpt_path: Optional[str]) -> Path:
     candidates = [
         Path("R:/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt"),
         Path("R:/checkpoints/frozen_wavlm_ablation/single_attn/best_model.pt"),
-        PROJECT_ROOT / "checkpoints/csl_frozen_wavlm_base_plus/best_model.pt",
-        PROJECT_ROOT / "checkpoints/frozen_wavlm_base_plus/best_model.pt",
-        PROJECT_ROOT / "exp_results/wavfry_exp_20260803_frame-level/checkpoints/full_ablation/block_linear_softmax/best_model.pt",
+        PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt",
+        PROJECT_ROOT / "exp_results/checkpoints/frozen_wavlm_base_plus/best_model.pt",
+        PROJECT_ROOT / "exp_results/checkpoints/camera_ready_ablation/single_attn/best_model.pt",
+        PROJECT_ROOT / "exp_results/checkpoints/wavfry_exp_20260803_frame-level/checkpoints/full_ablation/block_linear_softmax/best_model.pt",
     ]
     for c in candidates:
         if c.exists():

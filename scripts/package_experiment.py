@@ -9,7 +9,7 @@ def package_experiment():
     # 基础路径设定
     root = Path(__file__).parent.parent
     config_path = root / "config" / "_defaults.yaml"
-    results_path = root / "runs" / "loocv_results.json"
+    results_path = root / "exp_results" / "runs" / "loocv_results.json"
     
     # 1. 加载配置
     if not config_path.exists():

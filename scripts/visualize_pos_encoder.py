@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 def main():
     checkpoint_path = Path("R:/checkpoints/full_ablation/full/best_model.pt")
     if not checkpoint_path.exists():
-        checkpoint_path = Path("runs/full_ablation/full/best_model.pt") # fallback
+        checkpoint_path = Path("exp_results/runs/full_ablation/full/best_model.pt") # fallback
     
     if not checkpoint_path.exists():
         # Let's search E drive
-        checkpoint_path = Path(__file__).resolve().parents[1] / "runs" / "full_ablation" / "full" / "best_model.pt"
+        checkpoint_path = Path(__file__).resolve().parents[1] / "exp_results" / "runs" / "full_ablation" / "full" / "best_model.pt"
         
     if not checkpoint_path.exists():
         print(f"Error: checkpoint not found at {checkpoint_path}")
@@ -68,7 +68,7 @@ def main():
     plt.legend(frameon=True, facecolor='white', framealpha=0.9, fontsize=11)
     
     # Save path
-    save_dir = Path("runs/full_ablation")
+    save_dir = Path(__file__).resolve().parents[1] / "exp_results" / "runs" / "full_ablation"
     save_dir.mkdir(parents=True, exist_ok=True)
     img_name = "positional_bias_curve.png"
     img_path = save_dir / img_name

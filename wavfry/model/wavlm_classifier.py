@@ -67,8 +67,14 @@ class WavFryClassifier(nn.Module):
         self.topk_ratio = float(training_cfg.get("topk_ratio", 0.2))
         self.topk_min_frames = int(training_cfg.get("topk_min_frames", 3))
         model_cfg = config.get("model", {})
-        self.use_pos_encoding = bool(model_cfg.get("use_positional_encoding", False))
-        self.pos_dim = int(model_cfg.get("pos_embed_dim", 32))
+        ablation_cfg = training_cfg.get("ablation", {})
+        self.use_pos_encoding = bool(
+            model_cfg.get("use_positional_encoding", False)
+            or ablation_cfg.get("use_positional_encoding", False)
+        )
+        self.pos_dim = int(
+            model_cfg.get("pos_embed_dim", ablation_cfg.get("pos_embed_dim", 32))
+        )
 
         # Task-specific attention heads
         if "attn" in self.pooling_mode:
@@ -168,22 +174,50 @@ class WavFryClassifier(nn.Module):
     def _load_from_state_dict(
         self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
     ):
-        """Remap legacy single-head frame_head keys to multi-task frame_heads.creaky."""
-        legacy_frame_head_prefix = prefix + "frame_head."
-        legacy_keys = [k for k in list(state_dict.keys()) if k.startswith(legacy_frame_head_prefix)]
-        for k in legacy_keys:
-            new_k = prefix + "frame_heads.creaky." + k[len(legacy_frame_head_prefix):]
+        """Remap legacy single-task keys to multi-task keys (defaulting to 'creaky')."""
+        # 1. scalar_mix_weights -> scalar_mix_weights.creaky
+        legacy_smw = prefix + "scalar_mix_weights"
+        if legacy_smw in state_dict:
+            new_k = prefix + "scalar_mix_weights.creaky"
             if new_k not in state_dict:
-                state_dict[new_k] = state_dict[k]
-            state_dict.pop(k, None)
+                state_dict[new_k] = state_dict[legacy_smw]
+            state_dict.pop(legacy_smw, None)
 
+        # 2. attention_head.* -> attention_heads.creaky.*
+        legacy_attn_prefix = prefix + "attention_head."
+        for k in list(state_dict.keys()):
+            if k.startswith(legacy_attn_prefix):
+                new_k = prefix + "attention_heads.creaky." + k[len(legacy_attn_prefix):]
+                if new_k not in state_dict:
+                    state_dict[new_k] = state_dict[k]
+                state_dict.pop(k, None)
+
+        # 3. head.* -> heads.creaky.*
+        legacy_head_prefix = prefix + "head."
+        for k in list(state_dict.keys()):
+            if k.startswith(legacy_head_prefix):
+                new_k = prefix + "heads.creaky." + k[len(legacy_head_prefix):]
+                if new_k not in state_dict:
+                    state_dict[new_k] = state_dict[k]
+                state_dict.pop(k, None)
+
+        # 4. frame_head.* -> frame_heads.creaky.*
+        legacy_frame_head_prefix = prefix + "frame_head."
+        for k in list(state_dict.keys()):
+            if k.startswith(legacy_frame_head_prefix):
+                new_k = prefix + "frame_heads.creaky." + k[len(legacy_frame_head_prefix):]
+                if new_k not in state_dict:
+                    state_dict[new_k] = state_dict[k]
+                state_dict.pop(k, None)
+
+        # 5. frame_mil_fusion.* -> frame_mil_fusions.creaky.*
         legacy_fusion_prefix = prefix + "frame_mil_fusion."
-        legacy_fusion_keys = [k for k in list(state_dict.keys()) if k.startswith(legacy_fusion_prefix)]
-        for k in legacy_fusion_keys:
-            new_k = prefix + "frame_mil_fusions.creaky." + k[len(legacy_fusion_prefix):]
-            if new_k not in state_dict:
-                state_dict[new_k] = state_dict[k]
-            state_dict.pop(k, None)
+        for k in list(state_dict.keys()):
+            if k.startswith(legacy_fusion_prefix):
+                new_k = prefix + "frame_mil_fusions.creaky." + k[len(legacy_fusion_prefix):]
+                if new_k not in state_dict:
+                    state_dict[new_k] = state_dict[k]
+                state_dict.pop(k, None)
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs

@@ -566,7 +566,7 @@ def main():
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (0 = disable)")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--grad-accum", type=int, default=2, help="Gradient accumulation steps")
-    parser.add_argument("--output-dir", type=str, default="runs/camera_ready_ablation", help="TensorBoard/run output dir")
+    parser.add_argument("--output-dir", type=str, default="exp_results/runs/camera_ready_ablation", help="TensorBoard/run output dir")
     parser.add_argument("--ckpt-dir", type=str, default="R:/checkpoints/camera_ready_ablation", help="Checkpoint root dir (defaults to R: RAMDisk)")
     parser.add_argument("--resume", action="store_true", help="Resume from existing evaluation results")
     parser.add_argument("--smoketest", action="store_true", help="Quick dry-run: 1 epoch, small data test")
@@ -725,7 +725,7 @@ def main():
 
                 # Mirror winning checkpoint and metrics to persistent disk as safety backup
                 try:
-                    local_backup_dir = PROJECT_ROOT / "exp_results" / "camera_ready_ablation" / cfg_id
+                    local_backup_dir = PROJECT_ROOT / "exp_results" / "checkpoints" / "camera_ready_ablation" / cfg_id
                     local_backup_dir.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(best_ckpt, local_backup_dir / "best_model.pt")
                     shutil.copy2(eval_metrics_file, local_backup_dir / "eval_val_metrics.json")
