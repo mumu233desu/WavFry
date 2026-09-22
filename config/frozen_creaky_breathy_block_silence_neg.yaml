@@ -126,5 +126,5 @@ augmentation:
     prob: 0.5                 # 每个样本应用加噪的概率
     type: pink                # noise type: white | pink
     pink_low_cutoff_hz: 10.0  # pink noise low cutoff frequency to prevent DC / sub-bass drift
-    snr_db_start: 40.0        # epoch 1 时（几乎听不出噪声）
+    snr_db_start: 35.0        # epoch 1 时（几乎听不出噪声）
     snr_db_end: 20.0          # 最终 epoch 时（明显但不严重）

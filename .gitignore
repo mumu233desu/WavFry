@@ -13,3 +13,4 @@ nul
 scratch/
 .pytest_cache/
 data/
+pretrained/

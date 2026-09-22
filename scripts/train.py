@@ -154,7 +154,10 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         model = model_mod.WavFryClassifier(config).to(device)
     
     if warm_start:
-        checkpoint = torch.load(warm_start, map_location=device, weights_only=False)
+        try:
+            checkpoint = torch.load(warm_start, map_location=device, mmap=True, weights_only=False)
+        except (TypeError, Exception):
+            checkpoint = torch.load(warm_start, map_location=device, weights_only=False)
         result = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         print(f"Warm-started model weights from {warm_start}")
         if result.missing_keys:

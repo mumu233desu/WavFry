@@ -1038,8 +1038,10 @@ class Trainer:
 
     def load_checkpoint(self, path):
         print(f"Loading checkpoint from {path} for resuming...")
-        # We need weights_only=False because of optimizer/scheduler states and numpy in metrics
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        try:
+            checkpoint = torch.load(path, map_location=self.device, mmap=True, weights_only=False)
+        except (TypeError, Exception):
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         
         # Load model weights (handle delta or full)
         result = self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
