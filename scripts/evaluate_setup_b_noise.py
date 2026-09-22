@@ -966,7 +966,7 @@ def main():
     parser.add_argument("--skip-creapy", action="store_true")
     parser.add_argument("--skip-praat", action="store_true")
     parser.add_argument("--skip-kane", action="store_true")
-    parser.add_argument("--sample-json", type=str, default="04_creaky_tools/_annotation_sampling/sampling_state.json")
+    parser.add_argument("--sample-json", type=str, default="02_en_mfa_aligned/_creaky_cache/sampling_state.json")
     parser.add_argument("--batch-id", type=int, default=2)
     args = parser.parse_args()
     

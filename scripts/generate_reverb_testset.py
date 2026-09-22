@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 WORKSPACE_ROOT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE")
 AUDIO_DIR = WORKSPACE_ROOT / "01_en_dereverb"
-SAMPLE_JSON = WORKSPACE_ROOT / "04_creaky_tools\_annotation_sampling\sampling_state.json"
+SAMPLE_JSON = WORKSPACE_ROOT / "02_en_mfa_aligned/_creaky_cache/sampling_state.json"
 OUT_DIR = WORKSPACE_ROOT / "01_en_dereverb_Reverb"
 RT60 = 0.5  # Medium reverberation time in seconds
 

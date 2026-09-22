@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 WORKSPACE_ROOT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE")
 AUDIO_DIR = WORKSPACE_ROOT / "01_en_dereverb"
-SAMPLE_JSON = WORKSPACE_ROOT / "04_creaky_tools/_annotation_sampling/sampling_state.json"
+SAMPLE_JSON = WORKSPACE_ROOT / "02_en_mfa_aligned/_creaky_cache/sampling_state.json"
 TARGET_SNRS = [20, 10, 0, -10, -20]
 
 def add_white_noise(audio: np.ndarray, snr_db: float) -> np.ndarray:
