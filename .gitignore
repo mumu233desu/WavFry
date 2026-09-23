@@ -12,5 +12,6 @@ nul
 *.lnk
 scratch/
 .pytest_cache/
-data/
+/data/
 pretrained/
+artifacts/

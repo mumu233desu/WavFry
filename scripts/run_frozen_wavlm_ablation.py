@@ -334,14 +334,6 @@ def evaluate_checkpoint_on_val(
     isolate = bool(config["data"].get("isolate_split_speakers", True))
 
     eval_df = manifest_df.copy()
-    if "is_golden" in eval_df.columns:
-        is_golden = eval_df["is_golden"].astype(str).str.lower().map(
-            {"true": True, "false": False, "1": True, "0": False}
-        ).fillna(False)
-        golden_spks = set(eval_df[is_golden]["speaker_id"].dropna().unique())
-        if golden_spks:
-            eval_df = eval_df[~eval_df["speaker_id"].isin(golden_spks)].copy()
-
     # Exact matching of train.py dataset split logic
     train_df, val_df, test_df = splits_mod.make_batch_split(eval_df, isolate=isolate)
 

@@ -86,7 +86,7 @@ MANIFEST_COLUMNS = [
     "annotation_type",
     "batch_id",
     "batch_name",
-    "is_golden",
+    "is_frame_verified",
 ]
 
 
@@ -281,7 +281,7 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                     if phone_type == IntervalType.UNKNOWN or phone_type.value not in training_phone_types:
                         continue
 
-                    is_golden = bool(entry.get("is_golden_file", False))
+                    is_frame_verified = bool(entry.get("is_frame_verified", entry.get("is_golden_file", False)))
                     creak_val = 1.0 if label == "creaky" else 0.0
 
                     records.append(
@@ -307,7 +307,7 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                             "annotation_type": annotation_type,
                             "batch_id": file_b_id,
                             "batch_name": file_b_name,
-                            "is_golden": is_golden,
+                            "is_frame_verified": is_frame_verified,
                         }
                     )
 
@@ -382,7 +382,7 @@ def adapter_grbas_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             "annotation_type": "external",
             "batch_id": float("nan"),
             "batch_name": "external",
-            "is_golden": False,
+            "is_frame_verified": False,
         })
     return records
 
@@ -462,7 +462,7 @@ def adapter_capev_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             "annotation_type": "external",
             "batch_id": float("nan"),
             "batch_name": "external",
-            "is_golden": False,
+            "is_frame_verified": False,
         })
     return records
 
@@ -528,7 +528,7 @@ def adapter_generic_csv(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             "annotation_type": str(row.get("annotation_type", "custom")),
             "batch_id": float(row.get("batch_id", float("nan"))),
             "batch_name": str(row.get("batch_name", "")),
-            "is_golden": bool(row.get("is_golden", False)),
+            "is_frame_verified": bool(row.get("is_frame_verified", row.get("is_golden", False))),
         })
     return records
 
@@ -681,7 +681,7 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 "annotation_type": "phonological_minimal_pair",
                 "batch_id": float("nan"),
                 "batch_name": "",
-                "is_golden": False,
+                "is_frame_verified": False,
             })
 
     print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from breathy cache ({cache_dir}).")

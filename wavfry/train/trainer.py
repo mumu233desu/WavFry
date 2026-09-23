@@ -141,9 +141,13 @@ class Trainer:
         
         optimizer_type = self.config['training'].get('optimizer', 'adamw_fp32')
         if optimizer_type == 'adamw_8bit':
-            import bitsandbytes as bnb
-            print("[INFO] Using 8-bit AdamW optimizer (bitsandbytes)")
-            return bnb.optim.AdamW8bit(optimizer_grouped_parameters)
+            try:
+                import bitsandbytes as bnb
+                print("[INFO] Using 8-bit AdamW optimizer (bitsandbytes)")
+                return bnb.optim.AdamW8bit(optimizer_grouped_parameters)
+            except (ImportError, ModuleNotFoundError):
+                print("[WARNING] 'bitsandbytes' not found or failed to load. Falling back to native torch.optim.AdamW.")
+                return optim.AdamW(optimizer_grouped_parameters)
         elif optimizer_type == 'adamw_fp32':
             return optim.AdamW(optimizer_grouped_parameters)
         else:

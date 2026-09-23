@@ -41,6 +41,7 @@ ENVIRONMENTS = [
     {"name": "10dB", "dir": WORKSPACE_ROOT / "01_en_dereverb_SNR10"},
     {"name": "0dB", "dir": WORKSPACE_ROOT / "01_en_dereverb_SNR0"},
     {"name": "-10dB", "dir": WORKSPACE_ROOT / "01_en_dereverb_SNR-10"},
+    {"name": "-20dB", "dir": WORKSPACE_ROOT / "01_en_dereverb_SNR-20"},
     {"name": "Rev(0.5s)", "dir": WORKSPACE_ROOT / "01_en_dereverb_Reverb"},
 ]
 
@@ -60,9 +61,16 @@ def parse_region(file_key: str) -> str:
 def load_test_manifest() -> pd.DataFrame:
     manifest_path = CODE_ROOT / "manifests" / "segments_all.csv"
     full_df = pd.read_csv(manifest_path, low_memory=False)
-    b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
-    test_df = full_df[(full_df["batch_id"] == 2) & (~full_df["speaker_id"].isin(b0_spks))].copy().reset_index(drop=True)
-    assert len(test_df) == 2392, f"Expected 2392 test segments, got {len(test_df)}"
+    is_cs = (full_df["dataset_id"] == "cs_dialogue") if "dataset_id" in full_df.columns else full_df["label_creaky"].notna()
+    if "batch_split" in full_df.columns:
+        test_df = full_df[(full_df["batch_split"] == "test") & is_cs].copy().reset_index(drop=True)
+    elif "split" in full_df.columns:
+        test_df = full_df[(full_df["split"] == "test") & is_cs].copy().reset_index(drop=True)
+    else:
+        b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
+        test_df = full_df[full_df["batch_id"].isin([2, 3]) & (~full_df["speaker_id"].isin(b0_spks)) & is_cs].copy().reset_index(drop=True)
+    if "phone_type" in test_df.columns:
+        test_df = test_df[test_df["phone_type"] == "vowel"].copy().reset_index(drop=True)
     test_df["gender"] = test_df["file_key"].apply(parse_gender)
     test_df["region"] = test_df["file_key"].apply(parse_region)
     return test_df
@@ -198,11 +206,23 @@ def run_deepfry_baseline(file_keys: List[str], stage_base_dir: Path, pred_dir: P
     pred_dir.mkdir(parents=True, exist_ok=True)
     done_file = pred_dir / "_DONE.txt"
 
-    all_exist = all((pred_dir / f"{k}.TextGrid").exists() for k in file_keys)
-    if not (done_file.exists() and all_exist):
+    missing_keys = [k for k in file_keys if not (pred_dir / f"{k}.TextGrid").exists()]
+    if missing_keys:
+        # Create an isolated staging directory containing only the missing keys
+        sub_stage = pred_dir / "_sub_stage"
+        sub_stage_test = sub_stage / "test"
+        if sub_stage.exists():
+            shutil.rmtree(sub_stage)
+        sub_stage_test.mkdir(parents=True, exist_ok=True)
+        staged_test = stage_base_dir / "test"
+        for k in missing_keys:
+            src_wav = staged_test / f"{k}.wav"
+            if src_wav.exists():
+                shutil.copy2(src_wav, sub_stage_test / f"{k}.wav")
+
         cmd = [
             sys.executable, str(DEEPFRY_DIR / "run.py"),
-            "--data_dir", str(stage_base_dir),
+            "--data_dir", str(sub_stage),
             "--model_name", str(DEEPFRY_MODEL),
             "--output_dir", str(pred_dir),
             "--custom",
@@ -214,8 +234,9 @@ def run_deepfry_baseline(file_keys: List[str], stage_base_dir: Path, pred_dir: P
         proc = subprocess.run(cmd, cwd=str(DEEPFRY_DIR), text=True, capture_output=True)
         if proc.returncode != 0:
             print(f"[DeepFry] Error:\n{proc.stderr}")
-        else:
-            done_file.write_text("done", encoding="utf-8")
+        if sub_stage.exists():
+            shutil.rmtree(sub_stage)
+        done_file.write_text("done", encoding="utf-8")
 
     all_spans = {}
     for key in file_keys:
@@ -240,14 +261,35 @@ def run_creapy_baseline(file_keys: List[str], staged_audio_dir: Path, pred_dir: 
     pred_dir.mkdir(parents=True, exist_ok=True)
     done_file = pred_dir / "_DONE.txt"
 
-    all_exist = all((pred_dir / f"{k}.TextGrid").exists() for k in file_keys)
-    if not (done_file.exists() and all_exist):
-        # Stage base textgrids
-        for k in file_keys:
+    # Identify files that don't have a valid creapy tier in their TextGrid
+    missing_keys = []
+    for k in file_keys:
+        tg_path = pred_dir / f"{k}.TextGrid"
+        if not tg_path.exists():
+            missing_keys.append(k)
+        else:
+            try:
+                tg = tgt.io.read_textgrid(str(tg_path), encoding="utf-8")
+                if not any("creapy" in tier.name.lower() for tier in tg.tiers):
+                    missing_keys.append(k)
+            except Exception:
+                missing_keys.append(k)
+
+    if missing_keys:
+        sub_stage_audio = pred_dir / "_sub_audio"
+        if sub_stage_audio.exists():
+            shutil.rmtree(sub_stage_audio)
+        sub_stage_audio.mkdir(parents=True, exist_ok=True)
+
+        for k in missing_keys:
+            # Stage base textgrid if needed
             src_tg = MFA_TG_DIR / f"{k}.TextGrid"
             dst_tg = pred_dir / f"{k}.TextGrid"
             if src_tg.exists() and not dst_tg.exists():
                 shutil.copy2(src_tg, dst_tg)
+            src_wav = staged_audio_dir / f"{k}.wav"
+            if src_wav.exists():
+                shutil.copy2(src_wav, sub_stage_audio / f"{k}.wav")
 
         if str(CREAPY_DIR) not in sys.path:
             sys.path.insert(0, str(CREAPY_DIR))
@@ -266,10 +308,12 @@ def run_creapy_baseline(file_keys: List[str], staged_audio_dir: Path, pred_dir: 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             process_folder(
-                audio_directory=str(staged_audio_dir),
+                audio_directory=str(sub_stage_audio),
                 textgrid_directory=str(pred_dir),
                 csv_directory=None,
             )
+        if sub_stage_audio.exists():
+            shutil.rmtree(sub_stage_audio)
         done_file.write_text("done", encoding="utf-8")
 
     all_spans = {}
@@ -389,7 +433,7 @@ def evaluate_predictions(test_df: pd.DataFrame, spans_by_file: Dict[str, List[Tu
 
 def main():
     print("=" * 70)
-    print("  External Baselines Evaluation on 2392 Test Segments (Clean + Noise)")
+    print("  External Baselines Evaluation on Unified Test Set (Clean + Noise)")
     print("=" * 70)
 
     test_df = load_test_manifest()

@@ -57,7 +57,7 @@ class AudioAugmentor:
     - Gaussian noise addition
     - Power-curve intensity scheduling
     """
-    def __init__(self, config):
+    def __init__(self, config, max_epochs=None):
         self.config = config
         self.enabled = config.get('enabled', False)
         if not self.enabled:
@@ -70,7 +70,19 @@ class AudioAugmentor:
         self.denoise_cfg = config.get('denoising', {})
         self.noise_cfg = config.get('noise', {})
         
-        self.max_epochs = config.get('max_epochs', 20) # Used for scheduling
+        # Resolve max_epochs for curriculum scheduling:
+        # 1. Explicit max_epochs argument
+        # 2. config['max_epochs'] (if present in augmentation config)
+        # 3. config['training']['epochs'] (if full training config was passed)
+        # 4. Fallback default: 20
+        if max_epochs is not None:
+            self.max_epochs = int(max_epochs)
+        elif 'max_epochs' in config:
+            self.max_epochs = int(config['max_epochs'])
+        elif 'training' in config and isinstance(config['training'], dict) and 'epochs' in config['training']:
+            self.max_epochs = int(config['training']['epochs'])
+        else:
+            self.max_epochs = 20
         
         # Lazy loading DFN models
         self.dfn_model = None

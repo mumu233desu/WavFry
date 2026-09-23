@@ -1,0 +1,138 @@
+# WavFry Default Configuration (_defaults.yaml)
+
+# ── 数据 ──────────────────────────────────────────────
+data:
+  isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
+  # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
+  # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
+  num_workers: auto
+  pin_memory: true                   # GPU 训练时加速 Host→Device 传输
+  prefetch_factor: 2                 # num_workers>0 时生效
+
+# ── 模型 ──────────────────────────────────────────────
+model:
+  backbone: microsoft/wavlm-base-plus  # 可换 wavlm-base / wavlm-large
+  # 选择性微调层："4-8" | [4,5,6,7,8] | "all" | "none"
+  # 推荐中偏下层 4-8（音素/发音方式特征区间）
+  fine_tune_layers: "none"
+  use_scalar_mix: true               # 所有层学习加权聚合
+  dropout: 0.1
+  head_hidden_dim: 256               # 分类头隐层（自动适配 backbone 输出维度）
+  use_positional_encoding: true      # 是否在注意力池化前注入时间位置编码
+  pos_embed_dim: 32                  # 位置编码维度
+  tasks: [creaky]                    # 激活的任务头列表（多任务可配置如 [creaky, breathy]）
+
+# ── 训练 ──────────────────────────────────────────────
+training:
+  quiet: true                        # 是否静音模式（隐藏 tqdm 进度条，仅输出 epoch 汇总）
+  optimizer: adamw_fp32              # adamw_fp32 | adamw_8bit
+  epochs: 30
+  gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation
+                                     # 显存不足时设 2/4，等效扩大 batch
+  backbone_lr: 0.0                   # 微调层 LR（全冻结骨干设为 0.0）
+  head_lr: 1.0e-4                    # 分类头 + scalar mix LR
+  warmup_steps: 200
+  weight_decay: 0.01                 # 仅应用于分类头权重层
+  grad_clip: 1.0
+  loss: focal                        # focal | weighted_bce
+  focal_gamma: 2.0
+  focal_alpha: 0.75
+  seed: 42
+  # 混合精度：fp16（RTX）/ bf16（A100/Colab TPU）/ no
+  mixed_precision: bf16
+  # 梯度检查点：显著降低显存，轻微降低速度，Colab/8GB 显存建议开启
+  gradient_checkpointing: false
+  # ── 学习率调度 ──────────────────────────────────────
+  lr_schedule: cosine     # cosine | cosine_restart | linear | none
+  min_lr_ratio: 0.05              # 余弦退火终点 = base_lr × min_lr_ratio，防止衰减到 0
+  # ── 余弦热重启参数（仅 cosine_restart 时生效）──
+  restart_aug_threshold: 0.11     # 触发重启的数据增强强度阈值（自动推算 epoch）
+  restart_lr_ratio: 0.45          # 重启后 LR 恢复到峰值的比例（保守值 0.35~0.5）
+  restart_warmup_steps: 100       # 重启后约 1 epoch 的平滑爬升
+  # ── 训练范式主开关 ──────────────────────────────────────
+  paradigm: segment              # segment（单片段分类）| block（连续音频块分类）
+
+  # ── Segment 范式专属参数 ──────────────────────────────
+  segment:
+    batch_size: 32
+    context_padding_ms: 30       # 片段两侧上下文填充时长
+    continuous_non_creaky_sampling:
+      enabled: false             # 连续非嘎裂音动态采样
+      extra_sample_ratio: 0.08
+      min_duration_ms: 150
+      target_duration_ms: 300
+      max_duration_ms: 350       # 限制标签与输入时长的关联，降低长度 shortcut 风险
+      min_intervals: 1
+      max_intervals: 4
+      max_sp_duration_ms: 200
+      max_sp_ratio: 0.35
+      allow_sp_only: false
+
+  # ── Block 范式专属参数 ────────────────────────────────
+  block:
+    batch_size: 16
+    duration_ms: 2000            # 连续音频块窗口长度
+    hop_ms: 1000                 # 音频块滑动步长
+    max_intervals: 8             # 单块内最多标注区间槽位
+    boundary_trim_frames: 0      # 边缘帧收缩
+    frame_head:                  # 块级逐帧弱监督多示例学习头（自动对 model.tasks 中所有激活任务独立构建帧级头）
+      enabled: false
+      loss_weight: 0.1           # 帧级弱监督损失权重（支持全局浮点数 0.1，或按任务独立配置如 {creaky: 0.1, breathy: 0.1}）
+      mil_mode: lse              # lse | top_k_mean | linear_softmax | max | lse_mean
+      temperature: 1.0
+      topk_ratio: 0.2
+
+  # ── 池化策略 ────────────────────────────────────────
+  pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk
+  topk_ratio: 0.2           # Top-K 取帧比例
+  topk_min_frames: 3        # Top-K 最少取几帧
+
+  # ── 多任务训练头开关（可选覆盖项；默认情况下 model.tasks 中的所有头均自动参与训练） ──
+  # train_heads:
+  #   creaky: true
+  #   breathy: false
+
+# ── 评估 ──────────────────────────────────────────────
+eval:
+  primary_metric: auc_pr        # auc_pr（推荐）| f1 — 决定 early-stopping 和最优 ckpt 判断依据
+  early_stopping_patience: 3  # 连续 3 个 epoch 验证集指标不上升则早停
+
+# ── TensorBoard ───────────────────────────────────────
+tensorboard:
+  log_dir: R:/runs/ncmmsc_camera_ready
+  log_audio_samples: true
+  audio_sample_count: 8
+  log_confusion_matrix: true
+  log_pr_curve: true
+
+# ── Checkpoint ────────────────────────────────────────
+checkpoint:
+  dir: R:/checkpoints/ncmmsc_camera_ready
+  save_mode: delta                   # delta（只存微调权重）| full（完整模型）
+  keep_best_count: 1                 # 保留验证集指标最好的前 N 个 ckpt
+
+# ── 数据增强（训练专用，推理不使用）────────────────────
+augmentation:
+  enabled: true              # 总开关：false = 完全不做增强（baseline 对照组）
+
+  # 增强顺序（denoising 和 noise 同时触发时）
+  aug_order: noise_first      # noise_first（默认）| denoise_first | random
+  # 课程调度曲线幂次：1.0=线性，2.0=慢起步（默认），3.0=更保守
+  schedule_power: 2.0
+
+  denoising:
+    enabled: true             # 降噪增强开关
+    prob: 0.5                 # 每个样本应用降噪的概率
+    # 降噪强度随 epoch 按幂次曲线增大（atten_lim_db 单位：dB）
+    # atten_lim_db 越大 = 降噪越激进
+    atten_lim_db_start: 1.0   # epoch 1 时的强度（轻微降噪）
+    atten_lim_db_end: 15.0    # 最终 epoch 时的强度（适中）
+
+  noise:
+    enabled: true             # 加噪增强开关
+    prob: 0.5                 # 每个样本应用加噪的概率
+    type: pink                # noise type: white | pink
+    pink_low_cutoff_hz: 10.0  # pink noise low cutoff frequency to prevent DC / sub-bass drift
+    # SNR 随 epoch 按幂次曲线下降（SNR 越低 = 噪声越多）
+    snr_db_start: 35.0        # epoch 1 时（几乎听不出噪声）
+    snr_db_end: 20.0          # 最终 epoch 时（明显但不严重）

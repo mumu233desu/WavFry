@@ -75,8 +75,9 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     aug_cfg = config.get('augmentation', {})
     if aug_cfg.get('enabled', False):
         from wavfry.data.augmentation import AudioAugmentor
-        augmentor = AudioAugmentor(aug_cfg)
-        print("Data augmentation enabled for training.")
+        train_epochs = config.get('training', {}).get('epochs', 30)
+        augmentor = AudioAugmentor(aug_cfg, max_epochs=train_epochs)
+        print(f"Data augmentation enabled for training (scheduled across {train_epochs} epochs).")
 
     if paradigm == 'block':
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
@@ -323,26 +324,23 @@ def main():
     for col in ['start_s', 'end_s', 'label', 'label_creaky', 'label_breathy']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-    # Extract Golden Test Set globally
-    if 'is_golden' in df.columns:
-        # csv reads it as string 'True' or 'False'
-        is_golden_series = df['is_golden'].astype(str).str.lower().map({'true': True, 'false': False, '1': True, '0': False}).fillna(False)
-        golden_speakers = set(df[is_golden_series]['speaker_id'].unique())
-        if golden_speakers:
-            test_df = df[(df['speaker_id'].isin(golden_speakers)) & is_golden_series].copy()
-            test_df['split'] = 'test'
-            
-            # Globally remove all data from these speakers from df
-            df = df[~df['speaker_id'].isin(golden_speakers)].copy()
-            print(f"[Golden] Extracted {len(test_df)} test segments from {len(golden_speakers)} speakers.")
-            
-            # Save test_df to checkpoint dir for later evaluation
-            test_out_path = Path(config['checkpoint']['dir']) / "golden_test_set.csv"
-            test_out_path.parent.mkdir(parents=True, exist_ok=True)
-            test_df.to_csv(test_out_path, index=False)
-            print(f"[Golden] Golden test set saved to {test_out_path}")
-    
+
+    # Task-aware manifest filtering:
+    # Retain only rows that have at least one valid (non-NaN) label for the model's active tasks.
+    active_tasks = config.get('model', {}).get('tasks', ['creaky'])
+    task_cols = [f"label_{t}" if f"label_{t}" in df.columns else "label" for t in active_tasks]
+    existing_task_cols = [c for c in task_cols if c in df.columns]
+    if existing_task_cols:
+        has_valid_label = df[existing_task_cols].notna().any(axis=1)
+        dropped_count = len(df) - int(has_valid_label.sum())
+        if dropped_count > 0:
+            print(
+                f"[Task Filter] Active tasks: {active_tasks}. Retaining rows with valid annotations "
+                f"across {existing_task_cols}. Filtered out {dropped_count} irrelevant segments "
+                f"(remaining: {int(has_valid_label.sum())} segments)."
+            )
+            df = df[has_valid_label].copy()
+
     is_loocv = bool(args.loocv or (config.get('training', {}).get('mode') == 'loocv'))
     
     # Smoketest overrides

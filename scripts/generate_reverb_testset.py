@@ -55,18 +55,17 @@ def main():
         print(f"Error: {SAMPLE_JSON} not found.")
         return
 
-    # Parse which files are in the test set (batch 2)
+    # Parse which files are in the test set (all batches with split=='test')
     target_files = set()
     with open(SAMPLE_JSON, "r", encoding="utf-8") as f:
         st = json.load(f)
         for b in st.get("batches", []):
-            if b.get("batch_id") == 2:
+            if b.get("split") == "test" or b.get("batch_id") in (2, 3):
                 for fh in b.get("files", []):
                     if fh.get("annotated", False):
                         target_files.add(fh["file_key"])
-                break
                 
-    print(f"Found {len(target_files)} target files for Setup B evaluation.")
+    print(f"Found {len(target_files)} target files for unified test set evaluation.")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 """
-Evaluate WavFry Single-Attn Checkpoint on the 2,392 Golden Test Set.
+Evaluate WavFry Single-Attn Checkpoint on the Unified Test Set (Batch 2 + Batch 3).
 Evaluates Clean + 6 Degraded Environments (SNR 20/10/0/-10/-20 dB, Reverb RT60=0.5s)
 and computes overall + demographic subgroup metrics (Female/Male, Beijing/Guangdong/Sichuan).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -29,7 +30,9 @@ from wavfry.model import wavlm_classifier as model_mod
 
 WAVE_ROOT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE")
 BASELINES_DIR = Path(r"E:\Coding\WavFry\data\experiments\baselines")
-CHECKPOINT_PATH = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE\06_wavfry\exp_results\checkpoints\camera_ready_ablation\single_attn\best_model.pt")
+DEFAULT_CKPT = Path(r"R:\checkpoints\ncmmsc_camera_ready\best_model.pt")
+FALLBACK_CKPT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE\06_wavfry\exp_results\checkpoints\camera_ready_ablation\single_attn\best_model.pt")
+CHECKPOINT_PATH = DEFAULT_CKPT if DEFAULT_CKPT.exists() else FALLBACK_CKPT
 
 ENVIRONMENTS = [
     {"name": "Clean", "dir": WAVE_ROOT / "01_en_dereverb"},
@@ -115,8 +118,14 @@ def compute_subgroup_metrics(df: pd.DataFrame, probs: np.ndarray, threshold: flo
     return results
 
 def main():
+    parser = argparse.ArgumentParser(description="Evaluate WavFry on Unified Test Set")
+    parser.add_argument("--checkpoint", type=Path, default=CHECKPOINT_PATH, help="Path to best_model.pt checkpoint")
+    args = parser.parse_args()
+
+    checkpoint_path = args.checkpoint
     print("=" * 70)
-    print("  WavFry Camera-Ready Test Set Evaluation (single_attn, N=2392)")
+    print(f"  WavFry Camera-Ready Unified Test Set Evaluation")
+    print(f"  Checkpoint: {checkpoint_path}")
     print("=" * 70)
 
     # 1. Load manifest and isolate test set
@@ -125,21 +134,29 @@ def main():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
 
     full_df = pd.read_csv(manifest_path, low_memory=False)
-    b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
-    test_df = full_df[(full_df["batch_id"] == 2) & (~full_df["speaker_id"].isin(b0_spks))].copy().reset_index(drop=True)
+    is_cs = (full_df["dataset_id"] == "cs_dialogue") if "dataset_id" in full_df.columns else full_df["label_creaky"].notna()
+    if "batch_split" in full_df.columns:
+        test_df = full_df[(full_df["batch_split"] == "test") & is_cs].copy().reset_index(drop=True)
+    elif "split" in full_df.columns:
+        test_df = full_df[(full_df["split"] == "test") & is_cs].copy().reset_index(drop=True)
+    else:
+        b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
+        test_df = full_df[full_df["batch_id"].isin([2, 3]) & (~full_df["speaker_id"].isin(b0_spks)) & is_cs].copy().reset_index(drop=True)
 
-    print(f"Test segments count: {len(test_df)} across {test_df['speaker_id'].nunique()} unseen speakers, {test_df['file_key'].nunique()} audio files.")
-    assert len(test_df) == 2392, f"Expected 2392 segments, got {len(test_df)}"
+    if "phone_type" in test_df.columns:
+        test_df = test_df[test_df["phone_type"] == "vowel"].copy().reset_index(drop=True)
 
     test_df["gender"] = test_df["file_key"].apply(parse_gender)
     test_df["region"] = test_df["file_key"].apply(parse_region)
 
+    print(f"Unified Test Set (Vowel Only): {len(test_df)} segments across {test_df['speaker_id'].nunique()} unseen speakers, {test_df['file_key'].nunique()} audio files.")
+
     # 2. Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Loading checkpoint from {CHECKPOINT_PATH} on {device}...")
-    ckpt = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=False)
+    print(f"Loading checkpoint from {checkpoint_path} on {device}...")
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     config = ckpt["config"]
-    best_threshold = float(ckpt.get("best_threshold", 0.667))
+    best_threshold = float(ckpt.get("best_threshold", 0.657))
     print(f"Loaded config: fine_tune={config['model'].get('fine_tune_layers')}, pooling={config['training'].get('pooling_mode')}")
     print(f"Frozen decision threshold from validation set: tau* = {best_threshold:.3f}")
 
@@ -153,7 +170,7 @@ def main():
     model.eval()
 
     results: Dict[str, Any] = {
-        "checkpoint": str(CHECKPOINT_PATH),
+        "checkpoint": str(checkpoint_path),
         "test_segments": len(test_df),
         "test_speakers": int(test_df["speaker_id"].nunique()),
         "test_files": int(test_df["file_key"].nunique()),

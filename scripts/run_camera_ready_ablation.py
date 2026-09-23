@@ -246,15 +246,8 @@ def evaluate_checkpoint_on_val(
     ckpt = robust_load_checkpoint(checkpoint_path, map_location="cpu")
     config = ckpt["config"]
 
-    # Exclude golden test speakers if marked in manifest (consistency with train.py)
+    # Build clean split
     eval_df = manifest_df.copy()
-    if "is_golden" in eval_df.columns:
-        is_golden = eval_df["is_golden"].astype(str).str.lower().map(
-            {"true": True, "false": False, "1": True, "0": False}
-        ).fillna(False)
-        golden_spks = set(eval_df[is_golden]["speaker_id"].dropna().unique())
-        if golden_spks:
-            eval_df = eval_df[~eval_df["speaker_id"].isin(golden_spks)].copy()
 
     # Build clean split
     isolate = bool(config["data"].get("isolate_split_speakers", True))
