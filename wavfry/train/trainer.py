@@ -160,6 +160,19 @@ class Trainer:
             )
         return torch.tensor([max(n_neg, 1) / max(n_pos, 1)]).to(device)
 
+    def rebuild_writer(self) -> None:
+        """Replace the TensorBoard writer with a fresh instance.
+
+        Used by the watchdog recovery path: the failed run may have terminated
+        mid-epoch, and writing to a closed or half-written event file would
+        either raise or silently drop scalars for the rest of training.
+        """
+        try:
+            self.writer.close()
+        except Exception:
+            pass
+        self.writer = SummaryWriter(log_dir=str(self.log_dir))
+
     def create_optimizer(self):
         # Issue 4: AdamW weight decay optimization
         weight_decay = self.config['training'].get('weight_decay', 0.01)

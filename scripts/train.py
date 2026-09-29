@@ -114,38 +114,45 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
 
     num_workers = dataset_mod.resolve_num_workers(config['data']['num_workers'])
     prefetch_factor = config['data'].get('prefetch_factor', 2) if num_workers > 0 else None
-    persistent_workers = bool(config['data'].get('persistent_workers', True)) if num_workers > 0 else False
+    persistent_workers = bool(config['data'].get('persistent_workers', False)) if num_workers > 0 else False
     loader_timeout = float(config['data'].get('timeout', 60.0)) if num_workers > 0 else 0.0
-    
+
     from wavfry.data.epoch_sampler import EpochShuffleSampler
     epoch_sampler = EpochShuffleSampler(
         train_ds,
         seed=config['training'].get('seed', 42),
         fold_index=fold_idx,
     )
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=train_batch_size,
-        sampler=epoch_sampler,
-        num_workers=num_workers,
-        collate_fn=collate,
-        pin_memory=config['data']['pin_memory'],
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-        timeout=loader_timeout,
-    )
-    
-    val_loader = DataLoader(
-        val_ds, 
-        batch_size=val_batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        collate_fn=collate,
-        pin_memory=config['data']['pin_memory'],
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-        timeout=loader_timeout,
-    )
+
+    def build_loaders():
+        # A fresh DataLoader spawns a fresh worker pool and re-pickles the dataset
+        # with its current epoch state. This is also the recovery path used by the
+        # watchdog: persistent worker pools cannot be revived in place.
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=train_batch_size,
+            sampler=epoch_sampler,
+            num_workers=num_workers,
+            collate_fn=collate,
+            pin_memory=config['data']['pin_memory'],
+            prefetch_factor=prefetch_factor,
+            persistent_workers=persistent_workers,
+            timeout=loader_timeout,
+        )
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=val_batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            collate_fn=collate,
+            pin_memory=config['data']['pin_memory'],
+            prefetch_factor=prefetch_factor,
+            persistent_workers=persistent_workers,
+            timeout=loader_timeout,
+        )
+        return train_loader, val_loader
+
+    train_loader, val_loader = build_loaders()
     
     # Model
     if preloaded_wavlm is not None:
@@ -183,32 +190,48 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
 
     max_watchdog_retries = int(config.get('data', {}).get('max_watchdog_retries', 3))
     attempt = 0
-    while True:
-        try:
-            history = trainer.run(start_epoch=start_epoch)
-            return history
-        except RuntimeError as e:
-            err_msg = str(e).lower()
-            is_timeout = ("timed out" in err_msg or "dataloader" in err_msg)
-            if is_timeout and attempt < max_watchdog_retries:
-                attempt += 1
-                print(
-                    f"\n[WATCHDOG RECOVERY ALERT] DataLoader worker timeout/deadlock detected: {e}\n"
-                    f"Attempting self-healing restart ({attempt}/{max_watchdog_retries})...",
-                    flush=True
-                )
-                latest_path = Path(config['checkpoint']['dir']) / "latest.pt"
-                if latest_path.exists():
-                    last_epoch = trainer.load_checkpoint(latest_path)
-                    start_epoch = last_epoch + 1
-                    print(f"[WATCHDOG RECOVERY] Rebuilt loader and resuming from epoch {start_epoch}...", flush=True)
-                continue
-            raise
-        except KeyboardInterrupt:
-            print("\nTraining interrupted by user. Gracefully exiting...")
-            sys.exit(1)
-        finally:
-            trainer.writer.close()
+    try:
+        while True:
+            try:
+                history = trainer.run(start_epoch=start_epoch)
+                return history
+            except RuntimeError as e:
+                err_msg = str(e).lower()
+                is_timeout = ("timed out" in err_msg or "dataloader" in err_msg)
+                if is_timeout and attempt < max_watchdog_retries:
+                    attempt += 1
+                    print(
+                        f"\n[WATCHDOG RECOVERY ALERT] DataLoader worker timeout/deadlock detected: {e}\n"
+                        f"Attempting self-healing restart ({attempt}/{max_watchdog_retries})...",
+                        flush=True
+                    )
+                    latest_path = Path(config['checkpoint']['dir']) / "latest.pt"
+                    if latest_path.exists():
+                        last_epoch = trainer.load_checkpoint(latest_path)
+                        start_epoch = last_epoch + 1
+                    else:
+                        print("[WATCHDOG RECOVERY] No latest.pt found; resuming from scratch state.", flush=True)
+                    # A persistent worker pool cannot be revived in place: dead or
+                    # deadlocked worker processes are reused by the next iteration.
+                    # Rebuild the writer (the failed run may have mid-written events)
+                    # and both DataLoaders so training continues on a healthy pool
+                    # carrying the dataset's current epoch state.
+                    trainer.rebuild_writer()
+                    train_loader, val_loader = build_loaders()
+                    trainer.train_loader = train_loader
+                    trainer.val_loader = val_loader
+                    print(
+                        f"[WATCHDOG RECOVERY] Rebuilt TensorBoard writer and DataLoaders; "
+                        f"resuming from epoch {start_epoch}...",
+                        flush=True
+                    )
+                    continue
+                raise
+            except KeyboardInterrupt:
+                print("\nTraining interrupted by user. Gracefully exiting...")
+                sys.exit(1)
+    finally:
+        trainer.writer.close()
 
 def main():
     parser = argparse.ArgumentParser()

@@ -174,3 +174,18 @@ def test_threshold_injection_covers_latest_checkpoint(tmp_path):
     assert ckpt["best_threshold"] == 0.65
     assert ckpt["threshold_f1"] == 0.77
     assert ckpt["metrics"]["best_threshold"] == 0.65
+
+
+def test_rebuild_writer_produces_usable_writer(tmp_path):
+    from torch.utils.tensorboard import SummaryWriter
+
+    trainer = object.__new__(Trainer)
+    trainer.log_dir = tmp_path
+    trainer.writer = SummaryWriter(log_dir=str(tmp_path))
+    trainer.writer.close()
+    # Watchdog recovery: after a failed run leaves the writer closed, rebuilding
+    # must yield a writer that accepts new scalars instead of raising IOError.
+    trainer.rebuild_writer()
+    trainer.writer.add_scalar("recovery/check", 1.0, 0)
+    trainer.writer.flush()
+    trainer.writer.close()

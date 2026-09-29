@@ -8,6 +8,10 @@ data:
   num_workers: auto
   pin_memory: true                   # GPU 训练时加速 Host→Device 传输
   prefetch_factor: 2                 # num_workers>0 时生效
+  persistent_workers: false          # 必须保持 false！persistent worker 进程持有数据集的
+                                     # 陈旧副本，set_epoch 的逐 epoch 数据重建（块索引/
+                                     # 连续窗口重采样）对其不可见，epoch>=2 会静默固化
+                                     # 在 epoch-1 的数据分配上。
 
 # ── 模型 ──────────────────────────────────────────────
 model:
