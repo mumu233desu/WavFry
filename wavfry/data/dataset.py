@@ -11,6 +11,13 @@ from .continuous_non_creaky_sampling import ContinuousNonCreakyWindowGenerator
 class CreakyVowelDataset(Dataset):
     _AUDIO_INFO_CACHE: dict[str, tuple[int, int]] = {}
 
+    @classmethod
+    def clear_audio_info_cache(cls) -> None:
+        """Drop the shared per-file audio metadata cache (memory hygiene after
+        long multi-fold sessions; entries are path-keyed and always valid, so
+        clearing only costs a metadata re-read)."""
+        cls._AUDIO_INFO_CACHE.clear()
+
     def __init__(
         self,
         df,
@@ -60,7 +67,6 @@ class CreakyVowelDataset(Dataset):
         audio_path = row['audio_path']
         start_s = row['start_s']
         end_s = row['end_s']
-        label = row['label']
 
         # Generated continuous windows are already expanded inside a verified
         # non-creaky run, so they intentionally receive no external context.

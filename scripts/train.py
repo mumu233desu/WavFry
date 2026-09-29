@@ -644,6 +644,8 @@ def main():
             import gc
             gc.collect()
             torch.cuda.empty_cache()
+            from wavfry.data.dataset import CreakyVowelDataset
+            CreakyVowelDataset.clear_audio_info_cache()
                     
             # Save incremental report after each fold completes
             if fold_results:
