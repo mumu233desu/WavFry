@@ -189,3 +189,77 @@ def test_rebuild_writer_produces_usable_writer(tmp_path):
     trainer.writer.add_scalar("recovery/check", 1.0, 0)
     trainer.writer.flush()
     trainer.writer.close()
+
+
+# ── disabled-task parameter freezing ─────────────────────────────────────
+
+class _TaskParamModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.heads = nn.ModuleDict({
+            "creaky": nn.Linear(4, 1),
+            "breathy": nn.Linear(4, 1),
+        })
+        self.scalar_mix_weights = nn.ParameterDict({
+            "creaky": nn.Parameter(torch.zeros(3)),
+            "breathy": nn.Parameter(torch.zeros(3)),
+        })
+
+
+def test_disabled_task_params_frozen_and_excluded_from_optimizer():
+    trainer = object.__new__(Trainer)
+    trainer.config = {
+        "training": {
+            "train_heads": {"creaky": True, "breathy": False},
+            "backbone_lr": 0.0,
+            "head_lr": 1e-4,
+            "weight_decay": 0.01,
+            "optimizer": "adamw_fp32",
+        },
+        "eval": {},
+    }
+    trainer.model = _TaskParamModel()
+    trainer._freeze_disabled_task_params()
+
+    assert not trainer.model.heads["breathy"].weight.requires_grad
+    assert not trainer.model.scalar_mix_weights["breathy"].requires_grad
+    assert trainer.model.heads["creaky"].weight.requires_grad
+
+    optimizer = trainer.create_optimizer()
+    opt_param_ids = {id(p) for g in optimizer.param_groups for p in g["params"]}
+    for name, p in trainer.model.named_parameters():
+        if "breathy" in name.split("."):
+            assert id(p) not in opt_param_ids, f"disabled-task param in optimizer: {name}"
+        else:
+            assert id(p) in opt_param_ids, f"active param missing from optimizer: {name}"
+
+
+def test_enabled_tasks_unaffected_without_gating():
+    trainer = object.__new__(Trainer)
+    trainer.config = {"training": {}, "eval": {}}
+    trainer.model = _TaskParamModel()
+    trainer._freeze_disabled_task_params()
+    assert trainer.model.heads["breathy"].weight.requires_grad
+
+
+# ── interval prediction merge (NaN label update) ─────────────────────────
+
+def test_merge_interval_prediction_updates_first_nan_label():
+    store = {}
+    Trainer._merge_interval_prediction(store, "iv1", torch.tensor([1.0]), torch.tensor([float("nan")]))
+    Trainer._merge_interval_prediction(store, "iv1", torch.tensor([3.0]), torch.tensor([1.0]))
+    entry = store["iv1"]
+    assert entry[2] == 2
+    assert torch.isclose(entry[0], torch.tensor([4.0]))
+    assert not torch.isnan(entry[1])
+    assert torch.isclose(entry[1], torch.tensor([1.0]))
+
+
+def test_merge_interval_prediction_keeps_first_valid_label():
+    store = {}
+    Trainer._merge_interval_prediction(store, "iv1", torch.tensor([1.0]), torch.tensor([0.0]))
+    Trainer._merge_interval_prediction(store, "iv1", torch.tensor([1.0]), torch.tensor([1.0]))
+    entry = store["iv1"]
+    # First valid label wins (no relabeling), matching prior behavior.
+    assert torch.isclose(entry[1], torch.tensor([0.0]))
+    assert entry[2] == 2

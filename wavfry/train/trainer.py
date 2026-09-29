@@ -39,6 +39,7 @@ class Trainer:
         self.paradigm = config['training'].get('paradigm', 'segment')
         self.frame_cfg = config['training'].get('block', {}).get('frame_head', {})
         self._current_frame_proxy = None
+        self._freeze_disabled_task_params()
 
         self.epochs = config['training']['epochs']
         self.quiet = config['training'].get('quiet', False)
@@ -172,6 +173,29 @@ class Trainer:
         except Exception:
             pass
         self.writer = SummaryWriter(log_dir=str(self.log_dir))
+
+    def _freeze_disabled_task_params(self) -> None:
+        """Freeze every per-task parameter of train_heads-disabled tasks.
+
+        Loss gating alone leaves the disabled task's scalar mix / attention /
+        head parameters with requires_grad=True: they never receive a real
+        gradient, but the dummy-grad hook attaches zero-grad tensors to them,
+        and AdamW's decoupled weight decay then applies to those tensors and
+        slowly shrinks the disabled head. Freezing removes them from the
+        optimizer, gradient clipping and the dummy-grad hook in one place.
+        """
+        train_heads_cfg = self.config.get('training', {}).get('train_heads', {})
+        for task, trainable in train_heads_cfg.items():
+            if trainable:
+                continue
+            for container_name in ("heads", "attention_heads", "frame_heads", "frame_mil_fusions"):
+                container = getattr(self.model, container_name, None)
+                if container is not None and task in container:
+                    for param in container[task].parameters():
+                        param.requires_grad_(False)
+            scalar_mix = getattr(self.model, "scalar_mix_weights", None)
+            if scalar_mix is not None and task in scalar_mix:
+                scalar_mix[task].requires_grad_(False)
 
     def create_optimizer(self):
         # Issue 4: AdamW weight decay optimization
@@ -458,6 +482,24 @@ class Trainer:
         self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task, list(speakers), list(meta), (waveforms, lengths)
 
+    @staticmethod
+    def _merge_interval_prediction(
+        store: dict, interval_id, logit: torch.Tensor, label: torch.Tensor
+    ) -> None:
+        """Accumulate one (block, slot) prediction into the per-interval store."""
+        logit_cpu = logit.detach().cpu()
+        label_cpu = label.detach().cpu()
+        entry = store.get(interval_id)
+        if entry is None:
+            store[interval_id] = [logit_cpu, label_cpu, 1]
+            return
+        entry[0] += logit_cpu
+        entry[2] += 1
+        # A first-seen NaN label (interval unlabeled in an earlier block) must
+        # not mask a valid label observed in a later block of the same interval.
+        if torch.isnan(entry[1]) and not torch.isnan(label_cpu):
+            entry[1] = label_cpu
+
     def train_epoch(self, epoch):
         if hasattr(self.train_loader.dataset, 'set_epoch'):
             self.train_loader.dataset.set_epoch(epoch)
@@ -623,13 +665,9 @@ class Trainer:
                         t_logits = logits_dict[task]
                         t_labels = labels_dict[task]
                         for logit, label, interval_id in zip(t_logits, t_labels, item_ids):
-                            val_cpu = logit.detach().cpu()
-                            lab_cpu = label.detach().cpu()
-                            if interval_id not in interval_predictions[task]:
-                                interval_predictions[task][interval_id] = [val_cpu, lab_cpu, 1]
-                            else:
-                                interval_predictions[task][interval_id][0] += val_cpu
-                                interval_predictions[task][interval_id][2] += 1
+                            self._merge_interval_prediction(
+                                interval_predictions[task], interval_id, logit, label
+                            )
                     continue
 
                 for task in tasks:
