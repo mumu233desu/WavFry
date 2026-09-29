@@ -240,7 +240,12 @@ class WavFryClassifier(nn.Module):
             if i in trainable_indices:
                 for param in layer.parameters():
                     param.requires_grad = True
-        self.is_backbone_frozen = len(trainable_indices) == 0
+
+    @property
+    def is_backbone_frozen(self) -> bool:
+        """Derived from live requires_grad state so runtime re-freezing (e.g.
+        TTA adaptation) can never desynchronize the flag from reality."""
+        return not any(p.requires_grad for p in self.wavlm.parameters())
 
     def _encode_sequence(
         self,

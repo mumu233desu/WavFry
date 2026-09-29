@@ -444,12 +444,18 @@ def run_test_time_adaptation(
     adapted_model = copy.deepcopy(base_model).to(device)
     tta_cfg = config['experiment']['tta']
 
-    # Freeze backbone
+    # Freeze (or explicitly unfreeze) the backbone. is_backbone_frozen is a
+    # derived property — never assign it directly.
     if tta_cfg.get('freeze_backbone', True):
         for param in adapted_model.wavlm.parameters():
             param.requires_grad = False
-        adapted_model.is_backbone_frozen = True
         adapted_model.wavlm.eval()
+    else:
+        # Explicit unfreeze: without this, a backbone frozen at construction
+        # time would stay under no_grad and the "adaptation" would only touch
+        # the head while the log claimed backbone parameters were adaptable.
+        for param in adapted_model.wavlm.parameters():
+            param.requires_grad = True
 
     # Freeze scalar mix if configured
     if tta_cfg.get('freeze_scalar_mix', True) and hasattr(adapted_model, 'scalar_mix_weights') and adapted_model.scalar_mix_weights is not None:
