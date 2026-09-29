@@ -23,7 +23,9 @@ import tgt
 import torch
 import torchaudio
 
-CODE_ROOT = Path(r"E:\Coding\WavFry\code")
+CODE_ROOT = Path(__file__).resolve().parents[1]
+if str(CODE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CODE_ROOT))
 WORKSPACE_ROOT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE")
 BASELINES_DIR = Path(r"E:\Coding\WavFry\data\experiments\baselines")
 CACHE_DIR = BASELINES_DIR / "_ext_eval_cache"
@@ -59,18 +61,12 @@ def parse_region(file_key: str) -> str:
 
 
 def load_test_manifest() -> pd.DataFrame:
+    """Unified test-set construction — must match eval_wavfry_testset exactly."""
+    from wavfry.eval.unified import build_test_manifest
+
     manifest_path = CODE_ROOT / "manifests" / "segments_all.csv"
     full_df = pd.read_csv(manifest_path, low_memory=False)
-    is_cs = (full_df["dataset_id"] == "cs_dialogue") if "dataset_id" in full_df.columns else full_df["label_creaky"].notna()
-    if "batch_split" in full_df.columns:
-        test_df = full_df[(full_df["batch_split"] == "test") & is_cs].copy().reset_index(drop=True)
-    elif "split" in full_df.columns:
-        test_df = full_df[(full_df["split"] == "test") & is_cs].copy().reset_index(drop=True)
-    else:
-        b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
-        test_df = full_df[full_df["batch_id"].isin([2, 3]) & (~full_df["speaker_id"].isin(b0_spks)) & is_cs].copy().reset_index(drop=True)
-    if "phone_type" in test_df.columns:
-        test_df = test_df[test_df["phone_type"] == "vowel"].copy().reset_index(drop=True)
+    test_df = build_test_manifest(full_df, task="creaky")
     test_df["gender"] = test_df["file_key"].apply(parse_gender)
     test_df["region"] = test_df["file_key"].apply(parse_region)
     return test_df

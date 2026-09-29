@@ -228,10 +228,30 @@ def build_or_load_prosodic_features(
     if cache_path.exists() and not force_extract and not is_smoketest:
         print(f"[Features] Loading cached prosodic feature table from: {cache_path}")
         feat_df = pd.read_csv(cache_path)
-        # Merge essential labels and split metadata
+        # Identity check: cached feature rows must correspond 1:1, in order, to
+        # the current manifest via (file_key, start_s). Positional merges have
+        # silently mismatched features and labels whenever the manifest was
+        # rebuilt or re-split; refuse instead.
+        key_cols = [c for c in ("file_key", "start_s") if c in feat_df.columns and c in manifest_df.columns]
+        if len(key_cols) < 2:
+            raise RuntimeError(
+                "Prosodic feature cache lacks identity columns (file_key, start_s); "
+                "regenerate it with --force-extract."
+            )
+        manifest_keys = manifest_df[key_cols].astype(str).agg("|".join, axis=1).reset_index(drop=True)
+        feat_keys = feat_df[key_cols].astype(str).agg("|".join, axis=1).reset_index(drop=True)
+        if len(manifest_keys) != len(feat_keys) or not manifest_keys.equals(feat_keys):
+            raise RuntimeError(
+                f"Cached prosodic features ({len(feat_keys)} rows) do not match the "
+                f"current manifest ({len(manifest_keys)} rows) by file_key+start_s. "
+                "Re-run with --force-extract to rebuild the cache against the "
+                "current manifest — stale caches otherwise pair old features with "
+                "new labels/splits."
+            )
+        # Identity verified: refresh ALL manifest metadata (labels, splits,
+        # speakers) from the current manifest so stale cached splits cannot leak.
         for col in manifest_df.columns:
-            if col not in feat_df.columns and col in manifest_df.columns:
-                feat_df[col] = manifest_df[col].values[:len(feat_df)]
+            feat_df[col] = manifest_df[col].values
         return feat_df
 
     if is_smoketest:
@@ -279,8 +299,18 @@ def build_or_load_prosodic_features(
 
 # ── Model Training & Evaluation ──────────────────────────────────────────────
 
-def evaluate_predictions(y_true: np.ndarray, y_prob: np.ndarray) -> Dict[str, float]:
-    """Calculate PR-AUC, ROC-AUC, optimal F1, Precision, and Recall."""
+def evaluate_predictions(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    threshold: float | None = None,
+) -> Dict[str, float]:
+    """Calculate PR-AUC, ROC-AUC, F1, Precision, and Recall.
+
+    Protocol: pass ``threshold`` (frozen on the validation split) for test-set
+    reporting. Only when ``threshold`` is None (i.e. called on validation data
+    itself) is the F1-optimal threshold scanned on the provided labels.
+    Scanning the threshold on test data is test-set tuning and inflates F1.
+    """
     precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
     pr_auc = auc(recall, precision)
 
@@ -289,18 +319,21 @@ def evaluate_predictions(y_true: np.ndarray, y_prob: np.ndarray) -> Dict[str, fl
     except Exception:
         roc_auc = 0.5
 
-    # Search optimal F1 threshold
-    f1_scores = 2 * (precision * recall) / np.clip(precision + recall, 1e-9, None)
-    best_idx = np.nanargmax(f1_scores)
-    best_f1 = float(f1_scores[best_idx])
-    best_thresh = float(thresholds[best_idx]) if best_idx < len(thresholds) else 0.5
+    if threshold is None:
+        f1_scores = 2 * (precision * recall) / np.clip(precision + recall, 1e-9, None)
+        best_idx = np.nanargmax(f1_scores)
+        best_f1 = float(f1_scores[best_idx])
+        best_thresh = float(thresholds[best_idx]) if best_idx < len(thresholds) else 0.5
+    else:
+        best_thresh = float(threshold)
 
     y_pred = (y_prob >= best_thresh).astype(int)
     acc = accuracy_score(y_true, y_pred)
+    f1_at_t = f1_score(y_true, y_pred, zero_division=0)
 
     return {
         "pr_auc": round(float(pr_auc), 4),
-        "f1": round(float(best_f1), 4),
+        "f1": round(float(f1_at_t), 4),
         "roc_auc": round(float(roc_auc), 4),
         "accuracy": round(float(acc), 4),
         "best_threshold": round(best_thresh, 4),
@@ -335,6 +368,15 @@ def main():
         is_smoketest=args.smoketest,
     )
 
+    # Exclude rows without this task's label BEFORE splitting: NaN labels
+    # int-cast into garbage classes would poison training and every metric.
+    label_col = "label_creaky" if "label_creaky" in feat_df.columns else "label"
+    labels_num = pd.to_numeric(feat_df[label_col], errors="coerce")
+    n_nan = int(labels_num.isna().sum())
+    if n_nan:
+        print(f"[Labels] Excluding {n_nan} rows with NaN '{label_col}' labels (unlabeled for this task).")
+        feat_df = feat_df[labels_num.notna()].reset_index(drop=True)
+
     # Partition dataset dynamically according to configuration
     isolate = bool(cfg.get("data", {}).get("isolate_split_speakers", True))
     train_df, val_df, test_df = splits_mod.make_batch_split(feat_df, isolate=isolate)
@@ -358,12 +400,27 @@ def main():
         feature_cols.append(col_name)
 
     X_train = train_df[feature_cols].fillna(0.0).values
-    y_train = train_df["label"].values.astype(int)
-
+    y_train = train_df[label_col].values.astype(int)
+    X_val = val_df[feature_cols].fillna(0.0).values
+    y_val = val_df[label_col].values.astype(int)
     X_test = test_df[feature_cols].fillna(0.0).values
-    y_test = test_df["label"].values.astype(int)
+    y_test = test_df[label_col].values.astype(int)
 
-    print(f"[Features] Matrix shapes: X_train={X_train.shape}, X_test={X_test.shape} ({len(feature_cols)} features)")
+    if len(np.unique(y_val)) < 2:
+        raise RuntimeError(
+            "Validation split is single-class; cannot freeze an F1 threshold on it. "
+            "Check the manifest batch_split distribution."
+        )
+
+    def freeze_val_threshold(predict_fn):
+        """Scan the F1-optimal threshold on the VALIDATION split only."""
+        val_prob = predict_fn(X_val)
+        precision, recall, thresholds = precision_recall_curve(y_val, val_prob)
+        f1_scores = 2 * (precision * recall) / np.clip(precision + recall, 1e-9, None)
+        best_idx = np.nanargmax(f1_scores)
+        return float(thresholds[best_idx]) if best_idx < len(thresholds) else 0.5
+
+    print(f"[Features] Matrix shapes: X_train={X_train.shape}, X_val={X_val.shape}, X_test={X_test.shape} ({len(feature_cols)} features)")
 
     results: List[Dict[str, Any]] = []
 
@@ -374,8 +431,9 @@ def main():
         ("clf", LogisticRegression(class_weight="balanced", max_iter=1000, random_state=42, C=1.0)),
     ])
     lr_pipe.fit(X_train, y_train)
+    lr_tau = freeze_val_threshold(lr_pipe.predict_proba)
     lr_prob = lr_pipe.predict_proba(X_test)[:, 1]
-    lr_metrics = evaluate_predictions(y_test, lr_prob)
+    lr_metrics = evaluate_predictions(y_test, lr_prob, threshold=lr_tau)
     print(f"  >> Logistic Regression | PR-AUC: {lr_metrics['pr_auc']:.4f} | F1: {lr_metrics['f1']:.4f} | ROC-AUC: {lr_metrics['roc_auc']:.4f}")
 
     results.append({
@@ -399,8 +457,9 @@ def main():
         random_state=42,
     )
     gbdt.fit(X_train, y_train)
+    gbdt_tau = freeze_val_threshold(gbdt.predict_proba)
     gbdt_prob = gbdt.predict_proba(X_test)[:, 1]
-    gbdt_metrics = evaluate_predictions(y_test, gbdt_prob)
+    gbdt_metrics = evaluate_predictions(y_test, gbdt_prob, threshold=gbdt_tau)
     print(f"  >> Gradient Boosting   | PR-AUC: {gbdt_metrics['pr_auc']:.4f} | F1: {gbdt_metrics['f1']:.4f} | ROC-AUC: {gbdt_metrics['roc_auc']:.4f}")
 
     results.append({
@@ -433,7 +492,7 @@ def main():
         for r in results:
             cap = "Linear" if "Linear" in r["model"] else "Non-Linear Tree"
             f.write(f"| **{r['model']}** | {cap} | **{r['pr_auc']:.4f}** | **{r['f1']:.4f}** | {r['roc_auc']:.4f} | {r['accuracy']:.4f} | {r['best_threshold']:.4f} |\n")
-        f.write("\n\n*Reference: WavLM-Base+ Full Model achieves PR-AUC ~0.9181, F1 ~0.8467 on this exact split.*\n")
+        f.write("\n\n*Threshold protocol: F1-optimal tau frozen on the validation split, applied unchanged to the test split. Compare against WavFry numbers computed on the same manifest generation and split definition.*\n")
 
     print(f"[Saved] Markdown summary saved to: {md_path}")
 

@@ -12,6 +12,11 @@ strictly preserving feature scale and preventing norm-shrinkage artifacts.
 Outputs:
     - data/experiments/lolo_ablation_results.csv
     - Markdown formatted summary table with layer indispensability rankings.
+
+Caveat (methodology):
+    Each row is a single-seed, single-checkpoint delta. Observed deltas between
+    layers can be smaller than seed-to-seed variance; treat rankings as
+    descriptive observations unless confirmed across multiple seeds/checkpoints.
 """
 
 from __future__ import annotations
@@ -279,7 +284,8 @@ def evaluate_with_mask(
     return {
         "auc_pr": float(metrics.get("auc_pr", 0.0)),
         "f1": float(metrics.get("f1", 0.0)),
-        "auc_roc": float(metrics.get("auc_roc", 0.0)),
+        # compute_metrics exposes sklearn roc_auc_score under "roc_auc"
+        "auc_roc": float(metrics.get("roc_auc", 0.0)),
         "accuracy": float(metrics.get("accuracy", 0.0)),
         "precision": float(metrics.get("precision", 0.0)),
         "recall": float(metrics.get("recall", 0.0)),

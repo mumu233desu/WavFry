@@ -134,17 +134,8 @@ def main():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
 
     full_df = pd.read_csv(manifest_path, low_memory=False)
-    is_cs = (full_df["dataset_id"] == "cs_dialogue") if "dataset_id" in full_df.columns else full_df["label_creaky"].notna()
-    if "batch_split" in full_df.columns:
-        test_df = full_df[(full_df["batch_split"] == "test") & is_cs].copy().reset_index(drop=True)
-    elif "split" in full_df.columns:
-        test_df = full_df[(full_df["split"] == "test") & is_cs].copy().reset_index(drop=True)
-    else:
-        b0_spks = set(full_df[full_df["batch_id"] == 0]["speaker_id"].unique())
-        test_df = full_df[full_df["batch_id"].isin([2, 3]) & (~full_df["speaker_id"].isin(b0_spks)) & is_cs].copy().reset_index(drop=True)
-
-    if "phone_type" in test_df.columns:
-        test_df = test_df[test_df["phone_type"] == "vowel"].copy().reset_index(drop=True)
+    from wavfry.eval.unified import build_test_manifest, resolve_frozen_threshold
+    test_df = build_test_manifest(full_df, task="creaky")
 
     test_df["gender"] = test_df["file_key"].apply(parse_gender)
     test_df["region"] = test_df["file_key"].apply(parse_region)
@@ -156,14 +147,7 @@ def main():
     print(f"Loading checkpoint from {checkpoint_path} on {device}...")
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     config = ckpt["config"]
-    if "best_threshold" not in ckpt:
-        raise RuntimeError(
-            f"Checkpoint '{checkpoint_path}' has no frozen 'best_threshold'. "
-            "This field is injected by the trainer after validation-set threshold grid search. "
-            "Refusing to silently fall back to an arbitrary constant — evaluate with a "
-            "checkpoint produced by the current training pipeline."
-        )
-    best_threshold = float(ckpt["best_threshold"])
+    best_threshold = resolve_frozen_threshold(ckpt, checkpoint_label=str(checkpoint_path))
     print(f"Loaded config: fine_tune={config['model'].get('fine_tune_layers')}, pooling={config['training'].get('pooling_mode')}")
     print(f"Frozen decision threshold from validation set: tau* = {best_threshold:.3f}")
 
@@ -185,7 +169,10 @@ def main():
         "environments": {},
     }
 
-    labels_all = test_df["label"].to_numpy().astype(np.int32)
+    # Use the same label column that build_test_manifest filtered on, so the
+    # NaN rows dropped there cannot resurface here as int-cast garbage.
+    label_col = "label_creaky" if "label_creaky" in test_df.columns else "label"
+    labels_all = pd.to_numeric(test_df[label_col], errors="raise").to_numpy().astype(np.int32)
 
     for env in ENVIRONMENTS:
         env_name = env["name"]

@@ -475,19 +475,11 @@ def evaluate_checkpoint_on_val(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # Optimal threshold search (consistent step: 0.005 from 0.01 to 0.99)
-    probs = torch.sigmoid(logits_tensor).numpy()
-    labels_np = labels_tensor.numpy().astype(np.int32)
-
-    thresholds = [round(t, 3) for t in np.arange(0.01, 1.00, 0.005).tolist()]
-    from sklearn.metrics import f1_score
-    best_t, best_f1 = 0.5, 0.0
-    for t in thresholds:
-        preds = (probs >= t).astype(np.int32)
-        score = float(f1_score(labels_np, preds, average="binary", zero_division=0))
-        if score > best_f1:
-            best_f1 = score
-            best_t = t
+    # Optimal threshold search (consistent step: 0.005 from 0.01 to 0.99).
+    # NaN-safe: rows without this task's label are excluded instead of being
+    # int-cast into garbage negatives.
+    from wavfry.eval.unified import f1_scan_best_threshold
+    best_t, best_f1 = f1_scan_best_threshold(logits_tensor, labels_tensor)
 
     # Compute metrics at best_t
     metrics_at_best_t = metrics_mod.compute_metrics(logits_tensor, labels_tensor, threshold=best_t)
@@ -802,8 +794,10 @@ def main():
             eval_metrics_file = run_ckpt_dir / "eval_val_metrics.json"
             epoch_hist_file = run_ckpt_dir / "epoch_history.json"
 
-            # 1. Check resume: complete result exists
-            if args.resume and eval_metrics_file.exists():
+            done_marker = run_ckpt_dir / "_DONE"
+
+            # 1. Check resume: complete result exists (marker + metrics both required)
+            if args.resume and eval_metrics_file.exists() and done_marker.exists():
                 try:
                     with open(eval_metrics_file, "r", encoding="utf-8") as f:
                         metrics = json.load(f)
@@ -825,10 +819,13 @@ def main():
                 except Exception as e:
                     print(f"[Resume Warning] Corrupt eval metrics file {eval_metrics_file}: {e}. Rerunning.")
 
-            # 2. Check resume: training already complete but eval pending
+            # 2. Check resume: training already complete but eval pending.
+            # Only a _DONE-marked run may skip the training pass — a crashed
+            # run also leaves checkpoints, and skipping would evaluate an
+            # unterminated model and mark it success.
             best_ckpt = resolve_best_checkpoint(run_ckpt_dir)
             skip_training = False
-            if args.resume and best_ckpt is not None:
+            if args.resume and best_ckpt is not None and done_marker.exists():
                 print(f"[Resume] Existing checkpoint detected: {best_ckpt}. Checking if evaluation can proceed directly...")
                 try:
                     ckpt_test = robust_load_checkpoint(best_ckpt, map_location="cpu")
@@ -936,6 +933,17 @@ def main():
 
                 with open(eval_metrics_file, "w", encoding="utf-8") as f:
                     json.dump(metrics, f, indent=2)
+                # Completion marker: a metrics json alone cannot distinguish a
+                # finished run from a crashed one (D-08); --resume must never
+                # aggregate an unterminated run as success.
+                (run_ckpt_dir / "_DONE").write_text(
+                    json.dumps({
+                        "id": cfg_id,
+                        "best_epoch": best_ep,
+                        "best_threshold": metrics.get("best_threshold"),
+                    }),
+                    encoding="utf-8",
+                )
 
                 summary_results.append({
                     "id": cfg_id,
