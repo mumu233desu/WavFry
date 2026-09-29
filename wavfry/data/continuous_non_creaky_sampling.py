@@ -99,7 +99,20 @@ class ContinuousNonCreakyWindowGenerator:
         if missing:
             raise KeyError(f"Continuous non-creaky sampling requires columns: {sorted(missing)}")
 
-        non_creaky = self.base_df[self.base_df["label"].astype(int) == 0].copy()
+        # Candidate pool must be creaky-negatives only. Multi-dataset manifests
+        # reuse the legacy `label` column for other tasks (e.g. UCLA stores
+        # breathy values there), so filter on label_creaky when present; a NaN
+        # creaky label (task not annotated for this dataset) never qualifies.
+        if "label_creaky" in self.base_df.columns:
+            creaky_labels = pd.to_numeric(self.base_df["label_creaky"], errors="coerce")
+            non_creaky = self.base_df[
+                creaky_labels.notna() & (creaky_labels == 0)
+            ].copy()
+        else:
+            legacy_labels = pd.to_numeric(self.base_df["label"], errors="coerce")
+            non_creaky = self.base_df[
+                legacy_labels.notna() & (legacy_labels == 0)
+            ].copy()
         non_creaky = non_creaky.sort_values(["file_key", "start_s", "end_s"])
 
         runs: list[list[dict[str, Any]]] = []
@@ -261,6 +274,12 @@ class ContinuousNonCreakyWindowGenerator:
                 "phone": "MULTI",
                 "phone_type": "continuous_non_creaky",
                 "label": 0,
+                # The window spans several intervals, so per-interval labels
+                # must not leak through row inheritance: it is a deterministic
+                # creaky negative, while breathy is unknown for the pooled
+                # audio and must stay NaN (never a silent 0).
+                "label_creaky": 0.0,
+                "label_breathy": float("nan"),
                 "sample_source": "continuous_non_creaky",
                 "source_interval_count": len(overlapping),
                 "sp_duration_ms": sp_duration_s * 1000.0,

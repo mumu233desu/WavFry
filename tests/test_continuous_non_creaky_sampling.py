@@ -55,7 +55,8 @@ def test_windows_are_deterministic_bounded_and_cross_interval_boundaries():
 
     first = generator.generate(epoch=3)
     second = generator.generate(epoch=3)
-    assert first.to_dict("records") == second.to_dict("records")
+    # DataFrame.equals is NaN-aware: NaN==NaN in the same cell counts equal.
+    assert first.equals(second)
     assert len(first) == len(df)
     assert first["start_s"].ge(0.0).all()
     assert first["end_s"].le(0.8).all()
@@ -236,3 +237,40 @@ def test_disabled_module_keeps_dataset_unchanged():
     dataset.set_epoch(5)
     assert len(dataset) == len(df)
     assert dataset.df["start_s"].tolist() == df["start_s"].tolist()
+
+
+def test_ucla_breathy_rows_never_enter_creaky_window_pool():
+    """BUG-3 regression: in multi-dataset manifests the legacy `label` column
+    stores the breathy value for UCLA rows; a modal UCLA row (label==0,
+    label_creaky==NaN) must not become a synthetic creaky-negative window."""
+    df = pd.DataFrame([
+        {**_row(0.00, 0.20), "label_creaky": 0.0, "label_breathy": float("nan")},
+        {**_row(0.20, 0.40), "label_creaky": 0.0, "label_breathy": float("nan")},
+        # UCLA-style row: `label` holds the breathy value (0 = modal), but the
+        # creaky label is unannotated for this dataset.
+        {**_row(0.40, 0.60), "label_creaky": float("nan"), "label_breathy": 0.0},
+        {**_row(0.60, 0.80), "label_creaky": float("nan"), "label_breathy": 1.0},
+    ])
+    generator = ContinuousNonCreakyWindowGenerator(df, _config(), seed=42)
+    # Runs must form only from the two cs_dialogue rows.
+    for run in generator.runs:
+        for interval in run:
+            assert interval["label_creaky"] == 0.0
+    windows = generator.generate(epoch=1)
+    assert windows["label_creaky"].eq(0.0).all()
+    assert windows["label_breathy"].isna().all()
+
+
+def test_generated_windows_carry_explicit_task_labels():
+    """B-05 regression: synthetic windows must not inherit per-interval labels
+    (e.g. a silence anchor's breathy=0) — creaky is 0, breathy stays NaN."""
+    df = pd.DataFrame([
+        {**_row(0.00, 0.20, phone_type="silence"), "label_creaky": 0.0,
+         "label_breathy": 0.0, "phone": "SP"},
+        {**_row(0.20, 0.40), "label_creaky": 0.0, "label_breathy": 1.0},
+    ])
+    generator = ContinuousNonCreakyWindowGenerator(df, _config(), seed=42)
+    windows = generator.generate(epoch=1)
+    assert not windows.empty
+    assert windows["label_creaky"].eq(0.0).all()
+    assert windows["label_breathy"].isna().all()

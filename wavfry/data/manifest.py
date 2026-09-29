@@ -846,8 +846,13 @@ def build_manifest_multi(
 
         schema = ds.get("label_schema", {})
         for task_name, task_spec in schema.items():
+            # Deliberate semantics (test_dict_label_schema_silence_as_negative):
+            # silence_as_negative constitutes partial supervision for the task
+            # (deterministic negatives), so it activates the task alongside
+            # `enabled` even when vowel-level annotation is disabled.
             is_active = (
-                task_spec.get("enabled", True) or task_spec.get("silence_as_negative", False)
+                bool(task_spec.get("enabled", True))
+                or bool(task_spec.get("silence_as_negative", False))
                 if isinstance(task_spec, dict)
                 else bool(task_spec)
             )
@@ -861,8 +866,8 @@ def build_manifest_multi(
     df = pd.DataFrame(all_records, columns=MANIFEST_COLUMNS)
     _apply_split_strategies(df, datasets_cfg)
 
-    # Sort tasks deterministically
-    sorted_tasks = sorted(active_tasks)
+    # Sort tasks in the model's canonical order (creaky first), not alphabetically
+    sorted_tasks = [t for t in ("creaky", "breathy") if t in active_tasks]
     _print_multi_manifest_stats(df, sorted_tasks)
 
     df.attrs["tasks"] = sorted_tasks
