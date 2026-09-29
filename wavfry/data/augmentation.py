@@ -99,6 +99,8 @@ class AudioAugmentor:
 
     def _get_intensity(self, epoch, start_val, end_val):
         """Curriculum schedule: progress from 0.0 to 1.0 over max_epochs."""
+        if self.max_epochs <= 1:
+            return end_val
         progress = min(max((epoch - 1) / (self.max_epochs - 1), 0.0), 1.0)
         # Power curve for slow start
         intensity_factor = progress ** self.schedule_power

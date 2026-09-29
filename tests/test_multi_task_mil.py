@@ -135,6 +135,9 @@ def test_trainer_compute_block_loss_nan_handling():
     trainer = object.__new__(Trainer)
     trainer.config = config
     trainer.model = model
+    _tasks = getattr(model, "tasks", ["creaky"])
+    trainer.loss_fns = {t: nn.BCEWithLogitsLoss() for t in _tasks}
+    trainer.frame_loss_fns = dict(trainer.loss_fns)
     trainer.loss_fn = nn.BCEWithLogitsLoss()
     trainer.frame_head_enabled = True
     trainer.frame_cfg = config["training"]["block"]["frame_head"]
@@ -222,6 +225,9 @@ def test_train_heads_gating_on_frame_loss():
     trainer = object.__new__(Trainer)
     trainer.config = config
     trainer.model = model
+    _tasks = getattr(model, "tasks", ["creaky"])
+    trainer.loss_fns = {t: nn.BCEWithLogitsLoss() for t in _tasks}
+    trainer.frame_loss_fns = dict(trainer.loss_fns)
     trainer.loss_fn = nn.BCEWithLogitsLoss()
     trainer.frame_head_enabled = True
     trainer.frame_cfg = config["training"]["block"]["frame_head"]
@@ -282,6 +288,9 @@ def test_dict_loss_weight_support():
     trainer = object.__new__(Trainer)
     trainer.config = config
     trainer.model = model
+    _tasks = getattr(model, "tasks", ["creaky"])
+    trainer.loss_fns = {t: nn.BCEWithLogitsLoss() for t in _tasks}
+    trainer.frame_loss_fns = dict(trainer.loss_fns)
     trainer.loss_fn = nn.BCEWithLogitsLoss()
     trainer.frame_head_enabled = True
     trainer.frame_cfg = config["training"]["block"]["frame_head"]

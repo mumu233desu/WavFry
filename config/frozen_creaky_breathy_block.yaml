@@ -91,6 +91,7 @@ training:
 
 # ── 评估 ──────────────────────────────────────────────
 eval:
+  primary_task: creaky        # 主任务：决定 pos_weight 口径（已按任务解耦）、顶层指标与早停仲裁
   primary_metric: auc_pr        # auc_pr（推荐）| f1 — 决定 early-stopping 和最优 ckpt 判断依据
   early_stopping_patience: 3  # 连续 3 个 epoch 验证集指标不上升则早停
 

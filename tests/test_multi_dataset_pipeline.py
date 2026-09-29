@@ -433,6 +433,9 @@ def test_trainer_loss_masking():
     trainer.model = model
     trainer.config = config
     trainer.device = torch.device("cpu")
+    _tasks = getattr(model, "tasks", ["creaky"])
+    trainer.loss_fns = {t: nn.BCEWithLogitsLoss() for t in _tasks}
+    trainer.frame_loss_fns = dict(trainer.loss_fns)
     trainer.loss_fn = nn.BCEWithLogitsLoss()
     trainer.frame_cfg = {}
     trainer._current_frame_proxy = None
@@ -570,6 +573,9 @@ def test_multitask_heads_train_by_default_without_train_heads():
     trainer.paradigm = "segment"
     trainer.augmentor = None
     trainer.device = torch.device("cpu")
+    _tasks = getattr(model, "tasks", ["creaky"])
+    trainer.loss_fns = {t: nn.BCEWithLogitsLoss() for t in _tasks}
+    trainer.frame_loss_fns = dict(trainer.loss_fns)
     trainer.loss_fn = nn.BCEWithLogitsLoss()
     trainer.frame_cfg = {}
 

@@ -13,6 +13,7 @@ import logging
 import math
 import pandas as pd
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -53,30 +54,28 @@ class Trainer:
         # Scheduler
         self.scheduler = self.create_scheduler()
         
+        # Primary task drives top-level metrics, early stopping and threshold search.
+        # It must track train_heads gating: a disabled head must never arbitrate
+        # early stopping, or best-checkpoint selection degenerates into noise.
+        self.tasks = getattr(model, "tasks", ["creaky"])
+        self.primary_task = self._resolve_primary_task(config, self.tasks)
+
         # Dataset construction already materializes epoch-1 generated windows, so
         # weighted BCE reflects the effective initial training distribution.
-        primary_task = config.get('eval', {}).get('primary_task', 'creaky')
-        if self.paradigm == 'block':
-            interval_rows = [row for block in train_loader.dataset.blocks for row in block['intervals']]
-            creaky_vals = []
-            for row in interval_rows:
-                val = row.get(f'label_{primary_task}', row.get('label', float('nan')))
-                try:
-                    fval = float(val)
-                    if not math.isnan(fval):
-                        creaky_vals.append(fval)
-                except (ValueError, TypeError):
-                    pass
-            n_pos = sum(1 for v in creaky_vals if v > 0.5)
-            n_neg = len(creaky_vals) - n_pos
-        else:
-            train_df = train_loader.dataset.df
-            col = f'label_{primary_task}' if f'label_{primary_task}' in train_df.columns else 'label'
-            valid_series = pd.to_numeric(train_df[col], errors='coerce').dropna()
-            n_pos = int((valid_series > 0.5).sum())
-            n_neg = len(valid_series) - n_pos
-        pos_weight = torch.tensor([max(n_neg, 1) / max(n_pos, 1)]).to(device)
-        self.loss_fn = get_loss_fn(config, pos_weight=pos_weight)
+        # Per-task class statistics: pos_weight of one task must never bleed
+        # into another (creaky and breathy have very different imbalance).
+        self.loss_fns = {task: get_loss_fn(config, pos_weight=self._task_pos_weight(train_loader, task, device))
+                         for task in self.tasks}
+        # Frame-level MIL BCE per task with the same pos_weight proxy (frame-level
+        # labels do not exist by design; interval imbalance is the best available prior).
+        self.frame_loss_fns = {
+            task: torch.nn.BCEWithLogitsLoss(
+                pos_weight=self._task_pos_weight(train_loader, task, device)
+            )
+            for task in self.tasks
+        }
+        # Backwards-compatible alias for the primary task's loss function.
+        self.loss_fn = self.loss_fns[self.primary_task]
         
         # Mixed precision setup
         self.mixed_prec = config['training'].get('mixed_precision', 'no')
@@ -109,6 +108,57 @@ class Trainer:
 
         # Epoch-by-epoch metric history
         self.history: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _resolve_primary_task(config, tasks) -> str:
+        """Pick the task that arbitrates early stopping / top-level metrics.
+
+        Priority: explicit ``eval.primary_task`` (must be an active task) >
+        creaky if trainable > first trainable task > first task. Disabled
+        (train_heads=false) heads are never eligible.
+        """
+        train_heads_cfg = config.get('training', {}).get('train_heads', {})
+        configured_primary = config.get('eval', {}).get('primary_task')
+        if configured_primary is not None:
+            if configured_primary not in tasks:
+                raise ValueError(
+                    f"eval.primary_task '{configured_primary}' is not an active task "
+                    f"{list(tasks)}"
+                )
+            return configured_primary
+        trainable_tasks = [t for t in tasks if train_heads_cfg.get(t, True)]
+        if "creaky" in trainable_tasks:
+            return "creaky"
+        if trainable_tasks:
+            return trainable_tasks[0]
+        return tasks[0]
+
+    def _task_pos_weight(self, train_loader, task: str, device) -> torch.Tensor:
+        """Count positives/negatives of one task's labels and return n_neg/n_pos."""
+        if self.paradigm == 'block':
+            interval_rows = [row for block in train_loader.dataset.blocks for row in block['intervals']]
+            vals = []
+            for row in interval_rows:
+                val = row.get(f'label_{task}', row.get('label', float('nan')))
+                try:
+                    fval = float(val)
+                    if not math.isnan(fval):
+                        vals.append(fval)
+                except (ValueError, TypeError):
+                    pass
+        else:
+            train_df = train_loader.dataset.df
+            col = f'label_{task}' if f'label_{task}' in train_df.columns else 'label'
+            valid_series = pd.to_numeric(train_df[col], errors='coerce').dropna()
+            vals = valid_series.tolist()
+        n_pos = sum(1 for v in vals if v > 0.5)
+        n_neg = len(vals) - n_pos
+        if n_pos == 0 or n_neg == 0:
+            logger.warning(
+                f"Task '{task}' has a single-class training distribution "
+                f"(pos={n_pos}, neg={n_neg}); pos_weight falls back to 1.0."
+            )
+        return torch.tensor([max(n_neg, 1) / max(n_pos, 1)]).to(device)
 
     def create_optimizer(self):
         # Issue 4: AdamW weight decay optimization
@@ -244,7 +294,7 @@ class Trainer:
 
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
-                loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
+                loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
                 current_losses[task] = loss.detach().item()
                 is_trainable = train_heads_cfg.get(task, True)
                 if not (training and not is_trainable):
@@ -306,13 +356,13 @@ class Trainer:
                 positive = task_targets > 0.5
                 frame_terms = []
                 if positive.any():
-                    frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                    frame_terms.append(self.frame_loss_fns[task](
                         mil_logits[positive], torch.ones_like(mil_logits[positive])
                     ))
                 negative = (~positive) & (~torch.isnan(task_targets))
                 if negative.any():
                     negative_logits = expanded[negative][frame_masks[negative]]
-                    frame_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(
+                    frame_terms.append(self.frame_loss_fns[task](
                         negative_logits, torch.zeros_like(negative_logits)
                     ))
                 if frame_terms:
@@ -382,7 +432,7 @@ class Trainer:
 
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
-                loss = self.loss_fn(task_logits[valid_mask], task_targets[valid_mask])
+                loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
                 current_losses[task] = loss.detach().item()
                 is_trainable = train_heads_cfg.get(task, True)
                 if not (training and not is_trainable):
@@ -480,7 +530,7 @@ class Trainer:
             self.optimizer.zero_grad()
             self.scheduler.step()
 
-        primary_task = "creaky" if "creaky" in tasks else tasks[0]
+        primary_task = self.primary_task
         metrics = {}
         for task in tasks:
             if task_loss_counts[task] > 0:
@@ -580,7 +630,7 @@ class Trainer:
                     all_logits[task] = [(item[0] / item[2]).reshape(1) for item in t_dict.values()]
                     all_labels[task] = [item[1].reshape(1) for item in t_dict.values()]
 
-        primary_task = "creaky" if "creaky" in tasks else tasks[0]
+        primary_task = self.primary_task
         metrics = {}
         for task in tasks:
             if val_task_loss_counts[task] > 0:
@@ -660,7 +710,7 @@ class Trainer:
     def run(self, start_epoch=1):
         import time
         tasks = getattr(self.model, "tasks", ["creaky"])
-        primary_task = "creaky" if "creaky" in tasks else tasks[0]
+        primary_task = self.primary_task
         for epoch in range(start_epoch, self.epochs + 1):
             epoch_start_time = time.time()
             train_loss, train_metrics = self.train_epoch(epoch)
@@ -907,7 +957,7 @@ class Trainer:
         self, best_threshold: float, threshold_f1: float
     ) -> None:
         """Load the best checkpoints from disk, inject threshold fields, and re-save."""
-        targets = [self.ckpt_dir / "best_model.pt"]
+        targets = [self.ckpt_dir / "best_model.pt", self.ckpt_dir / "latest.pt"]
         targets.extend(list(self.ckpt_dir.glob("best_ep*.pt")))
         
         updated_count = 0
@@ -960,6 +1010,16 @@ class Trainer:
             'auc_pr': auc_pr,
             'patience_counter': self.patience_counter,
             'best_primary_metric_val': self.best_primary_metric_val,
+            # Persist best-epoch validation outputs so a resumed run can still run
+            # the threshold grid search even if it never beats the previous best.
+            'best_val_logits': (
+                self._best_val_logits.detach().cpu().clone()
+                if self._best_val_logits is not None else None
+            ),
+            'best_val_labels': (
+                self._best_val_labels.detach().cpu().clone()
+                if self._best_val_labels is not None else None
+            ),
             # best_threshold / threshold_f1 are injected later by _update_checkpoint_threshold
             'metrics': metrics_to_save,
             'config': self.config,
@@ -1068,6 +1128,12 @@ class Trainer:
 
         self.patience_counter = checkpoint.get('patience_counter', 0)
         self.best_primary_metric_val = checkpoint.get('best_primary_metric_val', 0.0)
+        self._best_val_logits = checkpoint.get('best_val_logits')
+        self._best_val_labels = checkpoint.get('best_val_labels')
+        if self._best_val_labels is not None:
+            self._best_val_labels = self._best_val_labels.cpu()
+        if self._best_val_logits is not None:
+            self._best_val_logits = self._best_val_logits.cpu()
         if self.scaler is not None and 'scaler_state_dict' in checkpoint:
             self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
 

@@ -156,7 +156,14 @@ def main():
     print(f"Loading checkpoint from {checkpoint_path} on {device}...")
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     config = ckpt["config"]
-    best_threshold = float(ckpt.get("best_threshold", 0.657))
+    if "best_threshold" not in ckpt:
+        raise RuntimeError(
+            f"Checkpoint '{checkpoint_path}' has no frozen 'best_threshold'. "
+            "This field is injected by the trainer after validation-set threshold grid search. "
+            "Refusing to silently fall back to an arbitrary constant — evaluate with a "
+            "checkpoint produced by the current training pipeline."
+        )
+    best_threshold = float(ckpt["best_threshold"])
     print(f"Loaded config: fine_tune={config['model'].get('fine_tune_layers')}, pooling={config['training'].get('pooling_mode')}")
     print(f"Frozen decision threshold from validation set: tau* = {best_threshold:.3f}")
 
