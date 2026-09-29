@@ -194,6 +194,23 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                 f"[manifest] [{dataset_id}] No batches defined in {sampling_state_path}."
             )
 
+        # Fail-Fast: physical batch directories absent from sampling_state are
+        # invisible to the manifest — annotations there would silently vanish.
+        def _dir_batch_id(name: str):
+            try:
+                return int(name.rsplit("_", 1)[-1])
+            except ValueError:
+                return None
+
+        registered_ids = {b[0] for b in batch_items}
+        unregistered_dirs = [
+            p.name for p in batches_dir.glob("batch_*")
+            if p.is_dir() and _dir_batch_id(p.name) is not None
+            and _dir_batch_id(p.name) not in registered_ids
+        ]
+
+        missing_media: list[str] = []
+
         for b_id, b_name, b_split, annotation_path in batch_items:
             if b_split not in {"train", "val", "test"}:
                 continue
@@ -251,6 +268,7 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                 )
                 tg_path = tg_dir_for_file / f"{file_key}.TextGrid"
                 if audio_path is None or not tg_path.exists():
+                    missing_media.append(f"{file_key} (batch {file_b_id}, split '{file_b_split}')")
                     continue
 
                 annotation_type = "full" if speaker_id in speakers else "sampled"
@@ -310,6 +328,30 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                             "is_frame_verified": is_frame_verified,
                         }
                     )
+
+    lenient = bool(ds_cfg.get("adapter_params", {}).get("lenient_missing", False))
+    problems = []
+    if unregistered_dirs:
+        problems.append(
+            f"{len(unregistered_dirs)} batch directory(ies) on disk are NOT registered in "
+            f"{sampling_state_path.name}: {unregistered_dirs[:10]} - their annotations are "
+            "invisible to the manifest (stale/mis-synced sampling_state?)."
+        )
+    if missing_media:
+        problems.append(
+            f"{len(missing_media)} annotated file(s) have no audio/TextGrid on disk: "
+            f"{missing_media[:10]}{'...' if len(missing_media) > 10 else ''} - the dataset "
+            "would silently shrink, possibly removing an entire val/test speaker."
+        )
+    if problems:
+        detail = "\n  - ".join(problems)
+        if lenient:
+            print(f"[manifest] [{dataset_id}] [WARN] Data integrity issues (lenient mode):\n  - {detail}")
+        else:
+            raise RuntimeError(
+                f"[manifest] [{dataset_id}] Data integrity check failed.\n  - {detail}\n"
+                "Set adapter_params.lenient_missing=true to downgrade to warnings."
+            )
 
     return records
 
@@ -610,6 +652,8 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     has_creaky_schema = bool(label_schema.get("creaky", False))
 
     records: list[dict[str, Any]] = []
+    missing_audio: list[str] = []
+    lenient = bool(params.get("lenient_missing", False))
 
     for file_key, entry in files.items():
         if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
@@ -617,6 +661,7 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
         audio_path = audio_files.get(file_key)
         if audio_path is None:
+            missing_audio.append(file_key)
             continue
         tg_path = tg_files.get(file_key, "")
 
@@ -683,6 +728,20 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 "batch_name": "",
                 "is_frame_verified": False,
             })
+
+    if missing_audio:
+        preview = sorted(missing_audio)[:10]
+        msg = (
+            f"{len(missing_audio)} annotated file(s) have no audio under {audio_dir}: "
+            f"{preview}{'...' if len(missing_audio) > 10 else ''}"
+        )
+        if lenient:
+            print(f"[manifest] [{dataset_id}] [WARN] {msg}")
+        else:
+            raise RuntimeError(
+                f"[manifest] [{dataset_id}] {msg}\n"
+                "Set adapter_params.lenient_missing=true to downgrade to a warning."
+            )
 
     print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from breathy cache ({cache_dir}).")
     return records

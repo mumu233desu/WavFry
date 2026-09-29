@@ -3,6 +3,7 @@
 # ── 数据 ──────────────────────────────────────────────
 data:
   isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
+  assert_split_exclusivity: true     # 隔离开启时，训练前硬断言 train 与 val/test 发音人零交集（防御 sampling_state 失步）
   # DataLoader 多线程（Linux/Colab 推荐 4；Windows 设 0 避免死锁）
   # 设为 auto 时，代码自动检测 OS：Windows→0，其他→4
   num_workers: auto

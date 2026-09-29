@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import sys
 
@@ -17,7 +18,16 @@ def test_manifest_filters_unknown_and_non_whitelisted_types(tmp_path: Path):
     file_key = "F_23_Test_EN_ZH-CN_U1001_S0_1"
     (audio_dir / f"{file_key}.wav").write_bytes(b"")
     (textgrid_dir / f"{file_key}.TextGrid").write_text("", encoding="utf-8")
-    annotation_path = annotation_storage_path(textgrid_dir)
+
+    # Co-located per-batch storage layout (required since the sampling_state
+    # migration): the adapter refuses the legacy monolithic layout.
+    cache_dir = textgrid_dir / "_creaky_cache"
+    cache_dir.mkdir()
+    (cache_dir / "sampling_state.json").write_text(
+        json.dumps({"batches": [{"batch_id": 0, "name": "Batch 0", "split": "train"}]}),
+        encoding="utf-8",
+    )
+    annotation_path = annotation_storage_path(textgrid_dir, batch_id=0)
     canonical = make_interval_id(0.0, 0.1, "a")
     unknown = make_interval_id(0.2, 0.3, "spn")
     save_annotations(annotation_path, {"files": {file_key: {"annotations": {

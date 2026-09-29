@@ -48,6 +48,23 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     isolate_speakers = bool(config['data'].get('isolate_split_speakers', True))
     train_df, val_df, test_df = splits_mod.make_batch_split(df, isolate=isolate_speakers)
 
+    # Defense in depth: with speaker isolation enabled, verify it actually
+    # removed every overlapping speaker. Silent isolation failures previously
+    # relied solely on hand-maintained sampling_state split fields.
+    if isolate_speakers and bool(config['data'].get('assert_split_exclusivity', True)):
+        train_spk = set(train_df['speaker_id'].dropna().unique())
+        for part_name, part_df in (("val", val_df), ("test", test_df)):
+            if part_df.empty:
+                continue
+            overlap = train_spk & set(part_df['speaker_id'].dropna().unique())
+            if overlap:
+                raise RuntimeError(
+                    f"[SPLIT EXCLUSIVITY VIOLATION] train and {part_name} share "
+                    f"{len(overlap)} speaker(s): {sorted(overlap)[:10]}. "
+                    "Speaker isolation failed - inspect the manifest batch_split "
+                    "assignment before training."
+                )
+
     print(f"Data Partition: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)} segments")
     if len(val_df) == 0:
         raise ValueError(
@@ -401,7 +418,18 @@ def main():
         if args.speakers:
             speakers = [s.strip() for s in args.speakers.split(',') if s.strip()]
         else:
-            speakers = sorted(df['speaker_id'].dropna().unique())
+            # Only speakers providing valid labels for the primary task may form
+            # a fold: a fold whose primary-task labels are all NaN reports 0.0
+            # metrics forever (bypassing the NaN guard) and silently drops out
+            # of the fold results.
+            primary_task = config.get('eval', {}).get('primary_task', 'creaky')
+            label_col = f'label_{primary_task}' if f'label_{primary_task}' in df.columns else 'label'
+            label_valid = pd.to_numeric(df[label_col], errors='coerce')
+            speakers = sorted(df.loc[label_valid.notna(), 'speaker_id'].dropna().unique())
+            excluded_spk = sorted(set(df['speaker_id'].dropna().unique()) - set(speakers))
+            if excluded_spk:
+                print(f"[INFO] LOOCV: excluding {len(excluded_spk)} speaker(s) with no valid "
+                      f"'{label_col}' labels: {excluded_spk[:10]}")
         if is_smoketest and not args.speakers:
             print(f"[INFO] Limiting LOOCV to the first two folds (speakers: {speakers[:2]})")
             speakers = speakers[:2]
