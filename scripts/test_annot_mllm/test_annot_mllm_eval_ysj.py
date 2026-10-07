@@ -31,8 +31,12 @@ import requests
 import soundfile as sf
 from tqdm import tqdm
 
-from test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
-from test_annot_mllm_eval import call_gemini_api, parse_response_json
+try:
+    from test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
+    from test_annot_mllm_eval import call_gemini_api, parse_response_json
+except ImportError:
+    from scripts.test_annot_mllm.test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
+    from scripts.test_annot_mllm.test_annot_mllm_eval import call_gemini_api, parse_response_json
 
 # Reconfigure stdout for UTF-8
 if hasattr(sys.stdout, "reconfigure"):
@@ -45,8 +49,8 @@ YSJ_TRANSCRIPTS_PATH = Path(r"E:\Corpus\Breathy\YSJ\transcripts.tsv")
 OUTPUT_DIR = Path(r"manifests\test_annot_mllm\ysj_listen_cases").resolve()
 CACHE_DIR = Path(r"manifests\test_annot_mllm\ysj_cache").resolve()
 
-DEFAULT_ENDPOINT = "https://aaawinn.xyz"
-DEFAULT_KEY = "ENV_EVAL_KEY_PLACEHOLDER"
+DEFAULT_ENDPOINT = "http://127.0.0.1:8045"
+DEFAULT_KEY = "ENV_LOCAL_LLM_KEY_PLACEHOLDER"
 DEFAULT_MODEL = "gemini-3.8-flash-high"
 
 
