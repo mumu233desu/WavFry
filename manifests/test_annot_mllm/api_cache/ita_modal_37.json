@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_37",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 6.639,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 音频为一段清晰平稳的日语朗读女声（带有合成音/标准播音特征）。\n   - 声带振动具有高度规律的周期性，基频（F0）走向自然且稳定，谐波结构完整饱满，声带闭合良好，能量分布集中。\n\n2. **局部细节与特殊发声态排查**：\n   - **气声（Breathy voice）排查**：各元音发音期间声门完全闭合，未检测到由声门未闭导致的湍流噪声泄漏（无弥散沙哑气流感）。词中出现的摩擦声（如「しながら」中的 [ɕ]、「不動産」中的 [s]）均属于日语固有的清辅音气流摩擦，元音核心部分均呈现饱满的常态振动。\n   - **耳语声（Whispery voice）排查**：无去基频或声带振动极弱的段落。\n   - **嘎裂声（Creaky voice）排查**：句尾及语调下行段落声门收放自如，未出现脉冲状不规则振动或喉部挤压感。\n\n综上所述，该音频全程呈现典型的**常态发声（Modal voice）**，未检测到气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

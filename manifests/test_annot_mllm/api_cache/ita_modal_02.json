@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_02",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.72,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态观察**：\n   - 输入音频为一段清晰的日语女性语音（“その会社の急速な成長は、その独特な戦略によるものだった”）。\n   - 整体发声能量充沛且稳定，基频（F0）轮廓清晰、连续，谐波结构丰满规整。\n   - 声带闭合良好，没有观察到声带后部闭合不全导致的持续性气流湍流泄漏现象（无气声 Breathy voice）。\n   - 声带振动周期性强，无去周期化或无声带振动的耳语特征（无耳语声 Whispery voice）。\n   - 语句结尾及低音区未出现声门极度紧绷或低频脉冲式的颗粒状爆破（无嘎裂声 Creaky voice）。\n   - 词中的清辅音摩擦/送气（如「その」中的 /s/、「独特」中的 /k/ 等）均属于日语标准的清辅音音理特征，而非发声态异常。\n\n2. **结论**：\n   - 全程均为标准的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

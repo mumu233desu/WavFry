@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_25",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 14.55,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声机制分析\n\n1. **整体发声态与声带振动特征**：\n   - 音频为标准清晰的日语朗读语音（女性发音人）。在整个语音段中（00:00 - 00:14），声带振动的周期性非常明显且稳定，基频（F0）轮廓连贯流畅。\n   - 共振峰结构（Formants）清晰分明，中低频段与高频谐波能量分布饱满，展现出典型的**常态发声（Modal voice）**特征。\n\n2. **气流与噪声检验（气声/耳语排除）**：\n   - 在元音发音期间，声门闭合充分，没有观察或听到持续性的呼气性声门湍流泄漏。\n   - 其中的摩擦声（如「シンディ」中的 [ɕ]、「ヘトヘト」中的 [h]、「スポークスマン」中的 [s] 等）均为日语清辅音本身的生理摩擦与气流特性，脱离辅音后进入元音核心时，声带立即呈现紧密规律的振动，因此不存在声门漏气引起的气声（Breathy voice）或耳语声（Whispery voice）。\n\n3. **声门收紧与低频脉冲检验（嘎裂声排除）**：\n   - 句末及各语篇停顿处（如「〜切った後」「〜上がってきたが」「〜発表した」），声门闭合转换自然平稳，未出现声门过度挤压、低频非周期性离散脉冲或声门炸裂感（Creaky voice）。\n\n综上所述，该音频全段属于标准的常态发声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

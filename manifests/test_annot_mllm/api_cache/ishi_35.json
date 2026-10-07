@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_35",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.004,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.004,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态（Phonation Type）**：\n   - 说话人（女声）发音为清晰自然的常态发声（Modal Voice）。\n   - 音频中各元音发音段的基频（F0）稳定清晰，谐波结构完整饱满，声带闭合严密，未观察到声门漏气所导致的弥散性湍流噪声。\n   \n2. **局部细节排查**：\n   - **00:00 - 00:01（まさかそんな早いと...）**：句首的清摩擦音 [s] 及清声门摩擦音 [h] 呈现正常的辅音送气特征，进入元音后声带迅速规律振动，谐波清晰，不存在声门发声态层面的气声（Breathy voice）或耳语（Whispery voice）。\n   - **00:01 - 00:02（...思わんかってんや）**：句末促音与齿龈塞音释放利落，末尾轻快收束，声门无过度收紧挤压（无 Creaky voice），整体发声均处于正常周期性振动范畴。\n\n结论：整段音频完全由常态发声（Modal voice）构成，无气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

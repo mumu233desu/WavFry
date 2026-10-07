@@ -1,0 +1,58 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_15",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_15.flac",
+  "duration_sec": 19.5,
+  "gt_has_breathy": true,
+  "user_breathy_count": 8,
+  "user_breathy_intervals": [
+    {
+      "start": 2.61,
+      "end": 2.71,
+      "phone": "e"
+    },
+    {
+      "start": 4.64,
+      "end": 5.15,
+      "phone": "e"
+    },
+    {
+      "start": 6.81,
+      "end": 6.86,
+      "phone": "y"
+    },
+    {
+      "start": 6.86,
+      "end": 6.94,
+      "phone": "a"
+    },
+    {
+      "start": 6.94,
+      "end": 7.0,
+      "phone": "d"
+    },
+    {
+      "start": 7.0,
+      "end": 7.1,
+      "phone": "e"
+    },
+    {
+      "start": 7.29,
+      "end": 7.41,
+      "phone": "a"
+    },
+    {
+      "start": 13.91,
+      "end": 14.23,
+      "phone": "e"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声特征**：\n   - 音频为一名年轻女性的日语自然陈述。整体语调轻柔自然，声带振动周期性强，基频（F0）稳定清晰，谐波结构丰满整齐。\n   \n2. **气流与闭合情况**：\n   - **00:00 - 00:07**（“でも、俺も教えるから教えてよって言ってきて、うーん結構嫌でした”）：发音器官协调，声门闭合正常，元音部分能量集中。句末“嫌でした”结尾带有自然的送气释放，但主要元音均具有规整的周期振动，无持续异常的声门漏气。\n   - **00:08 - 00:19**（“ていうか、多分会計士さんはプライドが高くて、自分の話をしたいから私に聞いてきたのかなって”）：声音轻柔平缓，但声门后部闭合完整，并未出现呼气性湍流噪声淹没谐波的现象；高频没有显著的弥散摩擦能量，不符合 Breathy voice（气声）或 Whispery voice（耳语）的声学定义。同时，基频没有极低频非周期脉冲（Creaky voice）。\n\n3. **结论**：\n   - 整段音频发声态属于典型的**常态发声（Modal voice）**。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

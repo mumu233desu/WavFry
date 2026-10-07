@@ -1,0 +1,50 @@
+{
+  "samples": [
+    {
+      "sample_id": "ishi_1",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "general",
+      "context": "D03F0040-R-779.253-783.508",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_D03F0040-R-779.253-783.508.wav",
+      "duration_sec": 4.255,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 4.255,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ita_modal_01",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0049_S0_55",
+      "speaker_id": "U0049",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0049_S0_55.flac",
+      "duration_sec": 7.29,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "trans_trans_01",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_01.wav",
+      "duration_sec": 8.324,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0027_S0_46",
+      "breathy_source": "ishi_1",
+      "gt_segments": [
+        {
+          "start_sec": 4.069,
+          "end_sec": 8.324,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    }
+  ]
+}

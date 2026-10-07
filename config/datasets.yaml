@@ -148,6 +148,51 @@ datasets:
 
     split_strategy: random   # 按说话人随机划分 80/10/10
 
+  # ── YSJ Japanese（日语自发语音语料，TextGrid + _breathy_cache，切片级性别与信杂比） ──
+  - dataset_id: ysj_japanese
+    enabled: true
+    display_name: "YSJ Japanese (Breathy)"
+    domain: spontaneous_podcast
+
+    annotation_adapter: ysj_textgrid
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/YSJ/audio
+      textgrid_dir: E:/Corpus/Breathy/YSJ/textgrid
+      cache_dir: E:/Corpus/Breathy/YSJ/textgrid/_breathy_cache
+      manifest_csv: E:/Corpus/Breathy/YSJ/manifest_slices.csv
+      language: ja
+      phone_tier_name: phones
+      min_duration_ms: 30
+      min_smr_db: 10.0         # 可选质量过滤：排除信杂比过低的嘈杂切片
+      exclude_gender_x: false  # 默认包含 X 性别切片参与训练
+
+    label_schema:
+      creaky: false
+      breathy: true
+
+    split_strategy: batch_split  # 与 APP 标注抽样批次严格对齐
+
+  # ── ITA Corpus（日语朗读语音，TextGrid + _breathy_cache 筛选与精标） ──
+  - dataset_id: ita_japanese
+    enabled: true
+    display_name: "ITA Corpus (Breathy)"
+    domain: read_speech
+
+    annotation_adapter: mfa_textgrid_sharded
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/ita_rion_processed/audio
+      textgrid_dir: E:/Corpus/Breathy/ita_rion_processed/textgrid_flat
+      cache_dir: E:/Corpus/Breathy/ita_rion_processed/textgrid_flat/_breathy_cache
+      language: ja
+      phone_tier_name: phones
+      min_duration_ms: 30
+
+    label_schema:
+      creaky: false
+      breathy: true
+
+    split_strategy: batch_split  # Batch 1 为 test (Kappa)，Batch 2-6 为 train
+
 
 # ==============================================================================
 # 全局 Manifest 构建参数

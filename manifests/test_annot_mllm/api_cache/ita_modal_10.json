@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_10",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.629,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态与声门运动特征**：\n   - 音频整体为标准、清晰的日语朗读语音（具有高质量语音合成或播音员发音特征）。\n   - 在整个发音过程中（0.0秒至约7.9秒），声带振动表现出高度规律的周期性，基频（F0）走向自然平滑，谐波结构完整饱满。\n\n2. **气流与摩擦噪声分析**：\n   - 元音及浊辅音发音段（如 /i/, /u/, /e/, /o/, /a/ 以及浊塞音、鼻音等）声门完全闭合良好，未观察到持续性湍流泄漏或高频弥散噪声，排除了气声发声态（Breathy voice）。\n   - 音频中出现的轻微气流声均为清辅音固有声学特征（例如「ディスプレイ」中的 [s]、「出力される」中的 [ts] / [s]、「機器」中的 [k] 等清擦音与清爆破音），而非声门未闭合引起的呼气性漏气。\n   - 全程均具备稳定清晰的音高，不存在缺乏基频振动的耳语声（Whispery voice）。\n\n3. **声门收紧与嘎裂音分析**：\n   - 句末及停顿处声带振动减弱自然收尾，未出现极低频脉冲震荡或声门过度压迫的挤压颗粒感（Creaky voice）。\n\n综上所述，整条音频完全处于常态发声态（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

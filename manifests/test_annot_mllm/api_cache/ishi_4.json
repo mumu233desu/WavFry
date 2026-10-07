@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_4",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.923,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.923,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态特征（0.00s - 1.15s）**：\n   - **生理机制分析**：发音人在整句日语「知らなかった（shiranakatta）」的发音过程中，声带处于开启或轻微收拢但未发生周期性接触闭合的状态，声门间隙持续流出高速呼气气流。\n   - **声学与听感特征**：整段语音完全缺失周期性的声带振动（即缺乏稳定的基频 $F_0$ 及规整的谐波结构）。元音与辅音的共鸣主要依靠声门逸出的呼气湍流噪声在声道各腔体中产生的共振（共振峰结构由摩擦噪声激励体现），听感上表现为纯粹且典型的**耳语声（Whispery voice）**。\n\n2. **区分与排除**：\n   - 该片段不同于气声（Breathy voice），因为气声通常保有明确的周期性基频音高并伴随轻微湍流漏气；本音频中则完全未探测到规律的声带周期振动，故判定为标准的耳语态。\n\n---\n\n### 第二阶段：结构化 JSON 输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.05,\n      \"end_sec\": 1.15,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"全句完全缺乏声带周期性振动与基频F0结构，语音全部由呼气气流激发的湍流摩擦噪声主导，为典型耳语态发声\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.05,
+        "end_sec": 1.15,
+        "phonation_type": "whispery",
+        "acoustic_reason": "全句完全缺乏声带周期性振动与基频F0结构，语音全部由呼气气流激发的湍流摩擦噪声主导，为典型耳语态发声"
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_31",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.576,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态评估**：\n   - 音频为一段标准的日语朗读语音。发音人在整段音频中的声门闭合充分且规律，基频（F0）轨迹平稳连续，谐波结构清晰丰富。\n   - 在元音发音段（如 [i]、[a]、[o] 等），声带展现出完全正常的周期性振动，声门后部无明显未闭合间隙导致的呼气性湍流噪声。\n   - 出现的送气和气流感仅来自清辅音（如「フットボール」中的双唇擦音 [ɸ]、「試合」中的龈腭擦音 [ɕ] 等）固有的辅音摩擦，并非声带发声态的漏气。\n\n2. **嘎裂声（Creaky）与耳语（Whispery）检测**：\n   - 音频中未出现声门过度挤压、极低频非周期脉冲或“沙哑颗粒感”，无嘎裂发声（Creaky voice）。\n   - 全程基频显著且能量稳定，无耳语发声态（Whispery voice）。\n\n3. **结论**：\n   - 全程均为标准的常态发声（Modal voice），不存在气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_10",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_10.flac",
+  "duration_sec": 20.0,
+  "gt_has_breathy": true,
+  "user_breathy_count": 3,
+  "user_breathy_intervals": [
+    {
+      "start": 4.21,
+      "end": 4.29,
+      "phone": "e"
+    },
+    {
+      "start": 4.35,
+      "end": 4.45,
+      "phone": "a"
+    },
+    {
+      "start": 12.29,
+      "end": 12.53,
+      "phone": "e"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 说话人为年轻女性，语调柔和自然、发音清晰。\n   - 纵观整段音频（00:00 - 00:20），各元音均展现出非常稳定且连贯的基频周期性振动（F0 轨迹平滑清晰），谐波能量饱满，声门处于健康、规律的完全闭合循环状态。\n   - 听感虽然柔和、音量不大，但属于**轻柔常态发声（Soft/Relaxed Modal Voice）**，未检测到声门后部持续未闭合所致的湍流摩擦泄漏（即无明显的 Breathy voice）。\n   - 音频中不存在失去基频振动的耳语（Whispery voice），亦无声门过度紧绷或低频脉冲式的嘎裂声（Creaky voice）。辅音部分的送气与摩擦（如 [s]、[kʰ] 等）均为日语清辅音固有的生理声学特征，不属于异常发声态。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

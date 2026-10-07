@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_08",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.173,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与声带振动特性**：\n   - 音频整体为年轻女性日语语音（“太陽も、花も、楽しめないし、私たちの子供時代も、楽しめないのよ。”）。\n   - 说话人声带振动周期性强，基频（F0）稳定清晰，声门闭合充分且规律，谐波结构丰满，信噪比良好。\n\n2. **气流与摩擦特征分析**：\n   - 在元音段（如 /a/, /i/, /o/ 等）均表现出干净的常态发声（Modal voice），未观察到声门后部未闭合所引起的持续性呼气湍流噪声（无明显的漏气感或沙哑感），因此不属于气声发声态（Breathy voice）。\n   - 语音具有完整的周期性音高支持，并非无声带振动的耳语态（Whispery voice）。\n   - 辅音位置（如「し」[ɕi]、「ち」[t͡ɕi] 等）出现的噪声能量均为清辅音/塞擦音固有的声学特征，属于正常的调音生理现象，非声门异常漏气。\n   - 句尾及语流低音区音高自然回落，未见声带过度挤压或离散低频脉冲所形成的嘎裂声（Creaky voice）。\n\n3. **结论**：\n   整段音频均为典型的常态发声（Modal voice），不包含气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

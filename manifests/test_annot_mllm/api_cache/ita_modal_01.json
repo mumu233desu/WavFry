@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_01",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.29,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n- **00:00 - 00:07（整段音频）**：\n  - **发声态类型**：常态发声（Modal voice）\n  - **声学与生理特征分析**：\n    - 说话人为成年男性，使用标准清晰的朗读语调。\n    - 声带闭合状态完整，振动周期稳定且对称，基频（F0）轨迹平滑连续，各元音段的谐波结构清晰且能量饱满。\n    - 元音及浊音发音期间未出现声门未闭合导致的持续气流湍流噪声（无气声漏气现象）。\n    - 辅音（如 /s/, /h/, /k/, /t/ 等）包含正常的清音气流和爆破，但元音起振与持续状态均由稳定的声带闭合振动主导，不存在全段或局部的耳语发声态（Whispery voice）。\n    - 语句末尾音高虽有回落，但声带仍维持了正常的规律振动，未见明显的低频非周期性嘎裂（Creaky voice / vocal fry）。\n\n**总结**：整条音频的发声态属于典型的常态发声（Modal voice），未检测到气声（Breathy）、耳语声（Whispery）或嘎裂声（Creaky）。\n\n---\n\n### 第二阶段：结构化 JSON 输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

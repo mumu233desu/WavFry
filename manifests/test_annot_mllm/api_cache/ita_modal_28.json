@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_28",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 6.437,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体声学特征**：\n   - 说话人为女性发音，整体语调流畅平稳，发声清晰饱满，共振峰与基频结构稳定。\n   - 声带周期性振动规律，谐波能量在低中高频段分布均匀且清晰，未检测到声门未闭合导致的连续性湍流漏气噪声，亦无声带过度挤压的低频脉冲摩擦。\n\n2. **分段详细听觉分析**：\n   - **0.0 - 2.5 秒**（“デザインも、アーチ型のロゴデザインにより”）：发音器官开闭自然，元音持阻与释放过程声门闭合良好，辅音摩擦（如 /z/, /tɕ/）属于常规辅音阻碍发音，元音部分周期性极强，为典型的常态发声（Modal voice）。\n   - **2.5 - 4.5 秒**（“現代的で、登場感”）：声带张力适度，各音节基频过渡自然，无呼吸音或沙哑漏气感。\n   - **4.5 - 6.8 秒**（“躍動感のあるものに仕上げました”）：句末声调平稳衰减，结尾“〜ました”虽然伴随正常的句末清化现象（/ɕi/ 的清辅音摩擦），但这是日语常规语音音变特征，声带在有声元音发声段始终保持充分的声门闭合与周期性振动，不存在病理性或表现性的气声（Breathy voice）或耳语声（Whispery voice）。\n\n**结论**：整段音频均为常态发声（Modal voice），不包含气声、耳语声或嘎裂声。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

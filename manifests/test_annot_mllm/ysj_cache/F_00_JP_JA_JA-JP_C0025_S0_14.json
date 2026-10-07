@@ -1,0 +1,17 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_14",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_14.flac",
+  "duration_sec": 37.75,
+  "gt_has_breathy": false,
+  "user_breathy_count": 0,
+  "user_breathy_intervals": [],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态与声带振动特征**：\n   - 音频为日语口语表达，说话人音质清晰、共振峰丰富，整体基频（F0）轨迹连续且稳定。\n   - 在整个发声过程中，元音发音时声门闭合完全，周期性声门脉冲信号强烈，谐波与噪声比（HNR）较高。\n\n2. **气声（Breathy）与耳语（Whispery）排查**：\n   - 发音过程中未发现声门后部不全闭合导致的持续气流泄漏现象。元音共振峰周围未见弥散性的宽频湍流噪声。\n   - 音频中出现的轻微气流声仅为换气间隙的自然生理性吸气声，以及清擦音/清破擦音（如 [s]、[ts] 等辅音）固有的正常声学摩擦特征，并非声带发声态的漏气。\n   - 全程均具备明确、稳定的音高与声带振动，无耳语（Whispery voice）表现。\n\n3. **嘎裂声（Creaky）排查**：\n   - 句末与语调下降处声带张力适中，未出现显著的非周期性脉冲释放（声门挤压/低频颗粒感嘎裂声）。\n\n**结论**：整段音频呈现典型的常态发声（Modal voice），不存在气声、耳语声或嘎裂声发声态。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

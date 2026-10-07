@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_32",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.996,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.996,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态与音质特征**：\n   - 音频包含一名年轻女性使用日语发出的口语短句「あ、そうなんだ」（大致时长约 1.5 秒）。起始部分伴有极轻微的自然笑意/气流释放。\n   - 说话人整体语调轻柔自然，声带振动规律，谐波结构清晰，属于典型的常态发声（Modal voice）。\n\n2. **细节分段声学特征**：\n   - **0.00 - 0.35 秒**：语句起始处的微弱笑声及气流释放，属于非言语的副语言呼吸/笑音（laughter/exhalation），随后的元音「あ」([a]) 起振迅速，声门闭合良好，无持续性、显著的声门湍流漏气。\n   - **0.35 - 1.20 秒**：「そうなんだ」部分，辅音 [s] 表现为清齿龈擦音正常的宽频摩擦噪声，随后的长元音 [oː] 以及后续的鼻音 [n]、元音 [a] 均具有稳定的基频（F0）与清晰规律的谐波共振峰结构，声带闭合充分，未检测到声门后部未闭合所引起的伴随性宽频湍流噪声（Breathy voice），亦无声门过度挤压的嘎裂现象（Creaky voice）。\n\n3. **结论**：\n   - 音频整体属于声带闭合正常的轻柔常态发声（Modal voice），未出现声学物理意义上的气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

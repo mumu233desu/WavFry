@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_17",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 9.586,
+      "end_sec": 10.573,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 10.573,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **主体部分（00:00 - 00:09.2）**\n   - **内容**：男性发音人陈述日语商务内容（「弊社のエンジニアが日本国内で販売されている同様の製品と仕様を比較した結果、非常に競合力があると判断いたしました。」）。\n   - **发声态分析**：说话人基频（F0）稳定，声门闭合规律充分，谐波能量分布饱满清晰。各元音段均具有良好的声带周期性振动，没有观察到伴随基频振动的持续湍流摩擦噪声，属于典型的**常态发声（Modal voice）**。辅音中的送气或清摩擦音（如 [h]、[s] 等）均属于清辅音固有的生理特征，不构成声门气声。\n\n2. **结尾部分（00:09.2 - 00:10.5）**\n   - **内容**：女性发音人反问（「え、絶対？」）。\n   - **发声态分析**：音调相对较高，语调带有惊讶/疑问色彩。元音 [e] 及后续词汇「絶対」的元音段声带振动清晰，周期性良好，谐波丰富，并未呈现后部声门闭合不全导致的呼气性湍流噪声（Breathy voice），亦无耳语态（Whispery voice）。属于略带口语轻快的**常态发声（Modal voice）**。\n\n综上所述，整段音频各说话人声门闭合与振动均处于正常状态，未检测到气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

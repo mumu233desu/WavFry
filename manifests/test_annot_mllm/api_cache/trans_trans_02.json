@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_02",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 4.698,
+      "end_sec": 6.982,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 6.982,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **0.00 秒 - 4.55 秒（男声部分）：**\n   - **发声态**：常态发声（Modal voice）。\n   - **声学特征**：发音清晰饱满，声带周期性振动稳定且规则，谐波丰富，声门闭合充分，未检测到异常的声门气流泄漏或嘎裂挤压现象。辅音的送气与摩擦均属日语语音正常音变范畴。\n\n2. **4.55 秒 - 6.85 秒（女声部分）：**\n   - **发声态**：气声发声态（Breathy voice）。\n   - **声学特征**：该段说话人发声较为轻柔，声门后部（软骨部）呈现未完全闭合状态。在保持稳定基频（F0）周期振动的同时，伴随有持续且明显的呼气性湍流噪声（泄漏感），高频区域呈现较为弥散的噪声能量叠加，听感上表现出明确的“漏气”与轻微沙哑气流特征。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 4.55,\n      \"end_sec\": 6.85,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"女声发音时声门闭合不完全，在具有明确基频周期振动的同时，伴随持续明显的湍流气流泄漏，呈现典型的气声（breathy voice）特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 4.55,
+        "end_sec": 6.85,
+        "phonation_type": "breathy",
+        "acoustic_reason": "女声发音时声门闭合不完全，在具有明确基频周期振动的同时，伴随持续明显的湍流气流泄漏，呈现典型的气声（breathy voice）特征。"
+      }
+    ]
+  }
+}

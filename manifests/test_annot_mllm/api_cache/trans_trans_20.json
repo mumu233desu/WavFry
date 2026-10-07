@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_20",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 15.894,
+      "end_sec": 17.465,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 17.465,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **00:00.000 – 00:15.600**（正文朗读部分）：\n   - **声学特征与发声机制**：说话人整体采用**常态发声（Modal voice）**进行平稳朗读。声带闭合良好，周期性振动规律，谐波能量饱满，基频（F0）稳定。清辅音的爆破与摩擦（如 [h]、[s] 等）均属于日语音位固有的生理辅音特征，元音段未见声门后部持续气流泄漏，无气声、耳语声或嘎裂声态。\n\n2. **00:15.600 – 00:17.300**（结尾感叹/叹息部分，如“あー、すごい”）：\n   - **声学特征与发声机制**：该段说话人转入叹息式感叹发音。声门后部（软骨部）保持未完全闭合状态，在声带维持弱振动（产生微弱基频）的同时，伴随持续、显著的呼气性湍流噪声。听感上具有强烈的“气流泄漏感”和“叹息沙哑感”，基频与中高频弥散气流噪声并存，符合标准的**气声发声态（Breathy voice）**声学与生理特征。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 15.6,\n      \"end_sec\": 17.3,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"结尾叹息发音伴随显著的声门呼气气流泄漏，基频微弱且周围及中高频区域充斥持续的弥散摩擦噪声，呈典型的气声发声态特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 15.6,
+        "end_sec": 17.3,
+        "phonation_type": "breathy",
+        "acoustic_reason": "结尾叹息发音伴随显著的声门呼气气流泄漏，基频微弱且周围及中高频区域充斥持续的弥散摩擦噪声，呈典型的气声发声态特征。"
+      }
+    ]
+  }
+}

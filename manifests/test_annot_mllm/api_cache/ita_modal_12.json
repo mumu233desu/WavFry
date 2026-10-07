@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_12",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.131,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声特征**：\n   音频为标准且清晰的日语发音（“デイビスさんはとても疲れているように見える”）。发音人整体声带振动规律，周期性明显，基频（F0）轨迹平稳连贯，谐波结构丰满清晰。\n\n2. **局部细节排查**：\n   - **0.0 - 1.2 秒**（“デイビスさんは”）：元音共振峰清晰，声门闭合良好，辅音 [s] 等处出现的摩擦成分为清齿龈擦音固有物理特性，声门在元音段并未出现呼气性湍流泄漏。\n   - **1.2 - 2.5 秒**（“とても疲れている”）：辅音 [t]、[ts]、[k] 处的送气及爆破属于清辅音生理特征，随后的元音部分声带振动紧凑，无弥散性背景摩擦噪声，不存在气声或耳语发声。\n   - **2.5 - 3.4 秒**（“ように見える”）：句尾音高平稳下降，能量自然衰减，声带闭合维持正常，无嘎裂声（creaky voice）引起的低频非周期脉冲或挤压颗粒感。\n\n3. **结论**：\n   整段音频全程表现为闭合正常、振动充分的常态发声（Modal voice），未检测到气声（Breathy）、耳语声（Whispery）或嘎裂声（Creaky）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

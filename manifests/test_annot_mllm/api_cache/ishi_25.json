@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_25",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.577,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.577,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **发声机制与声门闭合状态：**\n   - 音频内容为日语短语「誰だろう」（dare darou），语速平缓，音量极轻。\n   - 在整个发声过程中（约 0.0 秒至 1.2 秒），声门后部存在明显的持续性开裂/闭合不全。说话人在声带维持微弱低频周期性振动（可辨识基频 $F_0$）的同时，伴随大量呼气性气流湍流释放。\n   - 谐波能量微弱且高频区域弥散着显著的连续气流摩擦噪声，表现出典型的气声（Breathy voice）发声态特征。尤其在词尾「だろう」部分，声带振动进一步减弱，漏气感与沙哑湍流感愈发显著。\n\n2. **判定依据：**\n   - 存在明确的基频周期性，排除了完全无声带振动的纯耳语（Whisper）；\n   - 气流噪声贯穿元音共鸣段，并非辅音固有爆破/摩擦，属于发声态层面的声门漏气。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 1.2,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"发音过程中声带振动微弱且伴随显著的呼气性湍流噪声贯穿始终，声门闭合不完全，表现出明显的漏气感与气声特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 1.2,
+        "phonation_type": "breathy",
+        "acoustic_reason": "发音过程中声带振动微弱且伴随显著的呼气性湍流噪声贯穿始终，声门闭合不完全，表现出明显的漏气感与气声特征。"
+      }
+    ]
+  }
+}

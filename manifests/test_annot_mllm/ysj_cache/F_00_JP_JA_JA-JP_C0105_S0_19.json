@@ -1,0 +1,80 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_19",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_19.flac",
+  "duration_sec": 28.6,
+  "gt_has_breathy": true,
+  "user_breathy_count": 11,
+  "user_breathy_intervals": [
+    {
+      "start": 7.48,
+      "end": 7.8,
+      "phone": "a"
+    },
+    {
+      "start": 10.81,
+      "end": 10.88,
+      "phone": "o"
+    },
+    {
+      "start": 10.88,
+      "end": 10.95,
+      "phone": "m"
+    },
+    {
+      "start": 10.95,
+      "end": 11.04,
+      "phone": "o"
+    },
+    {
+      "start": 11.04,
+      "end": 11.11,
+      "phone": "i"
+    },
+    {
+      "start": 11.11,
+      "end": 11.16,
+      "phone": "n"
+    },
+    {
+      "start": 11.16,
+      "end": 11.24,
+      "phone": "a"
+    },
+    {
+      "start": 11.29,
+      "end": 11.35,
+      "phone": "a"
+    },
+    {
+      "start": 11.41,
+      "end": 11.61,
+      "phone": "a"
+    },
+    {
+      "start": 18.15,
+      "end": 18.4,
+      "phone": "o"
+    },
+    {
+      "start": 25.41,
+      "end": 25.48,
+      "phone": "a"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态特征**：\n   - 说话人为年轻女性，采用极具亲和力、轻柔松弛的谈话语调。\n   - 其生理发声机制上，声门后部披裂软骨间区（cartilaginous glottis）持续维持一定程度的开合空隙，在声带膜质部保持周期性振动、输出稳定高音调基频（F0）的同时，伴随持续的吸/呼气流溢出，声学频谱在中高频区域呈现由气流湍流导致的弥散性摩擦噪声。\n\n2. **具体时间段声学观察**：\n   - **00:00 - 00:07**：语气轻柔自然，在短语末尾（如「...みたいな」「...してきて」）伴随声门闭合程度逐渐降低的轻度气流泄漏，但基频谐波仍占主导。\n   - **00:07 - 00:10.5（重点片段）**：在说出「あーすごいね、よかったねーって」时，说话人通过降低声带内收挤压程度并增加呼气流量来表现内心的敷衍/无奈情绪。此时基频周期振动虽然存在，但声门漏气极为显著，听觉上呈现非常明显的“漏气感/空气感（Breathy voice）”，第一谐波（H1）能量显著高于第二谐波（H2），中高频段伴随充沛的摩擦噪声能量。\n   - **00:15 - 00:28**：叙述点菜与上菜过程，回到平稳轻柔的日常叙述态，基频轮廓清晰连贯，部分尾音有轻微呼气消散，但未达到强烈的持续气化态。\n   - 全程均维持稳定的声带周期振动，未出现声门完全失振的耳语声（Whispery voice），亦无声门过度挤压产生的低频脉冲嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化结果\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 7.2,\n      \"end_sec\": 10.5,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"说话人模拟回应语境（'あーすごいね、よかったねーって'），声门后部未完全闭合，在维持基频周期的同时伴随明显的呼气性湍流噪声，听感呈现显著的气流感与漏气发声态（Breathy voice）。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 7.2,
+        "end_sec": 10.5,
+        "phonation_type": "breathy",
+        "acoustic_reason": "说话人模拟回应语境（'あーすごいね、よかったねーって'），声门后部未完全闭合，在维持基频周期的同时伴随明显的呼气性湍流噪声，听感呈现显著的气流感与漏气发声态（Breathy voice）。"
+      }
+    ]
+  }
+}

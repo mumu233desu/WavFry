@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_10",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 3.58,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 3.58,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态评估（0.00s - 3.84s）**：\n   - **声带振动周期性**：说话人使用自然、松弛的语调进行连续日语音节表达，基频（F0）轮廓清晰且具有稳定的周期性。元音段谐波能量丰富饱满，未出现声门闭合不全导致的谐波弥散或高频湍流混杂现象。\n   - **气流与噪声特征**：音频中除清辅音（如 [k]、[s]、[t] 等）固有的瞬态爆破与摩擦气流外，元音及浊音段均表现出良好的声门闭合阻抗，不存在声门后部漏气所致的“气声（Breathy voice）”或“耳语声（Whispery voice）”。\n   - **句尾衰减状态**：在句末（如“けどな”处），音量与音高呈自然下倾，但声带未出现明显的过度紧绷挤压或低频非周期脉冲（Creaky voice），属于常规的呼气末常态发声衰减。\n\n综合物理与声学听觉指标，该音频整体发声态为标准的**常态发声（Modal voice）**。\n\n---\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

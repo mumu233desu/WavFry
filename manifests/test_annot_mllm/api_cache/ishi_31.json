@@ -1,0 +1,43 @@
+{
+  "sample_id": "ishi_31",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.931,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.931,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 语音声学与生理机制分析\n\n根据音频的听觉特征与声学生理表征，分析如下：\n\n1. **0.00 秒 – 1.30 秒（“ありがとう”）**：\n   - **生理与声学表现**：发音者处于极度放松且带有疲惫叹息的状态。声门软骨部（后部）未完全闭合，声带在维持周期性振动（具有明确的低音基频 F0）的同时，伴随有大量呼气性气流穿过未闭合的声门后隙，产生强烈的持续性湍流白噪声。\n   - **听觉特征**：漏气感极强，谐波与湍流噪声并存，呈现非常典型且显著的**气声发声态（Breathy voice）**。\n\n2. **1.30 秒 – 2.00 秒（“うん”）**：\n   - **生理与声学表现**：叹息式鼻化回应。声带振动微弱，声门处于不完全闭合状态，呼气气流声显著渗透于发声全程，同样表现为典型的**气声发声态（Breathy voice）**。\n\n3. **2.00 秒 – 3.20 秒（“昨日さ”）**：\n   - **生理与声学表现**：语声极其虚弱低缓，声带振动能量较低，中高频区弥散着声门漏气形成的摩擦噪声，依然维持明显的**气声发声态（Breathy voice）**。\n\n**总结**：音频中说话人全程具有明确的基频周期振动，但伴随强烈的持续性声门漏气湍流，非无声带振动的纯耳语（Whispery voice），属于高度显著的**气声（Breathy voice）**。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 1.3,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"发‘ありがとう’时，声带维持周期振动的同时伴随强烈的声门漏气湍流，呈现典型的叹息式气声发声态\"\n    },\n    {\n      \"start_sec\": 1.3,\n      \"end_sec\": 2.0,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"鼻音‘うん’带有明显的持续呼气性摩擦噪声，声门闭合不全\"\n    },\n    {\n      \"start_sec\": 2.0,\n      \"end_sec\": 3.2,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"‘昨日さ’发音极其轻虚，谐波能量外伴随持续的声门弥散噪声，表现为显著的气声\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 1.3,
+        "phonation_type": "breathy",
+        "acoustic_reason": "发‘ありがとう’时，声带维持周期振动的同时伴随强烈的声门漏气湍流，呈现典型的叹息式气声发声态"
+      },
+      {
+        "start_sec": 1.3,
+        "end_sec": 2.0,
+        "phonation_type": "breathy",
+        "acoustic_reason": "鼻音‘うん’带有明显的持续呼气性摩擦噪声，声门闭合不全"
+      },
+      {
+        "start_sec": 2.0,
+        "end_sec": 3.2,
+        "phonation_type": "breathy",
+        "acoustic_reason": "‘昨日さ’发音极其轻虚，谐波能量外伴随持续的声门弥散噪声，表现为显著的气声"
+      }
+    ]
+  }
+}

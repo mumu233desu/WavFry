@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_13",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.434,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.434,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **发声段分析（约 0.00 秒 - 0.45 秒）**：\n   - **语音内容**：说话人发出了一个简短的鼻音叹词“嗯”（[m]）。\n   - **声学特征**：\n     - 基频（F0）清晰稳定，谐波结构完整规则，周期性振动良好。\n     - 高频部分无弥散的呼气性湍流噪声叠加，声门闭合完全，不存在持续的气流泄漏现象，排除气声（Breathy voice）。\n     - 具备完整的周期性声带振动，排除耳语声（Whispery voice）。\n     - 无脉冲式低频颤动或声门挤压颗粒感，排除嘎裂声（Creaky voice）。\n   - **发声态判定**：属于标准的常态发声（Modal voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

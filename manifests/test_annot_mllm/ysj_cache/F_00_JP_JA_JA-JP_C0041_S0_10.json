@@ -1,0 +1,235 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0041_S0_10",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0041_S0_10.flac",
+  "duration_sec": 15.5,
+  "gt_has_breathy": true,
+  "user_breathy_count": 42,
+  "user_breathy_intervals": [
+    {
+      "start": 0.6,
+      "end": 0.64,
+      "phone": "a"
+    },
+    {
+      "start": 0.64,
+      "end": 0.69,
+      "phone": "i"
+    },
+    {
+      "start": 0.79,
+      "end": 0.87,
+      "phone": "a"
+    },
+    {
+      "start": 0.87,
+      "end": 1.0,
+      "phone": "N"
+    },
+    {
+      "start": 1.03,
+      "end": 1.1,
+      "phone": "e"
+    },
+    {
+      "start": 1.26,
+      "end": 1.3,
+      "phone": "y"
+    },
+    {
+      "start": 1.3,
+      "end": 1.42,
+      "phone": "o"
+    },
+    {
+      "start": 2.86,
+      "end": 2.9,
+      "phone": "a"
+    },
+    {
+      "start": 2.98,
+      "end": 3.03,
+      "phone": "a"
+    },
+    {
+      "start": 3.03,
+      "end": 3.06,
+      "phone": "r"
+    },
+    {
+      "start": 3.06,
+      "end": 3.11,
+      "phone": "a"
+    },
+    {
+      "start": 3.53,
+      "end": 3.59,
+      "phone": "a"
+    },
+    {
+      "start": 3.59,
+      "end": 3.63,
+      "phone": "r"
+    },
+    {
+      "start": 3.63,
+      "end": 3.71,
+      "phone": "a"
+    },
+    {
+      "start": 4.37,
+      "end": 4.41,
+      "phone": "e"
+    },
+    {
+      "start": 4.62,
+      "end": 4.69,
+      "phone": "a"
+    },
+    {
+      "start": 7.49,
+      "end": 7.64,
+      "phone": "u"
+    },
+    {
+      "start": 7.64,
+      "end": 7.85,
+      "phone": "u"
+    },
+    {
+      "start": 9.44,
+      "end": 10.13,
+      "phone": "N"
+    },
+    {
+      "start": 10.13,
+      "end": 10.23,
+      "phone": "m"
+    },
+    {
+      "start": 10.23,
+      "end": 10.32,
+      "phone": "a"
+    },
+    {
+      "start": 10.43,
+      "end": 10.49,
+      "phone": "e"
+    },
+    {
+      "start": 10.53,
+      "end": 10.71,
+      "phone": "o"
+    },
+    {
+      "start": 11.29,
+      "end": 11.43,
+      "phone": "e"
+    },
+    {
+      "start": 11.43,
+      "end": 11.53,
+      "phone": "w"
+    },
+    {
+      "start": 11.53,
+      "end": 11.57,
+      "phone": "a"
+    },
+    {
+      "start": 11.69,
+      "end": 11.74,
+      "phone": "a"
+    },
+    {
+      "start": 11.74,
+      "end": 11.79,
+      "phone": "r"
+    },
+    {
+      "start": 11.79,
+      "end": 11.87,
+      "phone": "a"
+    },
+    {
+      "start": 11.87,
+      "end": 11.96,
+      "phone": "n"
+    },
+    {
+      "start": 11.96,
+      "end": 12.08,
+      "phone": "a"
+    },
+    {
+      "start": 12.08,
+      "end": 12.17,
+      "phone": "i"
+    },
+    {
+      "start": 12.29,
+      "end": 12.33,
+      "phone": "e"
+    },
+    {
+      "start": 12.85,
+      "end": 12.95,
+      "phone": "e"
+    },
+    {
+      "start": 13.03,
+      "end": 13.09,
+      "phone": "o"
+    },
+    {
+      "start": 13.83,
+      "end": 13.89,
+      "phone": "e"
+    },
+    {
+      "start": 14.0,
+      "end": 14.03,
+      "phone": "e"
+    },
+    {
+      "start": 14.03,
+      "end": 14.09,
+      "phone": "i"
+    },
+    {
+      "start": 14.21,
+      "end": 14.25,
+      "phone": "a"
+    },
+    {
+      "start": 14.25,
+      "end": 14.26,
+      "phone": "d"
+    },
+    {
+      "start": 14.26,
+      "end": 14.32,
+      "phone": "a"
+    },
+    {
+      "start": 14.42,
+      "end": 14.47,
+      "phone": "e"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体生理与声学机制**：\n   - 说话人在整个音频片段中（0.00 秒 - 15.00 秒）均采用典型的**耳语发声态（Whispery voice / Whisper）**。\n   - 在生理机制上，声带膜部通常处于松弛或未完全闭合状态，杓状软骨之间保持较大开孔（后部声门开缝），呼气气流穿过声门狭缝时产生强烈的湍流摩擦。\n   - 在声学表现上，整段话语中元音和浊辅音均**完全丧失了周期性声带振动及稳定的基频（F0）谐波结构**，能量主要由宽频带的弥散气流摩擦噪声构成，共振峰由声道滤波作用显现，符合纯正的耳语声学特征。\n\n2. **分段观察**：\n   - **0.00 - 15.00 秒**：从起始的「書いたんですよ」到随后的「だからそこから飛んで来てくださった方が…だけどね、分からないですからね…」，全程没有出现常规的周期性真声振动，也非声带振动与漏气共存的气声（Breathy voice），而是完全由持续的湍流气流主导的耳语发声。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 15.0,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"全程缺乏周期性声带振动和稳定基频谐波结构，所有元音和音节均由强烈的声门湍流气流摩擦噪声驱动，呈现出典型的耳语发声态（whisper/whispery voice）。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 15.0,
+        "phonation_type": "whispery",
+        "acoustic_reason": "全程缺乏周期性声带振动和稳定基频谐波结构，所有元音和音节均由强烈的声门湍流气流摩擦噪声驱动，呈现出典型的耳语发声态（whisper/whispery voice）。"
+      }
+    ]
+  }
+}

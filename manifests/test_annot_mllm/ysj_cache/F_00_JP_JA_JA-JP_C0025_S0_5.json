@@ -1,0 +1,28 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_5",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_5.flac",
+  "duration_sec": 15.1,
+  "gt_has_breathy": true,
+  "user_breathy_count": 2,
+  "user_breathy_intervals": [
+    {
+      "start": 8.25,
+      "end": 8.46,
+      "phone": "e"
+    },
+    {
+      "start": 11.01,
+      "end": 11.15,
+      "phone": "e"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n本音频为一段年轻女性的日语日常叙述语音。整体声学特征分析如下：\n\n1. **声带振动周期性与谐波结构（00:00 - 00:15）**：\n   - 说话人在整个发话过程中基频（F0）清晰稳定且具有自然的音调起伏，元音及浊辅音段的周期性振动非常规律。\n   - 频谱分析上，声门闭合完整，能量集中在基频及各次谐波，共振峰结构清晰饱满。\n\n2. **气流与噪声分析**：\n   - 音频中出现的轻微气流噪声均来自于清辅音固有的生理特征（如「そしたら」中的 [s] 摩擦音、以及爆破辅音的短暂除阻），属于正常的辅音气流摩擦，元音核心部分未见异常或持续的湍流气流泄漏。\n   - 声带后部闭合良好，未观察到基频伴随弥散噪声的“漏气”声学特征，排除了气声发声态（Breathy voice）及耳语发声态（Whispery voice）。\n\n3. **挤压与声门脉冲**：\n   - 语流结尾及停顿处声门自然开合，没有出现低频非周期性不规则振动的嘎裂声（Creaky voice）。\n\n综上所述，整段音频呈现典型的**常态发声（Modal voice）**特征。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_12",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 7.573,
+      "end_sec": 7.938,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 7.938,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态评估（00:00 - 00:07.8）**：\n   - **基频与周期性**：说话人呈现为自然平稳的女性声音，基频（F0）轮廓清晰、连续且具有良好的周期性振动，谐波结构完整饱满。\n   - **声门闭合程度**：各元音段（如 [i]、[e]、[o]、[a]、[u] 等）声门闭合充分，声门上未观察/听辨到持续性的非周期性湍流摩擦泄漏。\n   - **气流与噪声**：语音中的摩擦感仅出现在固有清辅音处（如「人 (ひと)」中的硬腭摩擦 [ç]、「知る (しる)」中的清龈腭擦音 [ɕ] 等），这是辅音的正常生理特征，元音本身并无附带的弥散气流噪声（Breathy/Whispery）。\n   - **句尾发声**：在「もらっていた」句尾降调以及随后的语气词「ええ」处，声带振动依然保持均匀、稳定，未出现低频脉冲化的声门挤压/嘎裂声（Creaky voice），亦无过度漏气现象。\n\n2. **结论**：\n   整段音频呈现典型的**常态发声（Modal voice）**，发声清晰饱满，不存在气声、耳语声或嘎裂声发声态。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

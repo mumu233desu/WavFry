@@ -1,0 +1,1511 @@
+{
+  "version": 1,
+  "total_count": 100,
+  "counts": {
+    "positive_ishi": 40,
+    "negative_ita": 40,
+    "transition": 20
+  },
+  "samples": [
+    {
+      "sample_id": "ishi_1",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "general",
+      "context": "D03F0040-R-779.253-783.508",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_D03F0040-R-779.253-783.508.wav",
+      "duration_sec": 4.255,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 4.255,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_2",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "general",
+      "context": "FSM007_05-614.080-616.364",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_FSM007_05-614.080-616.364.wav",
+      "duration_sec": 2.284,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.284,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_3",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "realfeeling",
+      "context": "D02F0031-L-345.683-347.223",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_realfeeling_D02F0031-L-345.683-347.223.wav",
+      "duration_sec": 1.54,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.54,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_4",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "realfeeling",
+      "context": "D02F0031-L-104.065-104.988",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_realfeeling_D02F0031-L-104.065-104.988.wav",
+      "duration_sec": 0.923,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.923,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_5",
+      "source": "ishi_corpus",
+      "category": "01_Emphasis",
+      "sub_cat": "realfeeling",
+      "context": "FSM003_09-76.304-78.618",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\01_Emphasis_realfeeling_FSM003_09-76.304-78.618.wav",
+      "duration_sec": 2.314,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.314,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_6",
+      "source": "ishi_corpus",
+      "category": "02_Excitement",
+      "sub_cat": "general",
+      "context": "D01F0023-R-760.440-763.066",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\02_Excitement_D01F0023-R-760.440-763.066.wav",
+      "duration_sec": 2.626,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.626,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_7",
+      "source": "ishi_corpus",
+      "category": "02_Excitement",
+      "sub_cat": "general",
+      "context": "D01F0023-R-804.307-806.894",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\02_Excitement_D01F0023-R-804.307-806.894.wav",
+      "duration_sec": 2.587,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.587,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_8",
+      "source": "ishi_corpus",
+      "category": "02_Excitement",
+      "sub_cat": "quoting",
+      "context": "JFA_JFB_J05-1191.752-1196.149",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\02_Excitement_quoting_JFA_JFB_J05-1191.752-1196.149.wav",
+      "duration_sec": 4.398,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 4.398,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_9",
+      "source": "ishi_corpus",
+      "category": "02_Excitement",
+      "sub_cat": "quoting",
+      "context": "FAN001_08-410.240-412.566",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\02_Excitement_quoting_FAN001_08-410.240-412.566.wav",
+      "duration_sec": 2.326,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.326,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_10",
+      "source": "ishi_corpus",
+      "category": "02_Excitement",
+      "sub_cat": "general",
+      "context": "FAN001_08-406.388-409.968",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\02_Excitement_FAN001_08-406.388-409.968.wav",
+      "duration_sec": 3.58,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.58,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_11",
+      "source": "ishi_corpus",
+      "category": "03_Politeness",
+      "sub_cat": "polite",
+      "context": "FAN001_05-143.110-143.452 はい hai (yes) (formal; express politeness, modesty)",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\03_Politeness_FAN001_05-143.110-143.452.wav",
+      "duration_sec": 0.342,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.342,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_12",
+      "source": "ishi_corpus",
+      "category": "03_Politeness",
+      "sub_cat": "polite",
+      "context": "D04F0011-L-34.032-34.397 ええ ee ( uhm ) (formal; express politeness, modesty)",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\03_Politeness_D04F0011-L-34.032-34.397.wav",
+      "duration_sec": 0.365,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.365,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_13",
+      "source": "ishi_corpus",
+      "category": "03_Politeness",
+      "sub_cat": "polite",
+      "context": "D03M0017-L-197.300-197.734 うん un ( uhm ) (casual; express interest)",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\03_Politeness_D03M0017-L-197.300-197.734.wav",
+      "duration_sec": 0.434,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.434,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_14",
+      "source": "ishi_corpus",
+      "category": "03_Politeness",
+      "sub_cat": "polite",
+      "context": "D01F0055-L-633.637-634.023 うん un ( uhm ) (casual; express interest)",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\03_Politeness_D01F0023-R-339.402-339.871.wav",
+      "duration_sec": 0.469,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.469,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_15",
+      "source": "ishi_corpus",
+      "category": "04_StoryReading",
+      "sub_cat": "gentle",
+      "context": "FYM001_07-30.980-32.558",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\04_StoryReading_gentle_FYM001_07-30.980-32.558.wav",
+      "duration_sec": 1.578,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.578,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_16",
+      "source": "ishi_corpus",
+      "category": "04_StoryReading",
+      "sub_cat": "gentle",
+      "context": "FYM001_07-56.667-61.507",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\04_StoryReading_gentle_FYM001_07-56.667-61.507.wav",
+      "duration_sec": 4.84,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 4.84,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_17",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "unexpected",
+      "context": "FAN001_08-73.982-74.969",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_unexpected_FAN001_08-73.982-74.969.wav",
+      "duration_sec": 0.987,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.987,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_18",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "unexpected",
+      "context": "FSM007_01-1116.984-1117.630",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_unexpected_FSM007_01-1116.984-1117.630.wav",
+      "duration_sec": 0.646,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.646,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_19",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "unexpected",
+      "context": "JFA_JFB_J01-689.812-690.296",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_unexpected_JFA_JFB_J01-689.812-690.296.wav",
+      "duration_sec": 0.484,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.484,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_20",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "admiration",
+      "context": "FYS001_05-41.898-43.469",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_admiration_FYS001_05-41.898-43.469.wav",
+      "duration_sec": 1.571,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.571,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_21",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "admiration",
+      "context": "JFA_JFB_J01-706.219-709.146",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_admiration_JFA_JFB_J01-706.219-709.146.wav",
+      "duration_sec": 2.927,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.927,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_22",
+      "source": "ishi_corpus",
+      "category": "05_Surprise",
+      "sub_cat": "admiration",
+      "context": "JMA_JFA_E05-1747.469-1749.821",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\05_Surprise_admiration_JMA_JFA_E05-1747.469-1749.821.wav",
+      "duration_sec": 2.352,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.352,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_23",
+      "source": "ishi_corpus",
+      "category": "06_ConfidentialTalking",
+      "sub_cat": "confidential",
+      "context": "D03F0045-R-13.841-14.961",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\06_ConfidentialTalking_D03F0045-R-13.841-14.961.wav",
+      "duration_sec": 1.12,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.12,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_24",
+      "source": "ishi_corpus",
+      "category": "06_ConfidentialTalking",
+      "sub_cat": "confidential",
+      "context": "D02F0018-R-210.989-213.034",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\06_ConfidentialTalking_D02F0018-R-210.989-213.034.wav",
+      "duration_sec": 2.045,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.045,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_25",
+      "source": "ishi_corpus",
+      "category": "06_ConfidentialTalking",
+      "sub_cat": "self_talk",
+      "context": "D02F0031-L-160.871-162.448",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\06_ConfidentialTalking_self_talk_D02F0031-L-160.871-162.448.wav",
+      "duration_sec": 1.577,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.577,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_26",
+      "source": "ishi_corpus",
+      "category": "06_ConfidentialTalking",
+      "sub_cat": "self_talk",
+      "context": "D02F0025-R-386.955-388.233",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\06_ConfidentialTalking_self_talk_D02F0025-R-386.955-388.233.wav",
+      "duration_sec": 1.278,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.278,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_27",
+      "source": "ishi_corpus",
+      "category": "06_ConfidentialTalking",
+      "sub_cat": "self_talk",
+      "context": "D02M0028-R-173.166-174.542",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\06_ConfidentialTalking_self_talk_D02M0028-R-173.166-174.542.wav",
+      "duration_sec": 1.376,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.376,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_28",
+      "source": "ishi_corpus",
+      "category": "07_Sighing",
+      "sub_cat": "general",
+      "context": "D02F0031-R-157.975-161.070",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\07_Sighing_D02F0031-R-157.975-161.070.wav",
+      "duration_sec": 3.095,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.095,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_29",
+      "source": "ishi_corpus",
+      "category": "07_Sighing",
+      "sub_cat": "general",
+      "context": "FSM007_01-1227.309-1228.412",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\07_Sighing_FSM007_01-1227.309-1228.412.wav",
+      "duration_sec": 1.103,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.103,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_30",
+      "source": "ishi_corpus",
+      "category": "07_Sighing",
+      "sub_cat": "general",
+      "context": "FSM007_05-961.522-963.046",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\07_Sighing_FSM007_05-961.522-963.046.wav",
+      "duration_sec": 1.524,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.524,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_31",
+      "source": "ishi_corpus",
+      "category": "07_Sighing",
+      "sub_cat": "general",
+      "context": "FAN001_08-257.923-260.854",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\07_Sighing_FAN001_08-257.923-260.854.wav",
+      "duration_sec": 2.931,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.931,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_32",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "funny",
+      "context": "D02F0018-L-201.030-202.026",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_funny_D02F0018-L-201.030-202.026.wav",
+      "duration_sec": 0.996,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.996,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_33",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "funny",
+      "context": "D02F0018-L-210.507-211.676",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_funny_D02F0018-L-210.507-211.676.wav",
+      "duration_sec": 1.169,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.169,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_34",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "funny",
+      "context": "FAN001_08-297.615-299.036",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_funny_FAN001_08-297.615-299.036.wav",
+      "duration_sec": 1.421,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.421,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_35",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "bitter",
+      "context": "FAN001_08-22.068-24.072",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_bitter_FAN001_08-22.068-24.072.wav",
+      "duration_sec": 2.004,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.004,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_36",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "bitter",
+      "context": "FAN001_08-161.794-162.580",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_bitter_FAN001_08-161.794-162.580.wav",
+      "duration_sec": 0.786,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 0.786,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_37",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "bitter",
+      "context": "FSM007_05-216.759-218.035",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_bitter_FSM007_05-216.759-218.035.wav",
+      "duration_sec": 1.276,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.276,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_38",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "forced",
+      "context": "D01M0020-L-8.609-12.091",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_forced_D01M0020-L-8.609-12.091.wav",
+      "duration_sec": 3.482,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.482,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_39",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "forced",
+      "context": "D03M0017-L-3.860-6.356",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_forced_D03M0017-L-3.860-6.356.wav",
+      "duration_sec": 2.496,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 2.496,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ishi_40",
+      "source": "ishi_corpus",
+      "category": "08_Laughing",
+      "sub_cat": "forced",
+      "context": "D03M0004-R-25.238-26.453",
+      "audio_path": "C:\\Users\\mumu\\Downloads\\breathywhispery\\08_Laughing_forced_D03M0004-R-25.238-26.453.wav",
+      "duration_sec": 1.215,
+      "gt_has_breathy": true,
+      "gt_type": "breathy_or_whispery",
+      "gt_segments": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 1.215,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "ita_modal_01",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0049_S0_55",
+      "speaker_id": "U0049",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0049_S0_55.flac",
+      "duration_sec": 7.29,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_02",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0015_S0_25",
+      "speaker_id": "U0015",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0015_S0_25.flac",
+      "duration_sec": 5.72,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_03",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0026_S0_52",
+      "speaker_id": "U0026",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0026_S0_52.flac",
+      "duration_sec": 9.273,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_04",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0010_S0_56",
+      "speaker_id": "U0010",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0010_S0_56.flac",
+      "duration_sec": 5.897,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_05",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0013_S0_63",
+      "speaker_id": "U0013",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0013_S0_63.flac",
+      "duration_sec": 5.948,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_06",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0023_S0_73",
+      "speaker_id": "U0023",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0023_S0_73.flac",
+      "duration_sec": 3.893,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_07",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0048_S0_59",
+      "speaker_id": "U0048",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0048_S0_59.flac",
+      "duration_sec": 9.043,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_08",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0008_S0_74",
+      "speaker_id": "U0008",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0008_S0_74.flac",
+      "duration_sec": 5.173,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_09",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0034_S0_61",
+      "speaker_id": "U0034",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0034_S0_61.flac",
+      "duration_sec": 5.315,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_10",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0050_S0_67",
+      "speaker_id": "U0050",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0050_S0_67.flac",
+      "duration_sec": 7.629,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_11",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0039_S0_29",
+      "speaker_id": "U0039",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0039_S0_29.flac",
+      "duration_sec": 3.969,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_12",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0022_S0_3",
+      "speaker_id": "U0022",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0022_S0_3.flac",
+      "duration_sec": 3.131,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_13",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0025_S0_5",
+      "speaker_id": "U0025",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0025_S0_5.flac",
+      "duration_sec": 5.089,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_14",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0032_S0_69",
+      "speaker_id": "U0032",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0032_S0_69.flac",
+      "duration_sec": 7.708,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_15",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0021_S0_25",
+      "speaker_id": "U0021",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0021_S0_25.flac",
+      "duration_sec": 4.923,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_16",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0008_S0_47",
+      "speaker_id": "U0008",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0008_S0_47.flac",
+      "duration_sec": 3.176,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_17",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0012_S0_29",
+      "speaker_id": "U0012",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0012_S0_29.flac",
+      "duration_sec": 4.1,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_18",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0019_S0_55",
+      "speaker_id": "U0019",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0019_S0_55.flac",
+      "duration_sec": 7.369,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_19",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0007_S0_60",
+      "speaker_id": "U0007",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0007_S0_60.flac",
+      "duration_sec": 4.191,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_20",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0046_S0_60",
+      "speaker_id": "U0046",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0046_S0_60.flac",
+      "duration_sec": 3.72,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_21",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0020_S0_5",
+      "speaker_id": "U0020",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0020_S0_5.flac",
+      "duration_sec": 5.318,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_22",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0011_S0_52",
+      "speaker_id": "U0011",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0011_S0_52.flac",
+      "duration_sec": 6.377,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_23",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0013_S0_40",
+      "speaker_id": "U0013",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0013_S0_40.flac",
+      "duration_sec": 4.349,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_24",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0042_S0_36",
+      "speaker_id": "U0042",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0042_S0_36.flac",
+      "duration_sec": 3.677,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_25",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0024_S0_70",
+      "speaker_id": "U0024",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0024_S0_70.flac",
+      "duration_sec": 14.55,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_26",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0019_S0_69",
+      "speaker_id": "U0019",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0019_S0_69.flac",
+      "duration_sec": 8.114,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_27",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0028_S0_70",
+      "speaker_id": "U0028",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0028_S0_70.flac",
+      "duration_sec": 13.026,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_28",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0011_S0_64",
+      "speaker_id": "U0011",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0011_S0_64.flac",
+      "duration_sec": 6.437,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_29",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0009_S0_11",
+      "speaker_id": "U0009",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0009_S0_11.flac",
+      "duration_sec": 7.267,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_30",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0022_S0_62",
+      "speaker_id": "U0022",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0022_S0_62.flac",
+      "duration_sec": 5.439,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_31",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0013_S0_69",
+      "speaker_id": "U0013",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0013_S0_69.flac",
+      "duration_sec": 7.576,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_32",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0030_S0_15",
+      "speaker_id": "U0030",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0030_S0_15.flac",
+      "duration_sec": 4.354,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_33",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0025_S0_59",
+      "speaker_id": "U0025",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0025_S0_59.flac",
+      "duration_sec": 9.461,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_34",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0019_S0_19",
+      "speaker_id": "U0019",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0019_S0_19.flac",
+      "duration_sec": 4.606,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_35",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0023_S0_2",
+      "speaker_id": "U0023",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0023_S0_2.flac",
+      "duration_sec": 3.635,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_36",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0020_S0_64",
+      "speaker_id": "U0020",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0020_S0_64.flac",
+      "duration_sec": 8.35,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_37",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0008_S0_52",
+      "speaker_id": "U0008",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0008_S0_52.flac",
+      "duration_sec": 6.639,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_38",
+      "source": "ita_modal_corpus",
+      "file_key": "M_00_JP_JA_JA-JP_U0034_S0_59",
+      "speaker_id": "U0034",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\M_00_JP_JA_JA-JP_U0034_S0_59.flac",
+      "duration_sec": 9.221,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_39",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0020_S0_6",
+      "speaker_id": "U0020",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0020_S0_6.flac",
+      "duration_sec": 8.823,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "ita_modal_40",
+      "source": "ita_modal_corpus",
+      "file_key": "F_00_JP_JA_JA-JP_U0005_S0_6",
+      "speaker_id": "U0005",
+      "audio_path": "E:\\Corpus\\Breathy\\ita_rion_processed\\audio\\F_00_JP_JA_JA-JP_U0005_S0_6.flac",
+      "duration_sec": 6.966,
+      "gt_has_breathy": false,
+      "gt_type": "pure_modal",
+      "gt_segments": []
+    },
+    {
+      "sample_id": "trans_trans_01",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_01.wav",
+      "duration_sec": 8.324,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0027_S0_46",
+      "breathy_source": "ishi_1",
+      "gt_segments": [
+        {
+          "start_sec": 4.069,
+          "end_sec": 8.324,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_02",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_02.wav",
+      "duration_sec": 6.982,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0029_S0_15",
+      "breathy_source": "ishi_2",
+      "gt_segments": [
+        {
+          "start_sec": 4.698,
+          "end_sec": 6.982,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_03",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_03.wav",
+      "duration_sec": 8.081,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0021_S0_71",
+      "breathy_source": "ishi_3",
+      "gt_segments": [
+        {
+          "start_sec": 6.541,
+          "end_sec": 8.081,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_04",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_04.wav",
+      "duration_sec": 4.95,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0027_S0_60",
+      "breathy_source": "ishi_4",
+      "gt_segments": [
+        {
+          "start_sec": 4.027,
+          "end_sec": 4.95,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_05",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_05.wav",
+      "duration_sec": 8.613,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0016_S0_56",
+      "breathy_source": "ishi_5",
+      "gt_segments": [
+        {
+          "start_sec": 6.299,
+          "end_sec": 8.613,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_06",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_06.wav",
+      "duration_sec": 5.172,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0008_S0_9",
+      "breathy_source": "ishi_6",
+      "gt_segments": [
+        {
+          "start_sec": 2.546,
+          "end_sec": 5.172,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_07",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_07.wav",
+      "duration_sec": 10.317,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0043_S0_64",
+      "breathy_source": "ishi_7",
+      "gt_segments": [
+        {
+          "start_sec": 7.73,
+          "end_sec": 10.317,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_08",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_08.wav",
+      "duration_sec": 16.669,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0048_S0_70",
+      "breathy_source": "ishi_8",
+      "gt_segments": [
+        {
+          "start_sec": 12.271,
+          "end_sec": 16.669,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_09",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_09.wav",
+      "duration_sec": 10.006,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0001_S0_56",
+      "breathy_source": "ishi_9",
+      "gt_segments": [
+        {
+          "start_sec": 7.68,
+          "end_sec": 10.006,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_10",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_10.wav",
+      "duration_sec": 8.553,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0004_S0_62",
+      "breathy_source": "ishi_10",
+      "gt_segments": [
+        {
+          "start_sec": 4.973,
+          "end_sec": 8.553,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_11",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_11.wav",
+      "duration_sec": 8.222,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0036_S0_11",
+      "breathy_source": "ishi_11",
+      "gt_segments": [
+        {
+          "start_sec": 7.88,
+          "end_sec": 8.222,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_12",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_12.wav",
+      "duration_sec": 7.938,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0007_S0_43",
+      "breathy_source": "ishi_12",
+      "gt_segments": [
+        {
+          "start_sec": 7.573,
+          "end_sec": 7.938,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_13",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_13.wav",
+      "duration_sec": 11.111,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0050_S0_70",
+      "breathy_source": "ishi_13",
+      "gt_segments": [
+        {
+          "start_sec": 10.677,
+          "end_sec": 11.111,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_14",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_14.wav",
+      "duration_sec": 8.056,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0027_S0_55",
+      "breathy_source": "ishi_14",
+      "gt_segments": [
+        {
+          "start_sec": 7.587,
+          "end_sec": 8.056,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_15",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_15.wav",
+      "duration_sec": 7.865,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0047_S0_63",
+      "breathy_source": "ishi_15",
+      "gt_segments": [
+        {
+          "start_sec": 6.287,
+          "end_sec": 7.865,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_16",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_16.wav",
+      "duration_sec": 10.954,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0025_S0_39",
+      "breathy_source": "ishi_16",
+      "gt_segments": [
+        {
+          "start_sec": 6.115,
+          "end_sec": 10.954,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_17",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_17.wav",
+      "duration_sec": 10.573,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0041_S0_75",
+      "breathy_source": "ishi_17",
+      "gt_segments": [
+        {
+          "start_sec": 9.586,
+          "end_sec": 10.573,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_18",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_18.wav",
+      "duration_sec": 4.9,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "F_00_JP_JA_JA-JP_U0017_S0_74",
+      "breathy_source": "ishi_18",
+      "gt_segments": [
+        {
+          "start_sec": 4.254,
+          "end_sec": 4.9,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_19",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_19.wav",
+      "duration_sec": 13.616,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0030_S0_70",
+      "breathy_source": "ishi_19",
+      "gt_segments": [
+        {
+          "start_sec": 13.132,
+          "end_sec": 13.616,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    },
+    {
+      "sample_id": "trans_trans_20",
+      "source": "synthesized_transition",
+      "audio_path": "manifests\\test_annot_mllm\\audio\\trans_20.wav",
+      "duration_sec": 17.465,
+      "gt_has_breathy": true,
+      "gt_type": "transition_modal_to_breathy",
+      "modal_source": "M_00_JP_JA_JA-JP_U0046_S0_72",
+      "breathy_source": "ishi_20",
+      "gt_segments": [
+        {
+          "start_sec": 15.894,
+          "end_sec": 17.465,
+          "phonation_type": "breathy_or_whispery"
+        }
+      ]
+    }
+  ]
+}

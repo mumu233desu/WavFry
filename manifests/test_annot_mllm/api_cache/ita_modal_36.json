@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_36",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 8.35,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态与声门运动特征**：\n   - 音频为标准日语朗读，整体音质清亮、自然，谐波结构丰满整齐。\n   - 说话人在整个发音过程中，声带肌张力适度，膜部与软骨部声门规律完全闭合，表现出典型且稳定的常态发声（Modal voice）。\n\n2. **分段详细听觉分析**：\n   - **00:00 - 00:03**（「デザインもアーチ型のロゴデザインにより」）：基频（F0）稳定连续，谐波清晰，声带周期性振动良好，元音共振峰清晰，无任何可察觉的声门异常漏气或湍流摩擦声。\n   - **00:03 - 00:06**（「現代的で登場感、躍動感あるものに」）：浊音与元音段能量充沛，辅音段（如 [k]、[d]、[g]）爆破与闭合过渡正常，未出现声门未闭合导致的额外吸/呼气性气流杂音。\n   - **00:06 - 00:08.5**（「仕上げました」）：句首清擦音 [ɕ] 带有其固有的生理摩擦声，后续元音及句尾收尾部分发音轻柔规整，声带振动依然保持周期性，不存在嘎裂（Creaky voice）或气声发声态（Breathy voice）。\n\n3. **结论**：\n   - 全程均为常规常态发声（Modal voice），未检测到气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

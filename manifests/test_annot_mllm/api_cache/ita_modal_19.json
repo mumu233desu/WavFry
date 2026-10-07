@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_19",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 4.191,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声特征**：\n   - 本段音频为成年男性的日语朗读语音（“とりあえず 店の前 掃除しといてくれ。打ち水も頼む。”）。\n   - 整体发声表现为典型的**常态发声（Modal voice）**。声带在各元音段均保持规律、充分的周期性闭合与振动，基频（F0）清晰稳定，声门波谐波丰富饱满。\n\n2. **分段详细分析**：\n   - **0.00 秒 - 1.55 秒（“とりあえず 店の前”）**：\n     元音核心区（如 /o/, /i/, /a/, /e/, /u/）声带闭合完整，能量集中在低频基波与共振峰区域，无声门后部未闭合引发的湍流泄漏。辅音（如 /t/, /z/, /s/）相关的摩擦属于清辅音固有的生理特征，元音承载段无异常气流感。\n   - **1.55 秒 - 2.85 秒（“掃除しといてくれ”）**：\n     发音清晰且有力度，共振峰轨迹分明，声门闭合良好，未观察到气声（Breathy voice）所具有的宽带高频弥散噪声。\n   - **2.85 秒 - 4.40 秒（“打ち水も頼む”）**：\n     句尾语调平缓自然回落，声带未见过度松弛漏气或过度挤压（无嘎裂声/Creaky voice），元音共振峰清晰衰减至静音。\n\n3. **结论**：\n   - 音频中不存在持续的声门不完全闭合（无气声），亦无耳语或嘎裂声，全程属于生理状态良好的常态发声。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_13",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.089,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声机制与基频特征**：\n   - 音频中说话人呈现出典型的常态发声态（Modal voice）。声带具有良好且完全的周期性振动，基频（F0）清晰稳定，谐波结构完整饱满。\n   - 整体语流中的元音发音清晰，能量分布均匀，未见声门后部闭合不全导致的持续性呼气湍流泄漏。\n\n2. **细节检验（排除气声与耳语声）**：\n   - 语音中存在的摩擦噪声仅来源于正常的清辅音发音（例如「作曲家」/sakkyokuka/ 中的爆破与「好き」/suki/ 中的清齿龈擦音 /s/），属于辅音固有的生理气流，元音发声阶段均未伴随异常漏气。\n   - 声带振动始终保持稳定，无弱振动或无振动气流主导的耳语发声态（Whispery voice）。\n   - 句尾及语调下降处声带闭合张力适中，无低频脉冲或挤压颗粒感的嘎裂声（Creaky voice）。\n\n综上所述，整段音频为纯净的常态发声，未包含气声、耳语声或嘎裂声。\n\n### 结构化判定结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

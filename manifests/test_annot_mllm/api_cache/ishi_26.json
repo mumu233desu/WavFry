@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_26",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.278,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.278,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n- **0.00 秒 - 1.25 秒**：\n  - **声带振动与基频表现**：发音过程中存在明确且持续的基频（F0）与音高轮廓，声带维持周期性振动，非完全去周期化的耳语声（whisper）。\n  - **气流与声门特征**：在整个发音段内，声门软骨部明显未完全闭合，声门下呼气性气流持续溢出，产生了充沛且强烈的湍流摩擦噪声。该噪声与周期性振动声学信号并存，弥散于谐波之间及中高频区域。\n  - **听感特征**：声音具有极其典型且显著的“气声/漏气感”（Breathy voice），发音轻柔而伴随浓厚的喘息式气流感，符合声门后部未完全闭合的生理机制。未检测到声门强烈挤压或极低频脉冲振动的嘎裂声（creaky voice）。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 1.25,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"发音具有清晰的基频周期振动，但伴随持续且显著的声门呼气性湍流噪声，谐波区充斥弥散能量，听感具有明显的漏气气声特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 1.25,
+        "phonation_type": "breathy",
+        "acoustic_reason": "发音具有清晰的基频周期振动，但伴随持续且显著的声门呼气性湍流噪声，谐波区充斥弥散能量，听感具有明显的漏气气声特征。"
+      }
+    ]
+  }
+}

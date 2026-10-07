@@ -1,0 +1,17 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_1",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_1.flac",
+  "duration_sec": 15.25,
+  "gt_has_breathy": false,
+  "user_breathy_count": 0,
+  "user_breathy_intervals": [],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征**：\n   - 说话人表现为年轻女性的明亮、偏高音调发声（常态发声，Modal voice，带有轻微的头部共鸣）。\n   - 声带振动周期性非常清晰稳定，各元音段的基频（F0）及谐波结构饱满，声门在振动周期中闭合充分，没有明显的未闭合声门湍流漏气现象。\n\n2. **细节检验**：\n   - **气声（Breathy voice）**：全段中并未检测到伴随周期振动的弥散性湍流噪声。辅音如 [h]（「お話し」中的 /h/）和清塞音/清擦音的释放气流属于正常的日语辅音生理特征，元音承载段声带闭合严密，无漏气感。\n   - **耳语声（Whispery voice）**：全程声带振动连续且音高明确，无去周期化或无声带振动的纯气流发声。\n   - **嘎裂声（Creaky voice）**：音高整体偏高，未出现声门过度挤压、低频非周期性脉冲振动。\n\n综上所述，该音频全程为正常的常态发声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

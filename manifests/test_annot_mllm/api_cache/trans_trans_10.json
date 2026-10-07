@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_10",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 4.973,
+      "end_sec": 8.553,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.553,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **0.00 秒 - 4.80 秒（说话人 A，较稳重清晰的朗读女声）：**\n   - **声学与生理特征：** 语句“彼女の魅力は言葉では表現できないと、その芸術家は叫んだ。”发音端正清晰。声带周期性振动稳定，基频（F0）连贯，各元音谐波能量充分，声门闭合完整，未见持续异常的声门气流泄漏或弥散湍流噪声。辅音中的送气/擦音成分属于正常音位特征。\n   - **判定：** 常态发声（Modal voice）。\n\n2. **4.80 秒 - 8.87 秒（说话人 B，音调偏高、语调生动的年轻女声）：**\n   - **声学与生理特征：** 语句发音生动高昂，声带振动张力充足，共振峰清晰，谐波结构完整饱满。发音过程中气流受控良好，无声门后部闭合不全导致的显著气流摩擦，亦无耳语或低频脉冲挤压（嘎裂）。\n   - **判定：** 常态发声（Modal voice）。\n\n**综合结论：** 全段音频均由正常的常态发声构成，无气声（Breathy voice）、耳语（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

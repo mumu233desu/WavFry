@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_21",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.318,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征（0.00 - 5.50 秒）：**\n   - **基频与周期性**：说话人（女性）发音清晰稳定，基频（F0）起伏自然，元音段具有极高的周期性振动，谐波结构明亮且丰富饱满。\n   - **气流与闭合**：声门闭合良好，发声过程中未检测到持续的声门后部气流泄漏（Turbulence noise），无沙哑或漏气感。词中的清辅音（如 [ts]、[s]、[k]）呈现正常的清辅音摩擦/爆破阻碍，元音发音未被气流噪声浸染。\n   - **特殊发声态排查**：\n     - 未检测到气声（Breathy voice）：声带振动时无多余气流弥散能量。\n     - 未检测到耳语声（Whispery voice）：全段均有强劲稳定的声带周期性振动。\n     - 未检测到嘎裂声（Creaky voice）：各声调低音处及句尾（如“好きだ” [da]）声门仍维持良好的常态振动，无非周期脉冲或下沉挤压。\n\n综上所述，整段音频属于典型的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

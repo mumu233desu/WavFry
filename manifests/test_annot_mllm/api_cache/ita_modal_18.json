@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_18",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.369,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声生理机制分析\n\n本音频为一段清晰的日语女性语音（带有合成或高度标准化的朗读发音特征）。基于语音生理与声学标准，具体分析如下：\n\n1. **声带振动与周期性（F0与谐波）**：\n   - 全程元音与浊辅音段均表现出极为稳定且规律的周期性振动，基频（F0）轮廓清晰平滑，高频谐波结构规整分明。\n2. **声门闭合与气流控制**：\n   - 声带在发声振动时闭合完全，元音共振峰能量集中，不存在声门后部未闭合所引起的持续性湍流漏气噪声（Aspiration noise）。\n   - 音频中出现的轻微摩擦主要来自于清辅音固有声学特征（如「数」中的 /s/、「フォーク」中的 /ɸ/ 等），这些属于辅音自身的声道湍流，而非声门发声态的气声（Breathy voice）。\n3. **耳语及嘎裂声特征排查**：\n   - 全程音高清晰饱满，无耳语声（Whispery voice）表现。\n   - 句尾及语调下降段（如「なかった」）声门收缩状态平稳，未见低频非周期脉冲或声门挤压形成的嘎裂发声（Creaky voice）。\n\n综上所述，整段音频为标准的**常态发声（Modal voice）**，未检测到气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

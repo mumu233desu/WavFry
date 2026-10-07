@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_13",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 10.677,
+      "end_sec": 11.111,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 11.111,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估（0.0 秒 - 10.5 秒）**：\n   - 说话人（男性）使用标准的常态发声（Modal voice）进行日语朗读。\n   - 在整个发音过程中，声带振动周期性强，基频（F0）清晰稳定，共振峰谐波饱满丰富。\n   - 辅音和元音过渡自然，除日语清辅音自身固有的摩擦及送气声（如 /s/、/h/、/k/ 等）外，元音段均未观察到持续性声门未闭导致的湍流摩擦漏气声，不存在气声（Breathy voice）或耳语声（Whispery voice）。\n   - 句尾及语流停顿处声门闭合正常，未出现低频非周期脉冲或声门过度挤压的嘎裂声（Creaky voice）。\n\n2. **尾部（10.5 秒 - 11.5 秒）**：\n   - 音频末尾伴随一声短促的喉部清嗓/低哼音，声带闭合及释放过程自然，不属于发声态异常。\n\n综上所述，该音频全段均为典型的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

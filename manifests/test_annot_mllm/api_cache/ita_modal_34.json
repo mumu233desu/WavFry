@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_34",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 4.606,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体声学表现（0.00 - 4.90 秒）：**\n   - **基频与谐波特性**：说话人基频（F0）稳定清晰，谐波能量在低频至中高频分布均匀、丰富且界限分明，表明声带周期性振动规律，声门闭合充分。\n   - **气流噪声情况**：元音段均具有极高的信噪比，未观测到声带后部未闭合引起的持续湍流摩擦噪声（Aspiration noise）。出现的摩擦声仅来自清辅音（如「生徒（せいと）」的 /s/、「銘々（めいめい）」等辅音过渡），属于正常的生理辅音发音特征，非声门漏气。\n   - **声门闭合程度**：无过度松弛（Breathy）或过度紧缩（Creaky）迹象，声带接触相良好。\n   - **结论**：整段音频为标准的**常态发声（Modal voice）**，不存在气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

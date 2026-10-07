@@ -1,0 +1,37 @@
+{
+  "sample_id": "ishi_20",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.571,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.571,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与生理机制分析\n\n根据音频的听觉与物理声学表现，说话人的发声特征分析如下：\n\n1. **0.00 秒 - 0.70 秒（叹词“あー”阶段）**：\n   - **生理机制与声学特征**：发声起始伴随明显的呼气性气流释放，声门处于未完全闭合的状态（声门后部呈软骨部三角漏斗开放），在声带产生周期性低频振动（F0 可辨）的同时，中高频区域叠加了持续且显著的非周期性湍流摩擦噪声（Aspiration noise）。\n   - **发声态判定**：明显的**气声（Breathy voice）**。\n\n2. **0.70 秒 - 1.65 秒（“すごい”阶段）**：\n   - **生理机制与声学特征**：语声极度轻柔，声带闭合张力持续偏低，声门未能完全贴合。元音共振峰虽清晰可辨，但背景中伴随大量逸出气流所造成的弥散噪声能量，音质呈现出持续的“沙哑漏气感”与虚弱感。\n   - **发声态判定**：**气声（Breathy voice）**。\n\n整段音频完全由气流声贯穿，表现出极强的气声发声态（Breathy voice），未见明显的声门嘎裂（Creaky voice）或完全失去基频的纯耳语声（Whispery voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 0.7,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"叹词发音过程中声带维持周期性振动，但声门未完全闭合，伴随强烈的呼气性湍流噪声与明显漏气感。\"\n    },\n    {\n      \"start_sec\": 0.7,\n      \"end_sec\": 1.65,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"语声轻柔，声门闭合程度低，基频谐波与连续的气流摩擦噪声并存，呈现显著的气声特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 0.7,
+        "phonation_type": "breathy",
+        "acoustic_reason": "叹词发音过程中声带维持周期性振动，但声门未完全闭合，伴随强烈的呼气性湍流噪声与明显漏气感。"
+      },
+      {
+        "start_sec": 0.7,
+        "end_sec": 1.65,
+        "phonation_type": "breathy",
+        "acoustic_reason": "语声轻柔，声门闭合程度低，基频谐波与连续的气流摩擦噪声并存，呈现显著的气声特征。"
+      }
+    ]
+  }
+}

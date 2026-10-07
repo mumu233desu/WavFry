@@ -1,0 +1,33 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_11",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_11.flac",
+  "duration_sec": 26.15,
+  "gt_has_breathy": true,
+  "user_breathy_count": 3,
+  "user_breathy_intervals": [
+    {
+      "start": 5.99,
+      "end": 6.07,
+      "phone": "e"
+    },
+    {
+      "start": 6.07,
+      "end": 6.1,
+      "phone": "r"
+    },
+    {
+      "start": 6.1,
+      "end": 6.16,
+      "phone": "u"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征**：\n   说话人为年轻女性，语调柔和轻快，整体音量适中。从声学物理及生理机制来看，其发声状态属于典型的**常态发声（Modal voice）**，具有轻柔松弛（Soft/Lax modal voice）的特点。\n\n2. **基频与谐波表现**：\n   - 全程元音发音时，声带振动周期性清晰且稳定，基频（F0）轨迹平滑自然，谐波结构完整饱满。\n   - 谐波周围并未出现由声门未完全闭合导致的持续性呼气湍流噪声（Aspiration noise），不存在病理性或表现性的漏气感（Breathy voice）。\n   - 音频中出现的送气声均局限于清辅音固有属性（如 [s]、[k]、[t] 等擦音与爆破音段），辅音过渡到元音后声门迅速恢复正常闭合振动。\n\n3. **耳语态与嘎裂态排查**：\n   - 全程具有稳定的音高和基频振动，无耳语发声（Whispery voice）。\n   - 句尾及语流停顿处声门虽有自然放松，但未出现低频脉冲式的声带过度挤压或不规则振动（Creaky voice）。\n\n---\n\n### 结构化判断\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

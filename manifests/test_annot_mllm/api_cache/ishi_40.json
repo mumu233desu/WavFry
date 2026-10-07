@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_40",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.215,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.215,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体概况与发声特征**：\n   - 音频内容为日语短句「そうですね」（Sō desu ne），语调温和自然。\n   - 说话人在发音过程中声门开闭控制正常，声带保持了稳定规律的周期性振动，谐波能量饱满清晰。\n\n2. **细节时段分析**：\n   - **0.00 - 0.45 秒（「そう」/ sō）**：起始包含清齿龈擦音 [s] 固有的湍流摩擦噪声，随后迅速进入长元音 [oː]。元音段基频（F0）稳定清晰，声门闭合良好，谐波丰富，不存在声带振动伴随的持续漏气现象（即无气声）。\n   - **0.45 - 1.10 秒（「ですね」/ desu ne）**：辅音 [d]、元音 [e] 及后续音节振动规律，[su] 中的元音存在日语中常见的常规清化（devoicing）现象，属于清辅音环境下的音系生理特征，而非耳语态或病理/特殊发声态；随后的 [ne] 鼻音与元音连接紧密，呈典型的常态发声（Modal voice）。\n   - 全程未出现声门过度紧绷引起的嘎裂声（Creaky voice）或显著持续的声门漏气湍流（Breathy voice/Whispery voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

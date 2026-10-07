@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_03",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 6.541,
+      "end_sec": 8.081,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.081,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **0.00 秒 - 6.25 秒（常态发声区段）**\n   - **内容**：「若い男女が人里離れた洋館で恐怖の一夜を過ごすというホラーの定番スタイルだ。」\n   - **声学与生理特征**：该段为清晰流畅的常态发声（Modal voice）。说话人声带闭合规律，基频（F0）稳定连续，谐波能量饱满，元音共振峰清晰，未观察到异常的持续性呼气湍流噪声或声门闭合不全引起的漏气感。\n\n2. **6.25 秒 - 8.25 秒（耳语发声区段）**\n   - **内容**：「さっぱりですよね」\n   - **声学与生理特征**：发声态发生突变，转为耳语发声态（Whispery voice）。声带并未形成周期性的闭合与充分振动，缺乏稳定的基频（F0）与清晰的谐波结构；整段语音由声门未完全闭合时呼出气流所产生的强烈湍流摩擦噪声（Aperiodic turbulence noise）主导，呈现典型的耳语/低语特征。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 6.25,\n      \"end_sec\": 8.25,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"声带基本缺失周期性振动与稳定基频，整体语音由强烈的声门气流摩擦噪声主导，为典型的耳语发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 6.25,
+        "end_sec": 8.25,
+        "phonation_type": "whispery",
+        "acoustic_reason": "声带基本缺失周期性振动与稳定基频，整体语音由强烈的声门气流摩擦噪声主导，为典型的耳语发声态。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_35",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.635,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声特征**：\n   音频为标准日语女声发音（“シュバイツァーは見習うべき人間です”）。整段语音的声门闭合完全且规律，声带周期性振动稳定，基频（F0）曲线平滑，谐波结构丰满且信噪比高，属于典型的**常态发声（Modal voice）**。\n\n2. **局部细节分析**：\n   - **0.00 - 1.25秒**（“シュバイツァーは”）：起始包含清擦音 [ɕ] 以及双唇擦音 [ɸ]，能量集中在高频段，属于辅音固有的摩擦声；后续长元音及助词“は”声带闭合良好，共振峰清晰，无多余声门呼气性泄漏。\n   - **1.25 - 2.45秒**（“見習うべき”）：鼻音及元音过渡自然，周期性明显，能量饱满。\n   - **2.45 - 3.70秒**（“人間です”）：浊音区振动规则，句尾“です”的元音 [ɯ] 存在自然轻微弱化/去清化（日语标准音变现象），属于正常的语流音变，并非声门病理性或风格化的气声（breathy）或耳语（whispery）。\n\n3. **结论**：\n   整段音频不存在声门不完全闭合产生的持续湍流气声（breathy voice），亦无耳语发声（whispery voice）或声门挤压嘎裂声（creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_20",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.72,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声机制分析\n\n经细致听觉与声学特征分析，整段音频为一名成年男性的日语朗读语音（“とりあえず店の前、掃除しといてくれ。打ち水も頼む。”），具体声学特征如下：\n\n1. **整体周期性与能量分布**：\n   - 整体发声能量稳定，基频（F0）起伏自然，元音谐波结构完整且清晰。\n   - 说话人在发音过程中声门闭合状态良好，声带振动具有充分的周期性规律，声谱中谐波与噪声比（HNR）较高。\n\n2. **气流与摩擦特征甄别**：\n   - 语句中出现的擦音（如「そうじ」中的 [s]、「しといて」中的 [ɕ]）均属于辅音本身的音段摩擦特征，辅音结束后迅速恢复为紧致饱满的元音共振峰，未见声带后部未闭合引发的跨音段持续性湍流噪声。\n   - 没有明显的呼气性漏气感（Breathy voice）或声带微振/无振的耳语态（Whispery voice）。\n\n3. **声门挤压度**：\n   - 句尾「くれ」「頼む」自然下沉，但未出现声带过度紧缩引起的低频非周期脉冲（Creaky voice / 嘎裂声）。\n\n综上所述，整段音频均处于标准的**常态发声态（Modal voice）**。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

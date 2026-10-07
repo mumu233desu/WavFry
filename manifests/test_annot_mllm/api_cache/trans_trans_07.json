@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_07",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 7.73,
+      "end_sec": 10.317,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 10.317,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **00:00 - 00:07.5（男声部分）：**\n   - **声学与生理特征**：该段为日文朗读男声。声带振动周期性强，基频（F0）稳定清晰，谐波结构丰满，各元音段未见额外的非周期性湍流气流泄漏。\n   - **判定**：声门完全且规律闭合，属于典型的**常态发声（Modal voice）**。辅音中的气流（如摩擦音和爆破送气）属于标准辅音生理特性，不存在异常声门漏气。\n\n2. **00:07.5 - 00:10.5（女声部分）：**\n   - **声学与生理特征**：该段为语调较为活泼的女声。其基频较高，声带闭合力量充足，元音共振峰清晰锐利，能量集中。虽然带有明显的情感起伏，但在元音发声过程中并未检测到持续的呼气性湍流噪声（无气流泄漏感），亦无声门闭合不全导致的耳语或沙哑气声。\n   - **判定**：发声态主要为**常态发声（Modal voice）**，无嘎裂声及气声特征。\n\n整个音频样本中均未出现气声（Breathy voice）、耳语声（Whispery voice）或显著嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

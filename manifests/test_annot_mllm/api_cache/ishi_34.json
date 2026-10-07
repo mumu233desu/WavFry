@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_34",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.421,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.421,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态评估**：\n   - 输入音频为日语短句「じゃあ、久しぶりですね」（Jaa, hisashiburi desu ne），说话人为年轻女性。\n   - 整体发声态属于标准的**常态发声（Modal voice）**。声门周期性闭合良好，基频（F0）轨迹清晰且连续，中高频谐波结构规整饱满。\n\n2. **局部细节声学特征**：\n   - **0.00 - 0.45 秒（「じゃあ」）**：元音起始平稳，声带规律振动，声门闭合充分，无呼气性湍流噪声混杂。\n   - **0.45 - 1.25 秒（「久しぶり」）**：辅音 [ç]（hi）及 [s]（sa, shi）具有正常的清摩擦噪声，后续的元音 [a]、[i]、[ɯ] 均呈现稳定的周期性振动，声带无持续漏气现象。\n   - **1.25 - 1.65 秒（「ですね」）**：「です」尾部的元音出现日语自然的清化（De-voicing）现象，属于正常的音系辅音延长/元音脱落，随后接续的助词「ね」声带立刻恢复规律振动，不属于整体性的气声或耳语发声态。\n\n综上所述，该音频中不存在异常的声门漏气（Breathy voice）、耳语发声（Whispery voice）或声门挤压嘎裂声（Creaky voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

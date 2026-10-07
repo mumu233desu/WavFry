@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_40",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 6.966,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n针对整段日语语音样本（「ストラットフォード・オン・エイボンはシェイクスピアの生まれたところですが、毎年多くの観光客が訪れます」）的声学物理与生理机制分析如下：\n\n1. **整体发声态（0.00s - 6.84s）：**\n   - **声带振动与闭合状态**：说话人（成年男性）在整个发音过程中，声带均表现出良好的周期性闭合与振动。基频（F0）轨迹连续且稳定，谐波结构（Harmonics）丰富且清晰可见。\n   - **气流与噪声特征**：辅音部分的清摩擦音/清爆破音（如 [s]、[t]、[k]）属于语言固有的辅音气流特征，在元音承载的核心发声阶段（如 [a]、[o]、[e]、[i]、[u]），未观察到声门后部闭合不全导致的持续性高频湍流泄露噪声（Aspiration noise），因此排除气声发声态（Breathy voice）。\n   - **耳语声与嘎裂声排查**：各音节均具备明确的基频周期振动与声带张力平衡，未见去周期化的耳语声（Whispery voice）；句尾音高下降处声带张力平稳过渡，未出现过度挤压或离散低频脉冲（Creaky voice）。\n\n综上所述，该音频全程为标准的**常态发声（Modal voice）**。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

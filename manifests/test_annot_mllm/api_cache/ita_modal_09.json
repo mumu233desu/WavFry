@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_09",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.315,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态评估（00:00 - 00:05）**：\n   - 音频为日语男性朗读语音（“人々はトーナメントが始まる何ヶ月も前に、それらの入場券を買う”）。\n   - 整体声带振动表现为规律的周期性振动，基频（F0）清晰稳定，谐波结构丰满且信噪比良好。\n   - 在元音发音段（如 /i/, /o/, /a/, /u/），声门闭合完全，未见声门漏气所导致的明显湍流弥散噪声（即无 Breathy voice 特征）。\n   - 发音过程具备完整的基频和音高轨迹，完全不存在声带振动缺失或微弱的耳语发声（无 Whispery voice 特征）。\n   - 句尾衰减及音高下倾过程中，声门保持适度张力与自然闭合，未见声门过度挤压、极低频脉冲化振动或颗粒感（无 Creaky voice 特征）。\n   - 清辅音（如 [s], [t], [k] 等）的摩擦/爆破声符合日语固有音系学声学表现，属于正常调音特征，而非病理或发声态性质的湍流泄漏。\n\n综上所述，该音频属于典型的**常态发声（Modal voice）**。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

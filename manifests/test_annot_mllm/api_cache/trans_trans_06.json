@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_06",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 2.546,
+      "end_sec": 5.172,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 5.172,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与生理发声态分析\n\n该音频包含两个不同说话人的语音片段，具体听觉与声学特征如下：\n\n1. **0.00 秒 - 2.35 秒（说话人 A，女性声线）**：\n   - **内容**：“クリスはヴァンパイアナイトを倒した”\n   - **发声态分析**：属于标准常态发声（Modal voice）。声带呈规律周期性振动，谐波结构完整饱满，声门闭合充分，元音部分能量集中且信噪比高，未检测到声门泄漏气流引起的弥散噪声或声门过度挤压现象。\n\n2. **2.40 秒 - 5.40 秒（说话人 B，男性声线）**：\n   - **内容**：“人が入ってるにもかかわらず、ちょっと撮ってて”\n   - **发声态分析**：属于典型的耳语声（Whispery voice）。在此片段中，说话人声带失去规律的周期性振动（缺乏明确稳定的基频 F0），声门保持开放/半开放状态，整体发音完全由呼气气流穿过声道形成的湍流摩擦噪声（Aspiration noise）主导。元音共振峰由气流激励，听感呈现极低音量且无基频振动的窃窃私语声。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 2.4,\n      \"end_sec\": 5.4,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"声带缺乏常规周期性振动，未见明显基频 F0 谐波结构，全段由强烈的呼气性湍流摩擦噪声主导，为典型的耳语发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 2.4,
+        "end_sec": 5.4,
+        "phonation_type": "whispery",
+        "acoustic_reason": "声带缺乏常规周期性振动，未见明显基频 F0 谐波结构，全段由强烈的呼气性湍流摩擦噪声主导，为典型的耳语发声态。"
+      }
+    ]
+  }
+}

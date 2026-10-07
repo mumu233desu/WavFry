@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_09",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 7.68,
+      "end_sec": 10.006,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 10.006,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **0.00 秒 - 7.50 秒（女声朗读片段）**：\n   - **发声态**：常态发声（Modal voice）。\n   - **声学与生理特征**：该段为平稳的日语语音朗读，声带振动规律，周期性基频（F0）清晰稳定，谐波饱满，声门闭合良好。除清辅音固有辅音送气外，元音及浊辅音段均无持续的声门漏气噪声，未观察到气声（Breathy voice）或耳语声（Whispery voice）。\n\n2. **7.50 秒 - 10.50 秒（男声日常口语片段）**：\n   - **发声态**：常态发声（Modal voice）。\n   - **声学与生理特征**：男声发出带有夸张升调的感叹词“ええー？”及随后的口语叙述“とか言って終わったんや”。声带周期性振动明确，声能集中在基频及前几个共振峰，未出现声门后部未闭合所致的湍流摩擦噪声（气声），亦无耳语或明显的低频非周期声门挤压（嘎裂声）。\n\n**总结**：全段音频均属于常态发声范畴，未检测到气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

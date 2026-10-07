@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_32",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 4.354,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 音频内容为一段清晰的日语男性语音。发音过程中，声带振动周期性强，基频（F0）轨迹连续且稳定，谐波能量在各元音段分布饱满，未出现因声门闭合不全导致的持续弥散性湍流噪声。\n   - 整体发声态为典型的**常态发声（Modal voice）**。\n\n2. **分段详细特征**：\n   - **0.00 - 1.25秒（「どうすんのこの店」）**：起始发音清晰果断，元音持续期声门闭合完全，声学能量集中，谐波结构清晰，无气声或耳语特征。\n   - **1.25 - 2.50秒（「完全に」）**：鼻音与元音转换自然，声带振动规律，共振峰明显，未见异常漏气噪声。\n   - **2.50 - 4.45秒（「閑古鳥が泣いちゃってるじゃない」）**：语调自然下行，清辅音（如 [k]、[tɕ] 等）的送气与摩擦属于正常的辅音生理声学表现，辅音后的元音迅速恢复为充分闭合的周期性振动，未出现声门后部持续开放的气声发声态，末尾亦无嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_18",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_18.flac",
+  "duration_sec": 16.2,
+  "gt_has_breathy": true,
+  "user_breathy_count": 2,
+  "user_breathy_intervals": [
+    {
+      "start": 2.17,
+      "end": 2.24,
+      "phone": "a"
+    },
+    {
+      "start": 2.24,
+      "end": 2.3,
+      "phone": "i"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与发声态（Phonation Type）分析**：\n   - 说话人为年轻女性，采用具有日语会话特征的柔和语调（高位置头腔共鸣/轻常态发声）。\n   - 在整个发音过程中（0:00 - 0:16），各主要元音（如「そのあとも」、「毎月20万は」、「貯金しないと…」等）均具有清晰、稳定的基频周期性（$F_0$ 连续饱满），谐波结构清晰完整。\n   - 尽管说话人整体语调轻柔，但声门闭合充分，元音稳态段并没有伴随明显的声门后部未闭合所致的弥散性湍流噪声（Aspiration noise）。出现的摩擦与爆破气流均属于清辅音（如 [s]、[ts]、[k]、[t] 等）固有的辅音气流特征，而非声门发声态的气声泄漏。\n\n2. **局部细节核查**：\n   - **0:00 - 0:07**（「そのあとも、毎月20万は貯金しないと部屋にいられないって言われたり」）：发音轻快，声带振动规律，没有出现耳语或明显气化。\n   - **0:08 - 0:16**（「職場に徒歩で行きたいから、まるまる駅、なんかスモとかあるみたいな、なんか都会の駅」）：句尾随语气自然弱化收音，但未进入嘎裂（Creaky）或耳语（Whispery）状态。\n\n3. **结论**：\n   - 整体属于典型的轻柔常态发声（Modal voice），不构成病理性或风格性的气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

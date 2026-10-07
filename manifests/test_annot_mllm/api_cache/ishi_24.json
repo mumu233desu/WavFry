@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_24",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.045,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.045,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与生理机制分析\n\n1. **整体发声态特征（0.00 秒 - 2.45 秒）**：\n   - **生理机制**：说话人在发音时处于典型的耳语状态（Whispering/Whispery voice）。杓状软骨间三角裂隙保持较大开度，声带韧带部分轻度内收但未形成周期性闭合与规律振动，呼出气流高速通过声门形成持续的强湍流摩擦。\n   - **听觉与物理特征**：\n     - 整句内容（“これ整形してるんじゃないかなって…”）完全缺乏由声带规律振动形成的基频（F0）和清晰的谐波结构。\n     - 包含元音在内的所有音段均完全由弥散的宽频湍流气流噪声所激发，仅体现声道共振峰滤波形状，没有基频音高感。\n     - 属于典型的低强度耳语发声（Whispery voice），而非兼具周期振动与漏气的气声（Breathy voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 2.45,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"整句发音完全缺乏稳定的基频(F0)周期性振动和谐波结构，元音完全被持续的气流湍流噪声激发，呈现典型的耳语发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 2.45,
+        "phonation_type": "whispery",
+        "acoustic_reason": "整句发音完全缺乏稳定的基频(F0)周期性振动和谐波结构，元音完全被持续的气流湍流噪声激发，呈现典型的耳语发声态。"
+      }
+    ]
+  }
+}

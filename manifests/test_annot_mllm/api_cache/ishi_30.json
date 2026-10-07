@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_30",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.524,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.524,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体听觉与声学特征**：\n   - 音频内容为日语发音「そうなんですよ」（so-nan-desu-yo），说话人为年轻女性，语调轻柔自然。\n   - 整体发声中，声带周期性振动规律，谐波结构清晰完整，属于典型的常态发声（Modal voice）。\n\n2. **分段详细分析**：\n   - **0.00 - 0.70秒（「そうなん」）**：元音 [o:] 与 [a] 处基频稳定，谐波饱满，声门闭合充分，没有伴随额外的气流泄漏（Turbulence noise），未呈现气声（Breathy voice）特征。\n   - **0.70 - 1.48秒（「ですよ」）**：\n     - 音节「で」（[de]）声带振动正常。\n     - 音节「す」（[sɯ̥]）存在日语中典型的元音清化现象，听感上的摩擦音来自于清齿龈擦音 [s] 固有的声道湍流摩擦，属于正常的清辅音特征，而非声门发声态异常。\n     - 结尾音节「よ」（[jo]）恢复清晰的周期性声带振动，音色纯净，无持续性弥散气流噪声或声门挤压。\n\n综上所述，该音频中未检出气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n### 结构化判断结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

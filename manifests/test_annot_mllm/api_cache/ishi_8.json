@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_8",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 4.398,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 4.398,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声机制分析\n\n1. **整体发声特征**：\n   - 音频中说话人（年轻女性，日语）整体采用了较为轻柔、带有明显情感色彩的发声方式。在发声过程中，声门后部（软骨部）保持未完全闭合状态，使得呼气气流在通过声门时产生持续的弥散性湍流噪声，并与声带的周期性振动明显混合并存。\n\n2. **分段声学特征分析**：\n   - **0.00 秒 - 2.60 秒（“あんたなんてそんなときまで放っとくの…”）**：\n     - 开头弱起及后续语流中，元音部分虽具有清晰的基频（F0）和周期性振动，但谐波能量周围伴随着非常显著、持续的呼气性摩擦噪声（漏气感），呈现出极具辨识度的**气声发声态（Breathy voice）**。\n   - **2.60 秒 - 3.80 秒（“…みたいなことで（笑）”）**：\n     - 发声延续了气声的特点，并逐渐转入轻微的笑意气流释放，呼气性气流更为松弛，同样带有明显的气声伴随。\n\n3. **结论**：\n   - 音频中存在明确且贯穿大部分发音的**气声（Breathy voice）**。未发现典型的声门紧闭嘎裂声（Creaky voice）或完全失去基频周期的纯耳语态（Whispery voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 3.6,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"声带在维持周期性振动的同时，声门后部未完全闭合，元音及谐波结构周围伴随持续且显著的呼气性湍流漏气摩擦噪声，呈现明显的气声发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 3.6,
+        "phonation_type": "breathy",
+        "acoustic_reason": "声带在维持周期性振动的同时，声门后部未完全闭合，元音及谐波结构周围伴随持续且显著的呼气性湍流漏气摩擦噪声，呈现明显的气声发声态。"
+      }
+    ]
+  }
+}

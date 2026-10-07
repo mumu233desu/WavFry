@@ -1,0 +1,37 @@
+{
+  "sample_id": "ishi_21",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.927,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.927,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n根据专业语音声学听觉及发声态生理特征分析，说话人整体发音风格轻柔且带有明显的叹息情绪，主要声学表现如下：\n\n1. **0.00秒 - 0.95秒（“あー”）**：\n   - **生理与声学机制**：声门后部（软骨部）保持开放状态，声带韧带部维持周期性振动。在稳定的基频（F0）和谐波结构外，全程伴随高能量的呼气性湍流摩擦噪声（Aspiration noise），弥散分布在中高频区域。\n   - **听觉特征**：带有极其显著的叹气感和漏气感，声门气流显著，为典型的**气声发声态（Breathy voice）**。\n\n2. **0.95秒 - 1.80秒（“そうなん”）**：\n   - **生理与声学机制**：声门闭合程度有所恢复，除辅音 [s] 固有的齿龈清摩擦音之外，元音段主要表现为振动规律的轻柔发声，气流泄漏相对减弱，接近常态发声（Modal voice）。\n\n3. **1.80秒 - 2.80秒（“ですかー”）**：\n   - **生理与声学机制**：在句末语调下降及元音拖长（“かー”）阶段，声门再次松弛展开。声带虽保持低频周期振动，但伴随大量未转化为声能的呼气气流从声门泄漏，形成持续的湍流摩擦。\n   - **听觉特征**：尾音呈现明显的“气音化”消散感，属于典型的**气声发声态（Breathy voice）**。\n\n整段音频均维持清晰的基频音高，未出现完全失谐的耳语（Whispery voice）或声门紧闭产生的低频脉冲颗粒感（Creaky voice）。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 0.95,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"起始感叹元音在保持明确基频周期振动的同时，伴随强烈的声门湍流漏气摩擦，具有极其显著的叹气感与漏气声学特征。\"\n    },\n    {\n      \"start_sec\": 1.8,\n      \"end_sec\": 2.8,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"句末拖长元音段声门开度增大，基频谐波周围伴随持续且显著的高频弥散气流摩擦噪声，呈现明显的漏气发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 0.95,
+        "phonation_type": "breathy",
+        "acoustic_reason": "起始感叹元音在保持明确基频周期振动的同时，伴随强烈的声门湍流漏气摩擦，具有极其显著的叹气感与漏气声学特征。"
+      },
+      {
+        "start_sec": 1.8,
+        "end_sec": 2.8,
+        "phonation_type": "breathy",
+        "acoustic_reason": "句末拖长元音段声门开度增大，基频谐波周围伴随持续且显著的高频弥散气流摩擦噪声，呈现明显的漏气发声态。"
+      }
+    ]
+  }
+}

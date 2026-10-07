@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_19",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.484,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.484,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n- **整体发声态描述**：\n  音频非常短促（约 0.0 - 0.7 秒），说话人发出了一声短促轻微的惊叹/叹气感声音（类似于“啊”/轻呼）。\n\n- **分段听觉与声学特征**：\n  - **0.00 秒 - 0.55 秒**：发声起始迅速，声门后部（软骨部）未完全闭合，声带在维持短暂而轻微周期性振动（具有感知到的基频音高 F0）的同时，伴随着强烈的呼气性气流湍流释放。听觉上具有非常显著的“漏气叹息感”和弥漫性气流摩擦声，气流噪声与微弱谐波并存，符合典型**气声发声态（Breathy voice）**的声学与生理特征。\n  - 无明显的纯耳语（whispery）或嘎裂/声门挤压（creaky）特征。\n\n---\n\n### 第二阶段：结构化判定结果\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 0.55,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"短促叹气发声，声带维持轻微周期性振动的同时声门未完全闭合，伴随明显的湍流气流泄漏与弥散噪声，呈现显著的气声特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 0.55,
+        "phonation_type": "breathy",
+        "acoustic_reason": "短促叹气发声，声带维持轻微周期性振动的同时声门未完全闭合，伴随明显的湍流气流泄漏与弥散噪声，呈现显著的气声特征。"
+      }
+    ]
+  }
+}

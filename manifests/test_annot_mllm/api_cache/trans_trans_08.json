@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_08",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 12.271,
+      "end_sec": 16.669,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 16.669,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n1. **0.00 秒 – 11.80 秒（男性说话人）：**\n   - **声学与生理特征**：该段为标准日语朗读/新闻播报语音。说话人生带振动规律且周期性极佳，基频（F0）与高阶谐波结构丰富且清晰，声门闭合完整，未见持续性湍流泄漏或声门过度挤压。辅音送气正常，整体属于典型的**常态发声（Modal voice）**。\n\n2. **12.20 秒 – 15.20 秒（女性说话人）：**\n   - **声学与生理特征**：说话人在表达“あんた、なんでそんな時までほっとくの…”时伴有强烈的笑意（边笑边说/笑声渗透言语）。在此期间，声带在维持较高音高周期性振动（具备稳定基频）的同时，由于呼气急促及声门后部未完全闭合，伴随有显著、持续的呼气性气流摩擦噪声（湍流泄漏）。元音与声门振动能量周围弥散着明显的气流声，呈现典型的**气声发声态（Breathy voice）**。\n\n---\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 12.2,\n      \"end_sec\": 15.2,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"说话人边笑边说，声带维持周期性振动的同时声门闭合不全，伴随强烈的呼气性湍流泄漏，听感上漏气感与沙哑气流感显著。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 12.2,
+        "end_sec": 15.2,
+        "phonation_type": "breathy",
+        "acoustic_reason": "说话人边笑边说，声带维持周期性振动的同时声门闭合不全，伴随强烈的呼气性湍流泄漏，听感上漏气感与沙哑气流感显著。"
+      }
+    ]
+  }
+}

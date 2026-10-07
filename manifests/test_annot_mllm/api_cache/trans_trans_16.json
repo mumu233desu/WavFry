@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_16",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 6.115,
+      "end_sec": 10.954,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 10.954,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **第一段语音（约 0.00 秒 - 5.60 秒）**：\n   - **发声态分析**：成年女性说话人，发音为标准的常态发声（Modal voice）。\n   - **声学特征**：声带规律周期性振动，基频（F0）及谐波结构清晰、能量分布均衡。在元音持续段中未见声门不全闭合导致的呼气性湍流摩擦噪声（Aspiration noise），辅音处的摩擦与爆破均为清辅音生理固有特征，不存在气声、耳语声或嘎裂声。\n\n2. **第二段语音（约 5.60 秒 - 10.80 秒）**：\n   - **发声态分析**：高音调角色音（类似动漫/儿童音色），发声机制主要为声带边缘轻振（轻声常态/高位置头声发声）。\n   - **声学特征**：虽然音色较为轻柔明亮，但声门闭合充分，元音频段具有高度规律的周期性振动和饱满的共振峰结构，谐波与噪声比（HNR）较高，未伴随持续散布的声门漏气噪声。无耳语态或嘎裂声特征。\n\n整个音频样本均属于常态发声范畴。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}
