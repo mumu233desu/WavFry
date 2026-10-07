@@ -22,7 +22,10 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-VOWEL_SET: Set[str] = {"a", "i", "u", "e", "o"}
+VOWEL_SET: Set[str] = {
+    "a", "i", "u", "e", "o", "um",
+    "ɯ", "aː", "iː", "uː", "eː", "oː", "ɯː", "i̥", "ɯ̥",
+}
 
 
 # ── TextGrid Parsing and Serializing ──────────────────────────────────────────
@@ -119,10 +122,10 @@ def build_continuous_tier(
 # ── Text Normalization and Alignment ──────────────────────────────────────────
 
 def normalize_japanese_text(text: str) -> str:
-    """Normalize text by stripping punctuation, quotes, brackets, and prolonged marks."""
+    """Normalize text by stripping punctuation, wave dashes (U+301C, U+FF5E), brackets, and prolonged marks."""
     if not text:
         return ""
-    return re.sub(r'[、。！？\sー~・「」\'"・\(\)（）\.\,\!\?]', "", str(text))
+    return re.sub(r'[、。！？\sー~〜～・「」『』【】〔〕\'"・\(\)（）\.\,\!\?]', "", str(text))
 
 
 def match_contiguous_words(
@@ -131,9 +134,10 @@ def match_contiguous_words(
 ) -> Optional[List[Tuple[float, float, str]]]:
     """Find the contiguous slice of Tier 1 words matching target_text.
     
-    Uses two-pass alignment:
+    Uses multi-pass alignment:
     1. Exact contiguous substring match (100% exact character sequence).
-    2. Longest substring containment (robust against missing minor particles).
+    2. Tightest substring containment (finds the shortest contiguous word slice containing target_text).
+    3. Longest substring containment (fallback when target is partial).
     """
     norm_target = normalize_japanese_text(target_text)
     if not norm_target:
@@ -148,8 +152,24 @@ def match_contiguous_words(
             if concatenated == norm_target:
                 return candidate_words[i : j + 1]
 
-    # Pass 2: Longest substring containment
+    # Pass 2: Tightest substring containment (avoids greedy left-window expansion)
     best_match = None
+    min_span_len = float("inf")
+    for i in range(n):
+        concatenated = ""
+        for j in range(i, n):
+            concatenated += normalize_japanese_text(candidate_words[j][2])
+            if norm_target in concatenated:
+                span_len = len(concatenated)
+                if span_len < min_span_len:
+                    min_span_len = span_len
+                    best_match = candidate_words[i : j + 1]
+                break
+
+    if best_match is not None:
+        return best_match
+
+    # Pass 3: Longest substring match (partial target overlap)
     best_len = 0
     for i in range(n):
         concatenated = ""
@@ -158,10 +178,31 @@ def match_contiguous_words(
             if concatenated in norm_target and len(concatenated) > best_len:
                 best_len = len(concatenated)
                 best_match = candidate_words[i : j + 1]
-            elif norm_target in concatenated:
-                return candidate_words[i : j + 1]
 
     return best_match
+
+
+def locate_tiers(
+    tiers: List[Dict[str, Any]],
+) -> Tuple[List[Tuple[float, float, str]], List[Tuple[float, float, str]]]:
+    """Dynamically locate texts and phones tiers by pattern matching with positional fallbacks."""
+    tier_texts: List[Tuple[float, float, str]] = []
+    tier_phones: List[Tuple[float, float, str]] = []
+
+    for tier in tiers:
+        name = tier.get("name", "").strip().lower()
+        if not tier_texts and any(k in name for k in ("text", "word", "phrase", "transcription")):
+            tier_texts = tier.get("intervals", [])
+        elif not tier_phones and any(k in name for k in ("phone", "phoneme")):
+            tier_phones = tier.get("intervals", [])
+
+    # Positional fallback if tier naming is non-standard
+    if not tier_texts and len(tiers) >= 1:
+        tier_texts = tiers[0].get("intervals", [])
+    if not tier_phones and len(tiers) >= 2:
+        tier_phones = tiers[-1].get("intervals", [])
+
+    return tier_texts, tier_phones
 
 
 # ── Projection and Snapping Core ──────────────────────────────────────────────
@@ -182,11 +223,7 @@ def project_mllm_prediction_to_vowels(
         }
     """
     total_xmin, total_xmax, tiers = parse_textgrid(tg_path)
-
-    # Locate Tier 1: texts, Tier 3: phones
-    # Typically Tier 1 is 'texts', Tier 3 is 'phones'
-    tier_texts = tiers[0]["intervals"] if len(tiers) >= 1 else []
-    tier_phones = tiers[2]["intervals"] if len(tiers) >= 3 else tiers[-1]["intervals"]
+    tier_texts, tier_phones = locate_tiers(tiers)
 
     segments = prediction.get("segments", [])
     if not segments or not (prediction.get("has_breathy") or prediction.get("has_whispery")):
