@@ -52,18 +52,32 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     # removed every overlapping speaker. Silent isolation failures previously
     # relied solely on hand-maintained sampling_state split fields.
     if isolate_speakers and bool(config['data'].get('assert_split_exclusivity', True)):
-        train_spk = set(train_df['speaker_id'].dropna().unique())
+        isolation_scope = str(config['data'].get('isolation_scope', 'same_dataset'))
         for part_name, part_df in (("val", val_df), ("test", test_df)):
             if part_df.empty:
                 continue
-            overlap = train_spk & set(part_df['speaker_id'].dropna().unique())
-            if overlap:
-                raise RuntimeError(
-                    f"[SPLIT EXCLUSIVITY VIOLATION] train and {part_name} share "
-                    f"{len(overlap)} speaker(s): {sorted(overlap)[:10]}. "
-                    "Speaker isolation failed - inspect the manifest batch_split "
-                    "assignment before training."
-                )
+            if isolation_scope == "same_dataset" and "dataset_id" in train_df.columns and "dataset_id" in part_df.columns:
+                train_spk = set(zip(train_df['dataset_id'].dropna(), train_df['speaker_id'].dropna()))
+                part_spk = set(zip(part_df['dataset_id'].dropna(), part_df['speaker_id'].dropna()))
+                overlap = train_spk & part_spk
+                if overlap:
+                    overlap_fmt = [f"{d}:{s}" for d, s in sorted(overlap)[:10]]
+                    raise RuntimeError(
+                        f"[SPLIT EXCLUSIVITY VIOLATION] train and {part_name} share "
+                        f"{len(overlap)} speaker(s): {overlap_fmt}. "
+                        "Speaker isolation failed - inspect the manifest batch_split "
+                        "assignment before training."
+                    )
+            else:
+                train_spk = set(train_df['speaker_id'].dropna().unique())
+                overlap = train_spk & set(part_df['speaker_id'].dropna().unique())
+                if overlap:
+                    raise RuntimeError(
+                        f"[SPLIT EXCLUSIVITY VIOLATION] train and {part_name} share "
+                        f"{len(overlap)} speaker(s): {sorted(overlap)[:10]}. "
+                        "Speaker isolation failed - inspect the manifest batch_split "
+                        "assignment before training."
+                    )
 
     print(f"Data Partition: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)} segments")
     if len(val_df) == 0:

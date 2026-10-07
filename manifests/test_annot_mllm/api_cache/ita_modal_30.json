@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_30",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.439,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估（00:00 - 00:05.6）**：\n   - 说话人是一名成年女性，整段语音发音饱满清脆，音调自然流畅。\n   - **声带振动与闭合特征**：元音段声带振动周期性强，基频（F0）轨迹清晰平滑，谐波结构完整丰富，高频泛音饱满，能量分布均衡。\n   - **气流与噪声分析**：语音中的辅音摩擦/爆破（如 [k]、[s]、[ts] 等）属于日语语音固有的送气与阻碍音特征；在所有带音声母及元音持续段内，均未检测到持续的声门未闭合引起的湍流摩擦泄漏（即无明显的声门漏气感）。\n   - **特殊发声态排除**：无基频缺失的耳语特征（Whispery voice），无声门过度紧绷或低频非周期脉冲引起的嘎裂感（Creaky voice），整段音频属于典型的常态发声（Modal voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

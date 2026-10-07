@@ -1,0 +1,33 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_15",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_15.flac",
+  "duration_sec": 15.75,
+  "gt_has_breathy": true,
+  "user_breathy_count": 3,
+  "user_breathy_intervals": [
+    {
+      "start": 1.97,
+      "end": 2.04,
+      "phone": "w"
+    },
+    {
+      "start": 2.04,
+      "end": 2.14,
+      "phone": "a"
+    },
+    {
+      "start": 12.95,
+      "end": 13.07,
+      "phone": "e"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学与生理机制分析\n\n说话人为年轻女性，语速适中，语调自然欢快。从声学物理和发声生理特征来看：\n\n1. **声门闭合与振动周期性**：\n   - 整段音频中，说话人的声带闭合状态良好且规律，元音段（如 [a]、[o]、[i]、[u] 等）具有清晰稳定的基频（F0）和饱满的谐波结构。\n   - 未观察到声门后部（软骨部）未闭合引起的持续呼气性湍流噪声。辅音的送气与摩擦完全符合日语清辅音正常的音系学特征，并非声门发声态（Phonation type）层面的气声泄漏。\n\n2. **嘎裂声与耳语声检测**：\n   - 句尾及语调下行处声带未出现过度挤压或极低频非周期脉冲，未检测到嘎裂发声态（Creaky voice）。\n   - 声音能量充分，基频振动完全主导，无耳语发声态（Whispery voice）。\n\n结论：整段语音均为典型的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

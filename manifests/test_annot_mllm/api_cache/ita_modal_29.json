@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_29",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.267,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 音频为一段清晰的日语女性朗读语音（“イタリア旅行で彼は、いくつか景勝の地として有名な都市、例えば、ナポリやフィレンツェを訪れた”）。\n   - 整体发声态为非常标准的**常态发声（Modal voice）**。声门闭合充分且具规律性，基频（F0）稳定连续，谐波能量饱满，元音共振峰清晰锐利。\n\n2. **气流与摩擦声细节分析**：\n   - 语音中的湍流摩擦仅出现于正常的清辅音段（例如 [k]、[tɕ]、[s]、[ɸ] 等辅音位置），这是辅音发音生理机制固有的送气与摩擦，并非声门层面的病理或风格化漏气。\n   - 在所有带声元音段，均未检测到伴随周期性振动的持续弥散性声门泄漏噪声（即无 Breathy voice 特征），亦无周期性丧失的耳语声（Whispery voice）。\n   - 句尾及停顿处声带正常解闭合，音高自然下潜，未发生低频非周期脉冲或声门挤压感（无 Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

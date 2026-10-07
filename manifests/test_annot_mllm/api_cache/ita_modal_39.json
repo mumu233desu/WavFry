@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_39",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 8.823,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 整段音频为清晰、标准的日语女声朗读发声。\n   - 说话人在元音发音期间，声带周期性振动充分、规整，谐波结构清晰分明，具有良好的发声共振。\n   - 声门在发声时闭合完整，并未出现声门后部持续漏气带来的额外湍流摩擦噪声（无气声 Breathy voice）。\n   - 音频中辅音部分的送气与摩擦（如「シェイクスピア」中的摩擦音/送气音）纯属正常辅音音段特征，元音承载段未见异常气流泄露。\n   - 未见声带振动缺失的耳语发声（Whispery voice），亦无声门紧缩或非周期性低频脉冲（Creaky voice）。\n\n2. **结论**：\n   - 整体发声态属于典型常态发声（Modal voice），不包含气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

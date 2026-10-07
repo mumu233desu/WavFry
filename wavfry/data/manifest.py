@@ -45,10 +45,11 @@ try:
 
     manual_annotation = __import__(
         "04_creaky_tools.src.manual_annotation",
-        fromlist=["load_annotations", "annotation_storage_path"],
+        fromlist=["load_annotations", "annotation_storage_path", "ANNOTATION_FILENAME"],
     )
     load_annotations = manual_annotation.load_annotations
     annotation_storage_path = manual_annotation.annotation_storage_path
+    ANNOTATION_FILENAME = getattr(manual_annotation, "ANNOTATION_FILENAME", "manual_creaky_annotations.json")
     _HAS_CREAKY_TOOLS = True
 except (ImportError, ModuleNotFoundError):
     _HAS_CREAKY_TOOLS = False
@@ -59,6 +60,7 @@ except (ImportError, ModuleNotFoundError):
     make_interval_id = lambda s, e, p: f"{float(s):.3f}|{float(e):.3f}|{p}"
     load_annotations = None
     annotation_storage_path = None
+    ANNOTATION_FILENAME = "manual_creaky_annotations.json"
 
 DEFAULT_TRAINING_PHONE_TYPES = {
     "vowel",
@@ -100,12 +102,14 @@ def _language_from_file_key(file_key: str) -> str | None:
         return "en"
     if language_code in {"ZH", "CMN"}:
         return "zh"
+    if language_code in {"JA", "JPN"}:
+        return "ja"
     return None
 
 
 def _speaker_id(file_key: str) -> str | None:
     return next(
-        (part for part in str(file_key).split("_") if part.startswith("U")),
+        (part for part in str(file_key).split("_") if part.startswith(("U", "C")) and part[1:].isdigit()),
         None,
     )
 
@@ -618,8 +622,10 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
     manifest_file = cache_dir / "manual_breathy_annotations.json"
     if not manifest_file.exists() and not (manifest_file.with_name(manifest_file.name + ".d")).exists():
-        print(f"[manifest] [{dataset_id}] Notice: Breathy cache manifest not found at {manifest_file}. Returning empty.")
-        return []
+        manifest_file = cache_dir / "manual_creaky_annotations.json"
+        if not manifest_file.exists() and not (manifest_file.with_name(manifest_file.name + ".d")).exists():
+            print(f"[manifest] [{dataset_id}] Notice: Breathy cache manifest not found in {cache_dir}. Returning empty.")
+            return []
 
     # Load annotations via load_annotations (supports sharded .d and monolith)
     if _HAS_CREAKY_TOOLS and load_annotations is not None:
@@ -665,7 +671,7 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         tg_path = tg_files.get(file_key, "")
 
-        speaker_id = str(entry.get("speaker_id") or audio_path.parent.name)
+        speaker_id = str(entry.get("speaker_id") or _speaker_id(file_key) or audio_path.parent.name)
 
         for raw_interval_id, state in entry["annotations"].items():
             parts = str(raw_interval_id).split("|")
@@ -747,6 +753,250 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
+def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Adapter for YSJ Japanese MFA TextGrid corpus with _breathy_cache and manifest_slices.csv metadata.
+
+    Expected adapter_params:
+      audio_dir: Path to directory containing audio (.flac/.wav) files.
+      textgrid_dir: Path to directory containing .TextGrid files.
+      cache_dir: (Optional) Path to _breathy_cache directory. Defaults to <textgrid_dir>/_breathy_cache.
+      manifest_csv: (Optional) Path to manifest_slices.csv.
+      language: (Optional) Language code, default 'ja'.
+      phone_tier_name: (Optional) default 'phones'.
+      min_duration_ms: (Optional) default 30.0.
+      min_smr_db: (Optional) Float SMR threshold in dB. Slices with smr_db < min_smr_db are skipped.
+      exclude_gender_x: (Optional) If True, slices with gender == 'X' are excluded. Default False.
+      lenient_missing: (Optional) default False.
+    """
+    params = ds_cfg.get("adapter_params", {})
+    dataset_id = ds_cfg.get("dataset_id", "ysj_japanese")
+    domain = ds_cfg.get("domain", "spontaneous_podcast")
+    granularity = params.get("annotation_granularity", "segment")
+    language = params.get("language", "ja")
+    min_duration_ms = float(params.get("min_duration_ms", 30.0))
+    min_smr_db = float(params["min_smr_db"]) if ("min_smr_db" in params and params["min_smr_db"] is not None) else None
+    exclude_gender_x = bool(params.get("exclude_gender_x", False))
+    lenient = bool(params.get("lenient_missing", False))
+
+    audio_dir = Path(params.get("audio_dir", ""))
+    textgrid_dir = Path(params.get("textgrid_dir", ""))
+    cache_dir = Path(params.get("cache_dir", "")) if params.get("cache_dir") else (textgrid_dir / "_breathy_cache")
+    manifest_csv = Path(params.get("manifest_csv", "")) if params.get("manifest_csv") else None
+
+    # Load slice metadata from manifest_csv if present
+    slice_meta: dict[str, dict[str, Any]] = {}
+    if manifest_csv and manifest_csv.exists():
+        import csv
+        try:
+            with open(manifest_csv, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    s_id = row.get("slice_id") or row.get("\ufeffslice_id")
+                    if not s_id:
+                        continue
+                    s_id = s_id.strip()
+                    spk_uid = row.get("speaker_uid") or row.get("speaker_id") or ""
+                    g = row.get("gender", "").strip().upper()
+                    try:
+                        smr = float(row.get("smr_db", 0.0))
+                    except (ValueError, TypeError):
+                        smr = 0.0
+                    try:
+                        mos = float(row.get("mos_score", 0.0))
+                    except (ValueError, TypeError):
+                        mos = 0.0
+                    slice_meta[s_id] = {
+                        "speaker_id": spk_uid.strip(),
+                        "gender": g,
+                        "smr_db": smr,
+                        "mos_score": mos,
+                    }
+        except Exception as e:
+            print(f"[manifest] [{dataset_id}] Notice: Error reading manifest_csv {manifest_csv}: {e}")
+
+    # Map audio files
+    audio_files: dict[str, Path] = {}
+    if audio_dir.exists():
+        for ext in ("*.wav", "*.flac"):
+            for p in audio_dir.rglob(ext):
+                if "_breathy_cache" in p.parts or "_creaky_cache" in p.parts:
+                    continue
+                audio_files[p.stem] = p
+
+    # Map TextGrid files
+    tg_files: dict[str, Path] = {}
+    if textgrid_dir.exists():
+        for p in textgrid_dir.rglob("*.TextGrid"):
+            tg_files[p.stem] = p
+
+    # Collect batches and/or monolithic cache files
+    sampling_state_path = cache_dir / "sampling_state.json"
+    batches_dir = cache_dir / "batches"
+    batch_items: list[tuple[int | None, str, str, Path]] = []
+
+    if sampling_state_path.exists():
+        try:
+            state = json.loads(sampling_state_path.read_text(encoding="utf-8"))
+            for b in state.get("batches", []):
+                b_id = b["batch_id"]
+                b_name = b.get("name") or f"Batch {b_id}"
+                b_split = b.get("split") or "unassigned"
+                b_anno_dir = batches_dir / f"batch_{b_id}"
+                b_path = b_anno_dir / ANNOTATION_FILENAME
+                if not b_path.exists() and not (b_anno_dir / f"{ANNOTATION_FILENAME}.d").exists():
+                    alt_path = b_anno_dir / "manual_breathy_annotations.json"
+                    if alt_path.exists() or (b_anno_dir / "manual_breathy_annotations.json.d").exists():
+                        b_path = alt_path
+                batch_items.append((b_id, b_name, b_split, b_path))
+        except Exception as e:
+            print(f"[manifest] [{dataset_id}] Warning: Failed to parse sampling_state.json: {e}")
+
+    if not batch_items:
+        for fname in ("manual_breathy_annotations.json", ANNOTATION_FILENAME):
+            unbatched_path = cache_dir / fname
+            if unbatched_path.exists() or (cache_dir / f"{fname}.d").exists():
+                batch_items.append((None, "Default", "unassigned", unbatched_path))
+                break
+
+    if not batch_items:
+        print(f"[manifest] [{dataset_id}] Notice: No annotations or batches found in {cache_dir}. Returning empty.")
+        return []
+
+    label_schema = ds_cfg.get("label_schema", {})
+    has_breathy_schema = bool(label_schema.get("breathy", True))
+    has_creaky_schema = bool(label_schema.get("creaky", False))
+
+    records: list[dict[str, Any]] = []
+    missing_audio: list[str] = []
+    seen_file_splits: dict[str, tuple[int | None, str]] = {}
+
+    for b_id, b_name, b_split, annotation_path in batch_items:
+        if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
+            continue
+
+        if _HAS_CREAKY_TOOLS and load_annotations is not None:
+            batch_data = load_annotations(annotation_path)
+        else:
+            batch_data = _load_standalone_sharded_annotations(annotation_path)
+
+        files = batch_data.get("files", {})
+        if not isinstance(files, dict):
+            continue
+
+        for file_key, entry in files.items():
+            if not isinstance(entry, dict) or not isinstance(entry.get("annotations"), dict):
+                continue
+            file_key = str(file_key)
+
+            if b_split in {"train", "val", "test"}:
+                if file_key in seen_file_splits:
+                    prev_id, prev_split = seen_file_splits[file_key]
+                    if prev_split != b_split:
+                        raise ValueError(
+                            f"[manifest] [{dataset_id}] Split Exclusivity Violation: File '{file_key}' assigned to conflicting splits "
+                            f"('{prev_split}' in Batch [{prev_id}] vs '{b_split}' in Batch [{b_id}])."
+                        )
+                seen_file_splits[file_key] = (b_id, b_split)
+
+            audio_path = audio_files.get(file_key)
+            if audio_path is None:
+                missing_audio.append(file_key)
+                continue
+            tg_path = tg_files.get(file_key, "")
+
+            f_meta = slice_meta.get(file_key, {})
+            speaker_id = f_meta.get("speaker_id") or _speaker_id(file_key) or entry.get("speaker_id") or audio_path.parent.name
+            gender = f_meta.get("gender")
+            if not gender:
+                parts = file_key.split("_")
+                gender = parts[0].upper() if parts and parts[0].upper() in {"M", "F", "X"} else "X"
+
+            if min_smr_db is not None and "smr_db" in f_meta:
+                if f_meta["smr_db"] < min_smr_db:
+                    continue
+            if exclude_gender_x and gender == "X":
+                continue
+
+            is_frame_verified = bool(entry.get("is_frame_verified") or entry.get("is_golden_file"))
+
+            for raw_interval_id, state in entry["annotations"].items():
+                parts = str(raw_interval_id).split("|")
+                if len(parts) != 3:
+                    continue
+                try:
+                    start_s = float(parts[0])
+                    end_s = float(parts[1])
+                except (TypeError, ValueError):
+                    continue
+                phone = parts[2]
+                if (end_s - start_s) * 1000.0 < min_duration_ms:
+                    continue
+
+                if not has_breathy_schema:
+                    l_breathy = float("nan")
+                elif state == "breathy":
+                    l_breathy = 1.0
+                elif state in ("non_breathy", "modal", "creaky"):
+                    l_breathy = 0.0
+                else:
+                    l_breathy = float("nan")
+
+                if not has_creaky_schema:
+                    l_creaky = float("nan")
+                elif state == "creaky":
+                    l_creaky = 1.0
+                elif state in ("non_breathy", "modal", "breathy"):
+                    l_creaky = 0.0
+                else:
+                    l_creaky = float("nan")
+
+                if math.isnan(l_breathy) and math.isnan(l_creaky):
+                    continue
+
+                label_val = l_breathy if not math.isnan(l_breathy) else l_creaky
+
+                records.append({
+                    "dataset_id": dataset_id,
+                    "domain": domain,
+                    "file_key": file_key,
+                    "audio_path": str(audio_path),
+                    "tg_path": str(tg_path) if tg_path else "",
+                    "start_s": start_s,
+                    "end_s": end_s,
+                    "speaker_id": speaker_id,
+                    "gender": gender,
+                    "language": language,
+                    "phone": phone,
+                    "phone_type": "vowel",
+                    "annotation_granularity": granularity,
+                    "label_creaky": l_creaky,
+                    "label_breathy": l_breathy,
+                    "label": label_val,
+                    "batch_split": b_split,
+                    "annotation_type": "manual_annotation",
+                    "batch_id": b_id if b_id is not None else float("nan"),
+                    "batch_name": b_name,
+                    "is_frame_verified": is_frame_verified,
+                })
+
+    if missing_audio:
+        preview = sorted(missing_audio)[:10]
+        msg = (
+            f"{len(missing_audio)} annotated file(s) have no audio under {audio_dir}: "
+            f"{preview}{'...' if len(missing_audio) > 10 else ''}"
+        )
+        if lenient:
+            print(f"[manifest] [{dataset_id}] [WARN] {msg}")
+        else:
+            raise RuntimeError(
+                f"[manifest] [{dataset_id}] {msg}\n"
+                "Set adapter_params.lenient_missing=true to downgrade to a warning."
+            )
+
+    print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from YSJ TextGrid ({cache_dir}).")
+    return records
+
+
 # ── 适配器注册表 ─────────────────────────────────────────────────────────────
 
 ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
@@ -755,6 +1005,8 @@ ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "capev_csv": adapter_capev_csv,
     "generic_csv": adapter_generic_csv,
     "breathy_cache": adapter_breathy_cache,
+    "ysj_textgrid": adapter_ysj_textgrid,
+    "mfa_textgrid_sharded": adapter_ysj_textgrid,
 }
 
 

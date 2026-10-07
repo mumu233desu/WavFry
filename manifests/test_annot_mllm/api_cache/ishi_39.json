@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_39",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.496,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.496,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态特征**：\n   - 音频内容为一段清晰的日语女性语音（“今日はたくさん話していただきましたが”）。\n   - 整体发声态呈现非常健康且标准的**常态发声（Modal voice）**。声带周期性振动良好，基频（F0）稳定连续，谐波结构丰满，信噪比极高。\n\n2. **细节时段分析**：\n   - **00:00 - 00:01.3（“今日はたくさん”）**：发音清晰、明亮。元音 /oː/、/a/、/u/ 的声门闭合充分，无呼气性湍流噪声渗透。辅音 [k]、[t]、[s] 处具有生理固有的爆破与摩擦特征，但不属于异常声门漏气。\n   - **00:01.3 - 00:02.8（“話していただきましたが”）**：声带振动保持良好的规律性与张力。尽管包含清擦音 [h] 和 [ɕ] 等音段，其送气/摩擦仅局限于辅音段，随后的元音均立刻恢复为闭合充分的常态周期振动。句尾能量自然衰减，未出现嘎裂（creaky voice）或声门不完全闭合的气声化（breathy voice）。\n\n3. **结论**：\n   整段音频不存在持续的气声（Breathy voice）、耳语发声（Whispery voice）或嘎裂发声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

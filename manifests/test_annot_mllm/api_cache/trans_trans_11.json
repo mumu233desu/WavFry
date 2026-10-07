@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_11",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 7.88,
+      "end_sec": 8.222,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.222,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **0.00 秒 - 7.30 秒（男声朗读部分）**：\n   - **声学特征**：发音内容为日语长句（“イタリア旅行で彼は…”）。说话人基频（F0）偏低且相对稳定，周期性脉冲振动规律，谐波结构完整清晰。\n   - **发声机制**：声带内收充分，振动闭合相完整，未见声门后部持续漏气引起的宽频弥散湍流噪声，亦无声带过度松弛或异常挤压引起的低频脉冲杂音（嘎裂声）。发声态表现为典型的**常态发声（Modal voice）**。\n\n2. **7.40 秒 - 8.50 秒（女声接话部分）**：\n   - **声学特征**：发音内容为“はい”（hai）。开头的摩擦噪声为清擦辅音 /h/ 固有的声门摩擦成分；随后接续的双元音 /ai/ 声带迅速起振，基频清晰，谐波丰富，音色明亮。\n   - **发声机制**：元音段声带闭合良好，气流转变为规律的声门脉冲波，无病理或发声态意义上的声门漏气感。辅音自身的送气属于正常语音音位特征，按判定标准予以排除。此段同样为**常态发声（Modal voice）**。\n\n**总结**：全段音频均由正常的常态发声构成，未检出气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

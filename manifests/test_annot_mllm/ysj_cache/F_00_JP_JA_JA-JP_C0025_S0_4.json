@@ -1,0 +1,23 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_4",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_4.flac",
+  "duration_sec": 21.95,
+  "gt_has_breathy": true,
+  "user_breathy_count": 1,
+  "user_breathy_intervals": [
+    {
+      "start": 8.79,
+      "end": 8.85,
+      "phone": "a"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 音频中说话人呈现出典型的女性/动漫风格偏高音调发声。基频（F0）清晰稳定，声门周期性闭合良好。\n   - 谐波结构完整饱满，声能主要集中在正常的元音共振峰区域，未检测到声门后部闭合不全导致的持续呼气性湍流噪声。\n\n2. **细节特征核验**：\n   - 语流中出现的摩擦或送气音（如 /s/、/k/、/t/、/h/ 等）属于清辅音正常的调音与生理送气特征，声带在元音发声时迅速恢复紧密、规律的周期振动。\n   - 语句停顿及句末音量自然下降处，声带未表现出明显的嘎裂（Creaky voice）挤压感或松弛漏气（Breathy voice）现象。\n   - 整段音频均属于常态发声（Modal voice），不含有气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 结构化判断结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_05",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.948,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与声门闭合状态**：\n   - 音频为清晰流畅的日语语音（女性声音，合成度高或受过良好发音训练）。\n   - 声带振动具有极高的周期性与规律性，基频（F0）轨迹平滑自然，谐波结构（harmonics）饱满丰富。\n   - 共振峰（Formants）轮廓清晰分明，信噪比极高，各元音段发音清澈，声门闭合完全，不存在声门后部未闭合导致的气流泄漏现象。\n\n2. **局部辅音与送气特征**：\n   - 语句中出现的擦音、塞擦音及爆破音（如「辞書として」的 /ɕ/, /t/、「簡単な」的 /k/、「頭」的 /t/ 等）所带有的瞬态气流摩擦均属清辅音固有的生理声学特征，辅音结束后迅速进入紧实振动的元音段，元音内部无弥散性湍流噪声。\n\n3. **发声态分类结论**：\n   - 全程未出现气流持续泄漏的“气声发声态”（Breathy voice）。\n   - 全程基频周期性明确，不存在缺乏声带振动的“耳语发声态”（Whispery voice）。\n   - 未见声带极度低频非周期脉冲或挤压的“嘎裂声”（Creaky voice）。\n   - 整体属于完全典型的**常态发声（Modal voice）**。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

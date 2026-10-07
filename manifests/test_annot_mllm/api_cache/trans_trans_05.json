@@ -1,0 +1,37 @@
+{
+  "sample_id": "trans_trans_05",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 6.299,
+      "end_sec": 8.613,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.613,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **0.00 秒 - 5.80 秒**\n   - **内容**：「トップのリーダーは、犬の行動学ではアルファと呼ばれ、以下ベータ、ガンマと続きます。」\n   - **分析**：该段为清晰的女声朗读，声带振动周期性规律、稳定，谐波丰富，能量分布饱满。除清辅音（如 [t]、[k]、[p]、[s]）固有正常辅音除阻与摩擦外，元音段声门闭合良好，无声门漏气湍流，属于典型的**常态发声（Modal voice）**。\n\n2. **5.90 秒 - 7.00 秒**\n   - **内容**：「これは」\n   - **分析**：说话人转为低沉轻微的语调。在此区间内，声带基本未形成持续稳定的周期性振动，基频特征极其微弱，声音能量完全被强烈的声门呼气性湍流噪声主导，听感上表现为明显的**耳语发声态（Whispery voice）**。\n\n3. **7.00 秒 - 8.50 秒**\n   - **内容**：「太いよ……」\n   - **分析**：说话人在此段重新启动了声带的周期性振动，存在明确的低频基频（F0），但声门软骨部明显未完全闭合，伴随着大量呼气气流溢出，基频与低次谐波周围混合了浓重的连续扩散摩擦噪声，听感上具有显著的虚弱、漏气感，符合典型的**气声发声态（Breathy voice）**。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 5.9,\n      \"end_sec\": 7.0,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"基频周期性振动缺失，整体声音由声门强烈呼气湍流摩擦主导，呈典型耳语态。\"\n    },\n    {\n      \"start_sec\": 7.0,\n      \"end_sec\": 8.5,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"声带虽有周期性低频振动，但伴随持续且显著的声门气流泄漏与弥散噪声，呈现明显的漏气听感。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 5.9,
+        "end_sec": 7.0,
+        "phonation_type": "whispery",
+        "acoustic_reason": "基频周期性振动缺失，整体声音由声门强烈呼气湍流摩擦主导，呈典型耳语态。"
+      },
+      {
+        "start_sec": 7.0,
+        "end_sec": 8.5,
+        "phonation_type": "breathy",
+        "acoustic_reason": "声带虽有周期性低频振动，但伴随持续且显著的声门气流泄漏与弥散噪声，呈现明显的漏气听感。"
+      }
+    ]
+  }
+}

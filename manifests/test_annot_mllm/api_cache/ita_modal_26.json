@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_26",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 8.114,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态（Phonation Type）**：\n   - 音频为标准日语朗读语音，发音人音色明亮、清晰且饱满。\n   - 声带振动具有高度规律的周期性，基频（F0）轨迹连续且稳定，谐波能量在低频至中高频分布均匀，体现出良好的声门闭合与振动效率。\n\n2. **气流与噪声特征**：\n   - 在元音持续段（如「ギリシャ」「フットボール」「試合」「チーム」「選手」等词的元音部分），未见异常的呼气性声门湍流噪声渗入，基频与谐波之间无弥散性摩擦能量，排除了**气声（Breathy voice）**。\n   - 整段语音基频明确稳定，完全不具备**耳语声（Whispery voice）**的无声带振动特征。\n   - 句尾及低音处声门闭合平顺，没有出现极低频离散脉冲或挤压感的**嘎裂声（Creaky voice）**。\n   - 语音中存在的少量清音摩擦（如 /s/、/sh/ 等）均为清辅音本身的生理构音特征，并非声门发声态层面的漏气。\n\n综上所述，该音频全程为典型的**常态发声（Modal voice）**。\n\n### 结构化判定结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

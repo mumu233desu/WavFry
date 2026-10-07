@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_2",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.284,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.284,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态概况**：\n   - 说话人（日语母语者）在发音“いや、私もでも相当カロリーとってると思う”时，语调自然、节奏流畅。\n   - 整个语音段内声带闭合良好，周期性振动稳定且具有清晰的基频（F0）与丰富的谐波结构。\n\n2. **局部细节与各发声态排查**：\n   - **气声（Breathy voice）**：元音共振峰清晰，高频没有出现持续且显著的由声门闭合不全导致的呼气性湍流噪声。诸如“し”([ɕi])、“そ”([so])等音节中的摩擦声完全属于清辅音自身的声学特征，元音段声门迅速完全闭合振动，不存在气声发声态。\n   - **耳语声（Whispery voice）**：全段语音均有坚实的基频周期性，未出现声带振动缺失或微弱的纯气流发声情况。\n   - **嘎裂声（Creaky voice）**：句尾音高虽自然下行，但仍保持了规整的声带振动周期，未观察到声门过度挤压产生的低频非周期脉冲或颗粒感。\n\n综上所述，整段音频为典型的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

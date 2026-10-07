@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_38",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 9.221,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与声带闭合特征**：\n   - 说话人为成年男性，语调沉稳、音高较低。\n   - 纵观整个发音过程（0.00s - 9.80s），在各个元音段（如 [o], [u], [a], [e], [i]）中，基频（F0）稳定清晰，谐波结构完整饱满，声门闭合充分且规律。\n   \n2. **气流与噪声分析**：\n   - 音频中出现的摩擦噪声仅来源于清辅音本身的生理阻碍与除阻气流（例如「触発（しょくはつ）」中的清擦音 [ɕ]、清爆破音 [k]、[ts] 以及「方法（ほうほう）」中的喉擦音 [h]），元音发声时均未出现伴随基频振动的持续弥散性湍流漏气（无 Breathy voice 特征）。\n   - 无完全失声、由摩擦气流主导的耳语成分（无 Whispery voice）。\n\n3. **低频与周期性**：\n   - 在句尾声调下潜处（如「～である」），声带依然维持低频的周期性振动，谐波未发生明显的非周期性脉冲化解构或过度挤压，不构成典型的嘎裂声（Creaky voice）。\n\n综上所述，整段音频为标准的**常态发声（Modal voice）**。\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

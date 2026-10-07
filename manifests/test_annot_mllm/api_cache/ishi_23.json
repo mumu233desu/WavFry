@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_23",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.12,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.12,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与声门状态评估**：\n   - 音频内容为一句日语短句（“それは言えないです” / *Sore wa ienai desu*），女性说话人发音，语调自然轻柔。\n   - 整体发声表现为典型的**常态发声（Modal voice）**。声带在各元音段均保持了良好的周期性全闭合振动，声学能量集中于清晰的基频（F0）及谐波结构上，高频未见声门不全闭合导致的持续性湍流扩散噪声。\n\n2. **分段发声细节分析**：\n   - **0.00 秒 - 0.55 秒（“それは” / sore wa）**：词首 [s] 具有正常的齿龈清摩擦音特征，随后的元音 [o]、[e] 以及助词 [wa] 声门闭合规整，周期脉冲稳定，谐波饱满，无气声泄漏。\n   - **0.55 秒 - 1.05 秒（“言えない” / ienai）**：元音序列连续振动，声门闭合充分，音质清脆明亮，共振峰轨迹清晰，未出现漏气或沙哑感。\n   - **1.05 秒 - 1.45 秒（“です” / desu）**：音节 [de] 周期振动良好；句末 [su] 处元音遵循标准日语自然弱化与清化特征（句尾清音脱落/清化），属于正常的辅音摩擦除阻生理现象，声门在元音段并未表现出病理性或修辞性的气声态（Breathy voice）或耳语态（Whispery voice）。\n\n综上所述，该音频无气声、耳语声或嘎裂声成分。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

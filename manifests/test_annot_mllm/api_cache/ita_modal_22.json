@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_22",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 6.377,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态（Phonation Type）**：\n   - 音频中说话人（男声，日语朗读）发音清晰稳定，声带在各个元音段均保持了良好的周期性全闭合振动，声学谐波结构饱满清晰，信噪比良好。\n\n2. **气声与耳语声（Breathy / Whispery Voice）分析**：\n   - 在元音发音段（如「事業を」「継続しながら」「不動産」「非現実的なのだ」等），未观察到声门后部未闭所导致的连续性湍流漏气能量。\n   - 其中的摩擦噪声仅局限于清辅音固有声学特征（如 /s/、/k/ 的正常释放），元音发声过程谐波与基频能量集中，完全排除耳语态（Whispery voice）与气声发声态（Breathy voice）。\n\n3. **嘎裂声（Creaky Voice）分析**：\n   - 语调低沉平稳，在语句末尾（如「…なのだ」）音高自然下降，但声带仍维持平稳振动，未出现声门极度挤压或非周期脉冲（脉冲态/声门撞击感），属于标准的常态发声（Modal voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

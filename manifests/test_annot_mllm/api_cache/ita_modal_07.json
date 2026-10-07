@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_07",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 9.043,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 该音频为标准、平稳的日语朗读语音（具备明显的合成语音/清晰朗读特征）。\n   - 整体声带振动周期性极其规律，基频（F0）轨迹平滑连续，谐波能量饱满清晰。\n\n2. **细节特征观察**：\n   - **气流与闭合度**：元音段声门闭合充分且规律，未检测到声门后部未闭合所引起的持续性湍流泄漏噪声（无 Breathy voice 漏气感）。语流中的摩擦与送气成分均局限于清辅音（如 [s]、[k]、[h]）固有的声学特征，未扩展至元音发声态。\n   - **耳语成分**：全段均具有坚实稳定的基频振动，完全不存在声带振动缺失或微弱的耳语发声态（Whispery voice）。\n   - **声门挤压感**：声门未出现低频非周期脉冲或过度紧缩，无嘎裂声（Creaky voice）。\n\n3. **结论**：\n   - 全程属于典型的**常态发声（Modal voice）**。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

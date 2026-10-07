@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_04",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 5.897,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态评估**：\n   - 音频内容为日语句子（“トップのリーダーは、犬の行動学ではアルファと呼ばれ、以下、ベータ、ガンマと続きます”），发音人表现出沉稳、平缓的播音腔调。\n   - 整体声带振动周期性极其规律，基频（F0）和谐波结构清晰充实，能量分布均衡。\n   - 未检测到持续性声门闭合不全导致的呼气性湍流噪声（Breathy voice），亦无去周期性的弱振动/无声带振动的耳语声（Whispery voice），或过度挤压引起的低频非周期脉冲（Creaky voice）。\n\n2. **分段声学特征**：\n   - **0.0 - 2.0 秒**（“トップのリーダーは、犬の行動学では”）：声门闭合完全，元音谐波丰富饱满，清辅音（如 [t]、[k]）摩擦与爆破均属于辅音固有的生理特征，元音起始与延续段均属标准常态发声（Modal voice）。\n   - **2.0 - 4.2 秒**（“アルファと呼ばれ、以下”）：发音平稳自然，声门下压与声带张力维持良好，元音振幅稳定，无漏气感。\n   - **4.2 - 5.8 秒**（“ベータ、ガンマと続きます”）：句尾语调平缓自然下降，声带闭合依旧良好，并未出现句尾嘎裂声（vocal fry/creaky voice）或消散性气声，发声态纯净稳定。\n\n结论：全段音频均为典型的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

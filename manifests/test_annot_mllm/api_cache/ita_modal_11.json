@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_11",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.969,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n- **00:00 - 00:02（「牛乳はあなたの体に良いだろう」）**：\n  说话人（日语音频，具有标准朗读/高品质TTS特征）声门闭合充分且规律，声带振动呈现出强烈的周期性（基频 F0 清晰饱满）。元音区域谐波结构完整，中高频未观察到由于声门未闭合而导致的持续弥散性湍流噪声（Aspiration noise）。清辅音（如 [t]、[k]、[d]）的正常爆破与摩擦属于音段固有特征，并非声门发声态的气声泄漏。\n\n- **00:02 - 00:04（「毎日飲んだ方がいい」）**：\n  发音保持均匀稳定的常态发声（Modal voice），音量和音高控制自然，共振峰清晰，无声带松弛漏气（Breathy voice）、非周期性脉冲挤压（Creaky voice）或完全去清化的气流摩擦（Whispery voice）。\n\n**综合判定**：整条音频发声态纯正，属于典型的常态发声（Modal voice），不存在气声、耳语声或嘎裂声。\n\n---\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

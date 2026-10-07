@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_24",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.677,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态与声门运动特征**：\n   - 整段音频说话人发音器官功能良好，声带振动具有极高的周期规律性，基频（F0）轨迹平稳连续，谐波结构清晰丰富。\n   - 声带闭合状态完全且健康，声门未出现持续未闭合导致的呼气性湍流泄漏。辅音（如「彼（かれ）」的清软腭塞音 [k]、「拾い（ひろい）」的清硬腭摩擦音 [ç]、「それ」的齿龈擦音 [s]）的送气与气流摩擦完全属于清辅音固有的生理声学特征，元音段均呈现典型的常态发声（Modal voice）。\n\n2. **分段详细观察**：\n   - **00:00 - 00:02**（「彼はライフルを拾い上げ」）：元音共振峰清晰，谐波能量在低中高频均有良好展现，无异常高频气流杂音并存。\n   - **00:02 - 00:04**（「それで標的を狙った」）：句尾音高虽有自然下倾，但声带张力与黏膜振动保持稳定，未出现声门过度挤压引发的低频脉冲（Creaky voice）或漏气软化（Breathy voice）。\n\n3. **结论**：\n   - 音频整体为标准的常态发声（Modal voice），不包含气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

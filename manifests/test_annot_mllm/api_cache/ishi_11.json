@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_11",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.342,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.342,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n该音频内容为单音节词（问候语“Hi”），整体发音时长较短，具体生理与声学表现如下：\n\n1. **0.00 - 0.15 秒（起始阶段）**：\n   - 为清声门擦音 [h] 的起始送气阶段，声带未闭合振动，表现为纯呼气性湍流噪声。\n\n2. **0.15 - 0.65 秒（核心元音段）**：\n   - **声带振动与基频**：进入双元音 [aɪ] 后，声带开始周期性振动，可听见清晰稳定的基频（F0）与音高起伏，排除了无声带振动的纯耳语发声态（Whispery voice）。\n   - **气流泄漏与闭合状态**：在声带振动的同时，声门后部（杓状软骨间隙）明显未完全闭合，伴随着强烈且持续的弥散性湍流摩擦噪声，噪声能量贯穿整个元音谐波。听感上呈现出极为松弛、带有明显叹息感的“气声/漏气”特征，属于典型的气声发声态（Breathy voice）。\n   - **嘎裂声检测**：发音过程中声带未见过度挤压或低频非周期脉冲，未检测到嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.15,\n      \"end_sec\": 0.65,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"元音段具有明确的基频周期振动，但伴随持续且显著的声门气流泄漏与弥散噪声，呈现典型气声特征\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.15,
+        "end_sec": 0.65,
+        "phonation_type": "breathy",
+        "acoustic_reason": "元音段具有明确的基频周期振动，但伴随持续且显著的声门气流泄漏与弥散噪声，呈现典型气声特征"
+      }
+    ]
+  }
+}

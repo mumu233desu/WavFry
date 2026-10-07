@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_1",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 4.255,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 4.255,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态与声门运动特征**：\n   - 说话人为年轻女性，语调轻柔。在整个发音过程中，声带在维持基频（F0）规律周期性振动的同时，声门后部（软骨部）未完全闭合，形成了持续的声门旁漏气。\n   - 听感上具有显著、贯穿始终的“漏气感”与“沙哑气流弥散感”，在中高频区域伴随持续的湍流摩擦噪声，符合典型的**气声发声态（Breathy voice）**。\n\n2. **分段声学特征观察**：\n   - **0.0 - 4.9 秒**：整个发话区间（“教えるのも楽しいし、教えてもらうのもありがとうとか言って”）中，元音段（如 /o/, /i/, /e/, /a/ 等）均表现出基频谐波与宽频带弥散气流噪声并存的特征，声门闭合程度明显偏松，属于持续的气声发声。\n   - 音频中声带振动周期始终存在且清晰稳定，因此不属于缺乏基频的**耳语发声态（Whispery voice）**；各句尾与低音区亦未出现声门紧收或非周期脉冲断裂，无**嘎裂声（Creaky voice）**特征。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 4.9,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"声带在保持明确基频振动的同时，伴随持续显著的声门呼气性湍流噪声，元音谐波能量衰减较快且伴随明显的弥散漏气感。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 4.9,
+        "phonation_type": "breathy",
+        "acoustic_reason": "声带在保持明确基频振动的同时，伴随持续显著的声门呼气性湍流噪声，元音谐波能量衰减较快且伴随明显的弥散漏气感。"
+      }
+    ]
+  }
+}

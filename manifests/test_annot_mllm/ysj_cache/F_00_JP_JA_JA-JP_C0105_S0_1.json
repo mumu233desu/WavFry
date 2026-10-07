@@ -1,0 +1,28 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_1",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_1.flac",
+  "duration_sec": 20.05,
+  "gt_has_breathy": true,
+  "user_breathy_count": 2,
+  "user_breathy_intervals": [
+    {
+      "start": 2.13,
+      "end": 2.2,
+      "phone": "e"
+    },
+    {
+      "start": 3.0,
+      "end": 3.08,
+      "phone": "a"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学与发声机制分析\n\n1. **整体发声态与音色特征**：\n   - 本段音频为年轻女性的日语独白。说话人音调柔和、放松（Low vocal effort），语速均匀。\n   - 声带振动具有非常稳定且连续的基频（F0）周期性，各元音段的谐波结构清晰完整，未见明显的非周期性湍流噪声淹没或掩盖谐波的现象。\n\n2. **气声（Breathy voice）排查**：\n   - 听感上虽然声音风格轻柔甜美（类似于日常轻声交谈），但声门在元音发声期间闭合保持正常，并不存在显著的呼气性声门泄漏或持续的湍流摩擦杂音。\n   - 音频中出现的清音摩擦（如「さ/sa」、「し/shi」）以及句尾「です/desu」末尾的清化现象，属于日语固有音系规则中的去浊化（Vowel devoicing）与清辅音本身特质，不属于声带发声态层面的气声（Breathy phonation）。符合提示中【严格排除】标准。\n\n3. **耳语声（Whispery voice）与嘎裂声（Creaky voice）排查**：\n   - 整个语音信号全程伴随明确的音高轮廓，无耳语发声态（Whispery voice）。\n   - 句尾及语调下潜处声门闭合自如，未出现声带极度挤压、厚重振动或低频离散脉冲（Creaky voice）。\n\n**结论**：整段音频为典型的**轻柔常态发声（Soft / Gentle Modal voice）**，不存在病理或风格化的显著气声（Breathy）或耳语声（Whispery）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

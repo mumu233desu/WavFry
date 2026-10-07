@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_15",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.578,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.578,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n该音频内容为一段清晰的日语女性朗读语句（「森の奥へ出かけました」），整体发音自然、清晰，具体声学分析如下：\n\n1. **0.00 秒 - 0.75 秒（「森の」/mori no/）：**\n   - 声带周期性振动稳定，基频（F0）轮廓清晰且连续。\n   - 共振峰结构完整，高频谐波饱满，声门闭合良好，没有伴随声带振动的连续弥散性湍流噪声。属于典型的常态发声（Modal voice）。\n\n2. **0.75 秒 - 1.25 秒（「奥へ」/oku e/）：**\n   - 元音部分共振峰清晰，无多余的声门漏气感；辅音 /k/ 的短暂闭塞及冲苞为清辅音固有特征，属于常态发声。\n\n3. **1.25 秒 - 2.15 秒（「出かけました」/dekakemashita/）：**\n   - 说话人在词尾语调自然下沉，但声带闭合依然充分，无明显的低频脉冲挤压（无嘎裂声/Creaky voice）。\n   - /k/、/m/、/t/ 等辅音过渡自然，/sh/ 的摩擦噪声为口腔硬腭前部摩擦音固有特征，元音发音期间未见声门裂隙引起的呼气性湍流杂音，整体维持良好的常态发声。\n\n综上所述，该音频全程为规范的常态发声（Modal voice），不存在气声（Breathy voice）、耳语发声态（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

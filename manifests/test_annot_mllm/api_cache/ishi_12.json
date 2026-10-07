@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_12",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.365,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.365,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **时域与频域周期性分析（全程约 0.0s - 0.4s）：**\n   - 音频为一个极短的单音节发音（类似于感叹词/回应词“è”）。\n   - **起音与稳态段**：声门规律起振，基频（F0）轨迹明确，周期性波形规整，谐波能量集中且清晰。中高频区域未见由声门未完全闭合导致的显著连续湍流摩擦噪声（Aspiration noise）。\n   - **收音段**：以迅速的声门截断（glottal stop closure）利落结束，无拖曳漏气或气流拖尾。\n2. **生理发声机制评估：**\n   - 发音过程中声带各层结构闭合充分，振动对称且规律，属于典型的**常态发声（Modal voice）**。\n   - 不存在声门后部软骨间隙漏气现象（排除 Breathy voice），亦无持续低频脉冲挤压感（排除 Creaky voice）或去周期化的纯气流主导现象（排除 Whispery voice）。\n\n---\n\n### 第二阶段：结构化判定结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

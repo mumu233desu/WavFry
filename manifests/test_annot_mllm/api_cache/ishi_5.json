@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_5",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.314,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.314,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n1. **整体发声特征**：\n   - 音频内容为日语短句「これは太いよ」（Kore wa futoi yo）。发音者为年轻女性（或偏角色音），发声清晰明亮。\n   - 整体声带振动周期性（$F_0$）高度稳定，谐波结构完整丰富，声门在振动周期中闭合充分，未见明显的非周期性湍流摩擦噪声或气流弥散感。\n\n2. **分段听觉与声学细节描述**：\n   - **0.00 秒 - 1.10 秒（「これは」）**：\n     - 声带起振顺畅，元音 [/o/]、[/e/] 及 [/a/] 的基频能量充沛，共振峰清晰。辅音部分均为正常的清/浊辅音，无额外的声门漏气。\n   - **1.10 秒 - 2.00 秒（「太い」）**：\n     - 清擦音 [ɸ]（ふ）带有生理固有的唇齿/双唇气流摩擦，属于正常的辅音送气，随后紧接的元音段声门立即紧密闭合，周期振动清晰，属于常态发声。\n   - **2.00 秒 - 3.16 秒（「よー」）**：\n     - 句末助词尾音明显拉长，能量集中且稳定，基频衰减自然，声带振动规律，未出现因声门闭合不全导致的呼气性漏气噪声（Breathy），亦无低频非周期脉冲（Creaky）。\n\n3. **结论**：\n   - 全程均为标准的常态发声（Modal voice），不存在气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

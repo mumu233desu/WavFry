@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_9",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.326,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.326,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态评估**：\n   - 输入音频为一段日语日常口语表述。说话人音色清亮，音高（F0）较为稳定且处于正常女性中高音域。\n   - 整体发声表现为典型的**常态发声（Modal voice）**，声带各周期振动均匀、声门完全正常闭合，谐波结构完整饱满。\n\n2. **分段声学细节观察**：\n   - **0.00 - 1.20 秒（叹词延音「えー…」）**：\n     该段为长元音叹词，声带振动高度规律，基频清晰，共振峰能量集中，未检测到任何伴随声带振动的呼气性湍流噪声（无漏气感），声门闭合非常充分。\n   - **1.20 - 2.80 秒（语流部分）**：\n     发音清晰，塞音（如 [t]、[k]）除阻利落，后接元音周期波形规整。语尾语调自然下行，声门仍维持良好的张力控制，未出现低频松弛脉冲发声（嘎裂声/Creaky voice）或声门后部开启导致的残余漏气（气声/Breathy voice）。\n\n3. **结论**：\n   音频全程未出现气声（Breathy voice）、耳语发声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

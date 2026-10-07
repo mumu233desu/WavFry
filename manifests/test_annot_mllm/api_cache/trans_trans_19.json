@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_19",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 13.132,
+      "end_sec": 13.616,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 13.616,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **主体语音部分（00:00 - 约 00:12.8）：**\n   - **发声类型**：常态发声（Modal voice）。\n   - **声学特征**：发音人为标准男性语音（具有典型的合成朗读音质），基频（F0）稳定连续，声带周期性振动规律充分，谐波能量饱满，无异常声门闭合不全导致的湍流摩擦噪声或低频非周期性嘎裂脉冲。\n\n2. **音频末尾部分（约 00:12.8 - 00:13.5）：**\n   - **发声类型**：气声/叹息声（Breathy voice）。\n   - **声学特征**：在主干朗读结束后，音频末尾出现了一段短促的叹息/喘息声（“ha/あっ”）。该声音具有明确的微弱声带振动音高，但同时伴随着显著且强烈的呼气性气流泄漏，在中高频区域展现出弥散的湍流摩擦噪声，符合典型的气声态（声门后部未完全闭合导致的漏气发声）。\n\n---\n\n### 第二阶段：结构化判定结果\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 12.8,\n      \"end_sec\": 13.5,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"末尾出现的叹息声在声带保持微弱振动的同时，伴有强烈的呼气湍流摩擦噪声，呈明显的漏气发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 12.8,
+        "end_sec": 13.5,
+        "phonation_type": "breathy",
+        "acoustic_reason": "末尾出现的叹息声在声带保持微弱振动的同时，伴有强烈的呼气湍流摩擦噪声，呈明显的漏气发声态。"
+      }
+    ]
+  }
+}

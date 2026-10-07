@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_3",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.54,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.54,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声机制分析\n\n1. **整体发声态评估**：\n   - 音频内容为日语短句「さっぱりですよね」（sappari desu yo ne），说话人呈现出自然、放松且吐字清晰的发音状态。\n   - 声带振动周期性强，基频（F0）轨迹平滑完整，谐波丰富且结构清晰，整体属于典型的**常态发声（Modal voice）**。\n\n2. **局部细节与时间段分析**：\n   - **0.00 - 0.60 秒（「さっぱ」/ sa-ppa）**：起始辅音 /s/ 的摩擦音属清辅音生理特征，随后的长辅音闭塞与元音 /a/ 发音有力，声门闭合充分，声带起振规律，未观察到持续性气流泄漏。\n   - **0.60 - 1.00 秒（「り」/ ri）**：闪音及元音 /i/ 的共振峰清晰，高频无显著弥散性湍流噪声，能量集中在谐波成分上。\n   - **1.00 - 1.55 秒（「ですよね」/ desu yo ne）**：尾部语调虽略微趋向柔和，但声门依然维持良好且规律的闭合周期，没有产生声门不全闭合所导致的气声（Breathy voice）或耳语声（Whispery voice），亦无极低频非周期脉冲（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

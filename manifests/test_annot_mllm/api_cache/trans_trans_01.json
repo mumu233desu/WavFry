@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_01",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 4.069,
+      "end_sec": 8.324,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.324,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n本音频包含前后两段不同说话人的日语语音：\n\n1. **前段（0.00 秒 – 4.20 秒，男性朗读语音）**：\n   - **生理机制与声学特征**：发音清晰规整，声门内收闭合完全，声带振动呈规律周期性。频谱能量集中且谐波丰满，无任何声门漏气湍流噪声或声门过度挤压，属于典型的**常态发声（Modal voice）**。\n\n2. **后段（4.30 秒 – 8.30 秒，女性对话语音）**：\n   - **4.30 秒 – 6.60 秒（“教えるのも楽しいし、教えてもらうのも…”）**：语调较为日常轻柔，但元音具有稳定清晰的基频（F0）与清晰共振峰结构，谐波背景干净，未见声带后联合不全导致的持续弥散性湍流噪声，属于**常态发声（Modal voice）**。\n   - **6.60 秒 – 7.60 秒（“ありがとう…”）**：音高明显下潜，声带张力降低，出现极低频率的非均匀脉冲振动与声门挤压感，听感呈现明显的颗粒感（Vocal fry），属于典型的**嘎裂声（Creaky voice）**。\n   - **7.60 秒 – 8.30 秒（“…とか言って”）**：声带张力恢复，回归轻柔常态发声。\n\n全音频中均未出现声门未闭合而产生的呼气性湍流气声（Breathy voice）或声带完全停止振动的耳语声（Whispery voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": true,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 6.6,\n      \"end_sec\": 7.6,\n      \"phonation_type\": \"creaky\",\n      \"acoustic_reason\": \"词语“ありがとう”发音期间基频显著下降，声带呈现松弛低频脉冲式振动，伴随明显的声门嘎裂颗粒感（vocal fry）。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": true,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 6.6,
+        "end_sec": 7.6,
+        "phonation_type": "creaky",
+        "acoustic_reason": "词语“ありがとう”发音期间基频显著下降，声带呈现松弛低频脉冲式振动，伴随明显的声门嘎裂颗粒感（vocal fry）。"
+      }
+    ]
+  }
+}

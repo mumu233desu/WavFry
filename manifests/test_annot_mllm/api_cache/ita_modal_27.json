@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_27",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 13.026,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态（Phonation Type）**：\n   - 该音频为一段日语成年男性播音/朗读语音（“英紙のシンディ・ニコラスは…”）。\n   - 说话人在整个发音过程中，声带呈现充分且规律的周期性振动，声门闭合良好，谐波能量饱满清晰。\n\n2. **局部细节与特殊发声态排查**：\n   - **气声（Breathy voice）**：元音共振峰清晰，谐波间未见异常连续的弥散湍流噪声，不存在因声门闭合不全导致的持续漏气感。语音中的擦音（如 /s/、/ɕ/）和清辅音过渡段的微弱气流纯属辅音固有物理属性，非气头发声态。\n   - **耳语声（Whispery voice）**：基频（F0）自始至终稳定且连续，能量充沛，无耳语特征。\n   - **嘎裂声（Creaky voice）**：在句末及停顿降调处声带张力适度，未出现明显的超低频脉冲挤压感或发声断续（Vocal fry）。\n\n综上所述，整段音频为纯粹的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

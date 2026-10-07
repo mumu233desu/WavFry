@@ -1,0 +1,25 @@
+{
+  "sample_id": "ita_modal_06",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.893,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声特征**：\n   说话人在整段语音（0.0秒至约4.3秒）中均采用了低声能、高气流泄漏的松弛发声方式。声带虽然保持周期性振动，提供清晰且稳定的基频（F0）音高，但声门后部明显处于未完全闭合状态，呼气性气流在声门处形成持续的湍流噪声，并弥散在各元音的共振峰与谐波周围，具有典型且持续的气声发声态（Breathy voice）。\n\n2. **分段详细分析**：\n   - **0.00 - 1.25秒（「私たちは」）**：发音起始较为轻柔，元音 [a]、[i] 中除声带正常振动外，可清晰听到伴随的呼气沙哑感与湍流摩擦成分，属于明显的气声。\n   - **1.25 - 2.50秒（「恐怖の中で」）**：发音继续维持松弛漏气状态，辅音到元音的过渡处气流感强烈，谐波能量在高中频处被气流噪声部分掩蔽，气声特征显著。\n   - **2.50 - 4.30秒（「生きていて、苦しんでいるの」）**：语调平缓微弱，各元音段依然持续伴随声门未闭合导致的呼气噪声，带有明显的悲伤/无力情绪色彩，整段均维持在气声发声态。无声门过度紧闭引起的嘎裂感（Creaky voice），且因为基频周期性持续存在，未达到无振动耳语（Whispery voice）的程度。\n\n---\n\n### 第二阶段：结构化 JSON 输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 4.3,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"基频周期性振动明确，但声门未完全闭合，元音及谐波结构周围伴随持续且显著的呼气性湍流噪声，听感呈现典型的漏气感与气声特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 4.3,
+        "phonation_type": "breathy",
+        "acoustic_reason": "基频周期性振动明确，但声门未完全闭合，元音及谐波结构周围伴随持续且显著的呼气性湍流噪声，听感呈现典型的漏气感与气声特征。"
+      }
+    ]
+  }
+}

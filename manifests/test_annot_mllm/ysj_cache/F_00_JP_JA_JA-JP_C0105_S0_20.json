@@ -1,0 +1,60 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0105_S0_20",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0105_S0_20.flac",
+  "duration_sec": 20.75,
+  "gt_has_breathy": true,
+  "user_breathy_count": 7,
+  "user_breathy_intervals": [
+    {
+      "start": 7.53,
+      "end": 7.61,
+      "phone": "a"
+    },
+    {
+      "start": 7.61,
+      "end": 7.67,
+      "phone": "i"
+    },
+    {
+      "start": 9.47,
+      "end": 9.52,
+      "phone": "a"
+    },
+    {
+      "start": 10.24,
+      "end": 10.63,
+      "phone": "e"
+    },
+    {
+      "start": 12.7,
+      "end": 12.74,
+      "phone": "a"
+    },
+    {
+      "start": 16.09,
+      "end": 16.38,
+      "phone": "e"
+    },
+    {
+      "start": 19.73,
+      "end": 19.8,
+      "phone": "o"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n本段音频为年轻女性说话人使用日语进行的自然口语表达。整体发声风格轻柔、松弛，具有以下显著声学特征：\n\n1. **整体发声态（0.0秒 - 20.2秒）：**\n   - **声带振动与气流特性**：说话人在整个语段中均保持稳定的基频（F0）与起伏清晰的语调轮廓，表明声带维持着周期性振动；但在声带振动的同时，全频段尤其是中高频区域伴随持续、显著的呼气性湍流噪声。\n   - **生理闭合机制**：声门后部（软骨部）在元音发音期间未完全闭合，呼气气流持续泄漏，形成声门摩擦，导致声音呈现明显的“轻柔漏气感”与“沙哑气流感”，且这一特征在句尾（如“なんですけど”、“残したくないので”）以及带有微笑/轻笑语气的片段尤为显著。\n   - **判别**：基频稳定且与湍流摩擦噪声共存，符合典型的**气声发声态（Breathy voice）**。虽然音量较低、声线柔和，但并未失去音高周期性，因此不属于耳语声（Whispery voice）；声带未见过度挤压或低频非周期性不规则脉冲，无嘎裂声（Creaky voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 20.2,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"说话人通篇采用轻柔、声门不完全闭合的发声机制，基频谐波与显著的呼气湍流噪声持续共存，漏气感显著。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 20.2,
+        "phonation_type": "breathy",
+        "acoustic_reason": "说话人通篇采用轻柔、声门不完全闭合的发声机制，基频谐波与显著的呼气湍流噪声持续共存，漏气感显著。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_27",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.376,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.376,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **0.00 秒 - 0.45 秒（“ああ”）**：\n   - **声学与生理特征**：发声处于音域极低端，声带张力降低并呈现松弛的低频非周期脉冲振动。听觉上伴有明确的颗粒感与声门挤压感，符合声门嘎裂/重低音脉冲（Creaky voice / Vocal fry）的发声机制。未检测到显著的呼气性湍流噪声。\n\n2. **0.45 秒 - 1.30 秒（“どっちかな”）**：\n   - **声学与生理特征**：声带转入规律且充分的周期性振动，声门闭合良好，各元音段（[o]、[i]、[a]）谐波结构清晰完整，未出现持续的弥散性气流泄漏，属于典型的常态发声（Modal voice）。\n\n整段音频中无明显的持续呼气湍流泄漏，未表现出气声（Breathy voice）或耳语声（Whispery voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": true,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 0.45,\n      \"phonation_type\": \"creaky\",\n      \"acoustic_reason\": \"音高极低，声带呈现低频脉冲式非周期振动，听觉上具备典型的颗粒状声门挤压感（vocal fry）\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": true,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 0.45,
+        "phonation_type": "creaky",
+        "acoustic_reason": "音高极低，声带呈现低频脉冲式非周期振动，听觉上具备典型的颗粒状声门挤压感（vocal fry）"
+      }
+    ]
+  }
+}

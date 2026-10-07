@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_38",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 3.482,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 3.482,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征（0.00 - 3.80 秒）**：\n   - **生理机制分析**：说话人在发音过程中喉部肌肉相对放松，声门后部（软骨部）未完全闭合。在声带维持周期性振动产生基频（F0）的同时，持续有呼气性气流从声门裂隙泄漏，形成明显的声门湍流摩擦。\n   - **声学与听感特征**：整段话语（日语“まぁ色々大変な、ご経験だったと思うんですが…”）呈现持续且典型的“气声（breathy voice）”特征。各元音共振峰与谐波结构周围伴随弥散的白色/高频气流噪声，发音听感轻柔、漏气感显著，但基频周期性连续存在，未达到无声带振动的“耳语态（whispery）”，亦无声门紧缩造成的嘎裂声（creaky）。\n\n---\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 3.8,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"声带在维持稳定基频振动的同时，伴随持续显著的声门气流泄漏与弥散摩擦噪声，元音段具有典型的轻柔漏气声学特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 3.8,
+        "phonation_type": "breathy",
+        "acoustic_reason": "声带在维持稳定基频振动的同时，伴随持续显著的声门气流泄漏与弥散摩擦噪声，元音段具有典型的轻柔漏气声学特征。"
+      }
+    ]
+  }
+}

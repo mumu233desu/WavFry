@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_14",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 7.708,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声特征**：\n   - 输入音频为一段清晰的日语男性朗读语音。从声学与生理机制来看，说话人声带振动规律且周期性极强，基频（F0）轮廓平稳连续，谐波能量在低频至中高频均表现出丰富饱满的结构。\n   - 声门闭合完全，声门阻抗适中，未检测到声门后部闭合不全导致的持续性吸气/呼气性湍流噪声。\n\n2. **分段详细观察**：\n   - **0.0 - 2.5 秒**（“ギリシャのフットボールの試合では”）：发音器官协调良好，元音振动清晰，辅音除固有的清辅音气流（如 /ɕ/、/h/）外，元音段未伴随漏气性杂音，属于典型的常态发声（Modal voice）。\n   - **2.5 - 5.0 秒**（“一方のチームの選手は、相手チームの陣地の”）：声带闭合状态稳定，共振峰清晰，无耳语（whispery）或气声（breathy）发声态。\n   - **5.0 - 7.9 秒**（“ラインの向こう側にボールを持ち込もうとしたのです”）：句尾虽然音强随语调自然衰减，但声带依然保持良好的周期性振动，没有出现声门过度松弛的漏气声，亦未出现由于声带过度挤压导致的嘎裂声（creaky voice）。\n\n3. **结论**：\n   - 整段音频发声态纯净，属于标准的常态发声（Modal voice），不包含气声、耳语声或嘎裂声片段。\n\n---\n\n### 第二阶段：结构化 JSON 输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

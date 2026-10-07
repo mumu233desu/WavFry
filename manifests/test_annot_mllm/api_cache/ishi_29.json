@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_29",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.103,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.103,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n- **0.00 秒 - 1.25 秒**：\n  - **声学特征**：音频为一个深长的叹息声（“Ah...”）。整个发声段具有清晰稳定的周期性基频（F0）和谐波结构，但与此同时，中高频区域叠加了极其显著且持续的呼气性湍流噪声。\n  - **生理机制**：发声过程中声带韧带部分保持振动产生音高，而声门后部（软骨部）保持不完全闭合（chink），导致大量呼气气流直接从声门裂漏出，形成显著的“漏气/叹息”听感。这是极其标准的**气声发声态（Breathy voice）**。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 1.25,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"叹气元音发声，伴有明确的周期性振动音高，同时伴随强烈的声门漏气湍流摩擦噪声，声门后部未完全闭合。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 1.25,
+        "phonation_type": "breathy",
+        "acoustic_reason": "叹气元音发声，伴有明确的周期性振动音高，同时伴随强烈的声门漏气湍流摩擦噪声，声门后部未完全闭合。"
+      }
+    ]
+  }
+}

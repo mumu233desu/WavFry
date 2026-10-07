@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_15",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 6.287,
+      "end_sec": 7.865,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 7.865,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声态分析\n\n1. **男声部分（0.00秒 - 6.05秒）：**\n   - **内容**：“事象として簡単なことを、いかにも難しそうに表現する人は、あまり頭が良さそうではない。”\n   - **发声态分析**：说话人基频（$F_0$）平稳扎实，声门在振动周期内闭合充分，谐波能量结构完整饱满。各元音共振峰清晰，元音段未发现伴随声带振动的湍流噪声泄漏（无漏气感）；辅音处仅存在正常的阻碍音与摩擦音生理特征，无异常嘎裂（creaky）或耳语（whispery）现象，属于标准的**常态发声（Modal voice）**。\n\n2. **女声部分（6.05秒 - 7.85秒）：**\n   - **内容**：“森の奥へ出かけました。”\n   - **发声态分析**：音色轻柔、语调上扬。声门闭合良好，声带黏膜振动周期规律性强，基频及高次谐波清晰，无显著的呼气性声门泄漏噪声，属于音量轻柔但声门充分闭合的**常态发声（Modal voice）**。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

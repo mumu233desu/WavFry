@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_16",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 3.176,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声特征**：\n   - 音频内容为日语女性语音（“別にブルマに特別な関心があるわけじゃない”）。\n   - 整体发声具有清晰稳定的基频（F0）和丰满的共振峰结构，谐波与噪声比（HNR）较高，声门闭合充分且周期性振动稳定，属于典型的**常态发声（Modal voice）**。\n\n2. **细节时段分析**：\n   - **0.0 - 1.2秒（「別にブルマに」）**：发音清晰，声门闭合良好，无呼气性湍流噪声渗透，声带振动周期规整。\n   - **1.2 - 2.5秒（「特別な関心がある」）**：辅音爆破及摩擦正常（如清辅音 [t]、[k]、[s] 固有的气流摩擦），进入元音后声带迅速恢复规律闭合振动，未发现元音持续漏气（Breathy）现象。\n   - **2.5 - 3.4秒（「わけじゃない」）**：句尾语调平缓下落，但声门依然保持完全闭合振动，没有转变为耳语态（Whispery）或出现声门低频不规则抖动（Creaky）。\n\n3. **结论**：\n   - 整段音频不存在声门后部不全闭合导致的持续气流泄漏（无 Breathy voice），亦无声带失振（无 Whispery voice）或声门过度挤压（无 Creaky voice）。全段为规范常态发声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

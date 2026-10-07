@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_22",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.352,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.352,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **时域与频域听觉感知（0.00 - 1.80秒左右）：**\n   - **发声过程**：音频为一个带有叹息/呻吟色彩的长元音发音（形似叹词“h-o…”）。从起音开始，声门便伴随着大量的呼气气流溢出。\n   - **声带振动与闭合状态**：在 0.2 秒至 1.6 秒的主发音阶段，可明确听到周期性的低频声带振动（具有清晰的基频音高 F0），但声门后部（软骨部）明显未完全闭合。\n   - **气流噪声（湍流）特征**：在声带周期性振动产生谐波的同时，中高频区伴随有持续、显著且弥漫的呼气性湍流摩擦噪声（漏气感极强）。声带振动音与强烈的气流摩擦声深度交织，这是非常典型的气声发声态（Breathy voice）。\n   - **嘎裂与耳语排查**：音高平稳，未见声门低频不规则脉冲挤压（非 Creaky voice）；且由于具有稳定而清晰的基频谐波共鸣，非纯气流主导的无声带振动耳语（非 Whispery voice）。\n\n---\n\n### 第二阶段：结构化判定输出\n\n```json\n{\n  \"has_breathy\": true,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.1,\n      \"end_sec\": 1.7,\n      \"phonation_type\": \"breathy\",\n      \"acoustic_reason\": \"叹息发音过程中声带维持周期性振动，但伴随持续且显著的声门漏气湍流噪声，谐波结构与弥漫性噪声能量并存，符合典型气声发声态特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": true,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.1,
+        "end_sec": 1.7,
+        "phonation_type": "breathy",
+        "acoustic_reason": "叹息发音过程中声带维持周期性振动，但伴随持续且显著的声门漏气湍流噪声，谐波结构与弥漫性噪声能量并存，符合典型气声发声态特征。"
+      }
+    ]
+  }
+}

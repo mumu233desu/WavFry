@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_17",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 4.1,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与声学特性**：\n   - 音频为日语女性说话人朗读语句（「牛乳はあなたの体に良いだろう、毎日飲んだほうがいい」）。\n   - 全程基频（F0）连续且稳定，周期性脉冲信号清晰明确，谐波结构丰满整齐，共振峰轨迹分明，呈现出典型的常态发声（Modal voice）特征。\n\n2. **局部细节与发声态判定**：\n   - **00:00 - 00:02（「牛乳はあなたの体に」）**：元音 [uː]、[a]、[o]、[i] 饱满明亮，声门闭合充分且规律，谐波能量在低中高频段均保持良好的信噪比，未检测到声门后部未闭合所引起的弥散湍流摩擦噪声。辅音过渡平稳，无异常漏气。\n   - **00:02 - 00:04.5（「良いだろう、毎日飲んだほうがいい」）**：语调平稳自然，句中及句尾下倾过程中，声带振动依然保持良好的周期性与张力平衡，未出现声门极度松弛/低频脉冲挤压的嘎裂声（Creaky voice），亦无耳语化（Whispery voice）或持续气流泄漏（Breathy voice）迹象。\n\n**结论**：整段音频均为标准、健康的常态发声态，无气声、耳语声或嘎裂声。\n\n---\n\n### 第二阶段：结构化 JSON 输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

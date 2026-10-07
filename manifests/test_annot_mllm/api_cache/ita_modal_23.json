@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_23",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 4.349,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态评估（0.00 - 4.54 秒）：**\n   - **声带振动规律性与闭合度**：整段音频为标准的日语女性常态发声（Modal voice）。在元音及浊音发音期间，声门闭合充分且规律，基频（F0）轨迹平稳连续，谐波结构（harmonics）清晰饱满，信噪比极高。\n   - **气流噪声分析**：除清辅音固有的生理气流与爆破噪声（如 /t/、/ts/、/k/ 等辅音段的除阻送气）外，各元音段未发现声门未闭合导致的额外漏气湍流声，不存在弥散性的呼气噪声与声带振动并存的现象（无 Breathy voice 特征）。\n   - **耳语与嘎裂声分析**：周期性基频贯穿全部浊音段，完全没有耳语化（Whispery voice）；音节末尾及句末声调自然回落，声带未见过度挤压或低频脉冲松弛振动，无嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

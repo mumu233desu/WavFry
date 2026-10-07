@@ -1,0 +1,43 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_18",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_18.flac",
+  "duration_sec": 42.65,
+  "gt_has_breathy": true,
+  "user_breathy_count": 5,
+  "user_breathy_intervals": [
+    {
+      "start": 21.62,
+      "end": 21.65,
+      "phone": "g"
+    },
+    {
+      "start": 21.65,
+      "end": 21.7,
+      "phone": "a"
+    },
+    {
+      "start": 21.7,
+      "end": 21.92,
+      "phone": "a"
+    },
+    {
+      "start": 22.14,
+      "end": 22.32,
+      "phone": "e"
+    },
+    {
+      "start": 36.22,
+      "end": 36.42,
+      "phone": "a"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "基于语音声学特征与发声生理机制，对该音频的发声态分析如下：\n\n### 听觉声学分析\n\n1. **00:00 - 00:03（开头轻唱段落）**：\n   - 声带振动周期性极为规整，基频（F0）与各次谐波清晰丰富，声门闭合良好，能量分布集中，属于典型的常态发声（Modal voice），未见明显的漏气性摩擦噪声。\n\n2. **00:03 - 00:42（日语日常讲话段落）**：\n   - 说话人语调轻快自然，发音清晰。在所有元音及浊辅音发音段落中，声门规律闭合，周期性脉冲显著，共振峰能量饱满，声学能量集中于谐波结构上。\n   - 录音中出现的摩擦声主要为清辅音（如 [s]、[ts] 等）固有的声道湍流噪声，或句间自然的生理吸气/换气声，并非声门漏气所致的 Breathy voice。\n   - 00:21 - 00:23 等处伴随轻微笑意与笑声，但声门未出现异常的持续气流摩擦，没有耳语态（Whispery voice）或嘎裂态（Creaky voice）的特征。\n\n**总结**：整段音频呈现稳定的常态发声（Modal voice），不存在持续且显著的气声、耳语声或嘎裂发声态。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

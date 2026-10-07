@@ -1,0 +1,35 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0041_S0_12",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0041_S0_12.flac",
+  "duration_sec": 17.8,
+  "gt_has_breathy": true,
+  "user_breathy_count": 2,
+  "user_breathy_intervals": [
+    {
+      "start": 0.45,
+      "end": 0.49,
+      "phone": "i"
+    },
+    {
+      "start": 0.84,
+      "end": 0.92,
+      "phone": "i"
+    }
+  ],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征**：\n   音频呈现极具代表性的日语ASMR耳语风格。发声生理上，说话人声门软骨部处于敞开状态，声门膜部未形成持续、稳定的周期性闭合与振动；声学上，全段缺乏稳定的基频（F0）和谐波结构，完全由持续、强烈的声门湍流摩擦噪声（Aspiration noise）主导共振峰激励。\n\n2. **时间段详细分析**：\n   - **0.00 秒 - 1.50 秒**（“ひっそりと”）：完全缺乏声带周期振动，由声门强烈漏气形成的宽频摩擦噪声构成，为纯耳语（Whispery voice）。\n   - **2.50 秒 - 4.00 秒**（“出したので”）：元音能量极低且呈弥散噪声分布，无清晰基频轮廓，符合耳语特征。\n   - **4.50 秒 - 6.50 秒**（“本当にびっくりしてます”）：语流轻柔，能量主要集中在中高频噪声带，声门不闭合，呈耳语态。\n   - **7.00 秒 - 7.50 秒**（“はい”）：短促的叹息式耳语回应。\n   - **9.00 秒 - 12.50 秒**（“ま、今後もこんな感じでひっそりと”）：持续的呼气性湍流主导，无规律声带振动，为典型耳语态。\n   - **13.00 秒 - 17.50 秒**（“ASMRチャンネルもなかなかマニアックな方なんですけども”）：即使在较长句段中，声门依然保持微开，未出现常态发声（Modal）或气声发声（Breathy）所必需的稳定基频周期性，持续维持纯耳语发声。\n\n3. **结论**：\n   该音频整段表现为典型且持续的**耳语发声态（Whispery voice）**，未检测到具有稳定基频振动伴随漏气的气声（Breathy voice）或声门挤压的嘎裂声（Creaky voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.0,\n      \"end_sec\": 17.5,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"说话人全程采用ASMR近讲耳语方式发声，声带未产生持续周期性振动，整体能量由声门摩擦湍流噪声主导，缺乏明确的基频和谐波结构。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.0,
+        "end_sec": 17.5,
+        "phonation_type": "whispery",
+        "acoustic_reason": "说话人全程采用ASMR近讲耳语方式发声，声带未产生持续周期性振动，整体能量由声门摩擦湍流噪声主导，缺乏明确的基频和谐波结构。"
+      }
+    ]
+  }
+}

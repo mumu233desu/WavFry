@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_37",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.276,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.276,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **时段分析（0.00 秒 - 1.15 秒）**：\n   - **发音内容**：日语日常问候语「こんにちは」（Konnichiwa）。\n   - **声带振动与闭合状态**：说话人声带振动规律且周期性清晰稳定，基频（F0）走向自然、流畅。元音部分的能量集中且谐波结构清晰，声门闭合良好。\n   - **气流与噪声分析**：除词首/词中辅音过渡段的生理性辅音特征外，发声过程中未检测到持续的声门漏气湍流噪声；高频段无弥散性摩擦能量叠加，不存在气声（Breathy voice）特有的沙哑漏气感，亦无声带振动缺失的耳语声（Whispery voice）特征。\n   - **尾部衰减**：句尾音高及能量自然下落，无明显的声门过度挤压或低频脉冲嘎裂现象（Creaky voice）。\n\n2. **综合判定**：\n   整段音频呈现典型的**常态发声（Modal voice）**特征，声门闭合充分，音质清脆明亮。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

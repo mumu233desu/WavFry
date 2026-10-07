@@ -1,0 +1,17 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_11",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_11.flac",
+  "duration_sec": 21.05,
+  "gt_has_breathy": false,
+  "user_breathy_count": 0,
+  "user_breathy_intervals": [],
+  "api_status": "success",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态（Phonation Type）**：\n   - 整段音频为清晰、明亮且富有弹性的**常态发声（Modal voice）**。说话人声带闭合完整、规律，声带振动的周期性非常强，具有饱满且清晰的谐波结构与共振峰。\n   \n2. **气流与声门闭合状态**：\n   - 整个发音过程中，元音发声（如 /a/, /i/, /u/, /e/, /o/）均无声门后部未闭合导致的持续漏气湍流噪声，未观察到气声（Breathy voice）发声态。\n   - 听感上部分摩擦音和破擦音（如「縮んで」的 [t͡ɕ]、「新一」的 [ɕ]、「博士」的 [ç/h]、「隠す」的 [s] 等）呈现出正常的辅音摩擦与送气成分，属于清辅音固有的生理气流特征，元音核心段声门闭合良好，严格排除为气声。\n   - 全程基频（F0）稳定清晰，能量充足，不存在声带无振动的耳语声（Whispery voice），亦无低频脉冲挤压的嘎裂声（Creaky voice）。\n\n### 结构化判定结果\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_14",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 7.587,
+      "end_sec": 8.056,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 8.056,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体音质与发声机制（00:00 - 00:07.5）**：\n   - **声带振动特征**：发音人使用日语朗读文本（“その数百年後にフォークが西洋のテーブルに現れることになるが、直ちに受け入れられたわけではなかった”）。整体发音基频（F0）稳定清晰，元音段（如 /o/, /u/, /e/, /a/ 等）展现出规整的声带周期性振动。\n   - **气流与闭合**：声门闭合充分，声带肌张力适中，谐波结构丰满，未出现声门后部闭合不全导致的持续呼气性湍流噪声（漏气感）。语流中的摩擦成分均来自于正常清辅音（如 [s], [f], [k], [t] 等）的声道成阻与除阻，而非发声态异常。属于典型的**常态发声（Modal voice）**。\n\n2. **句尾反应音（00:07.5 - 00:08.5）**：\n   - 末尾伴随一个轻微的鼻音发音“ん”，音量虽较低，但声带振动周期性依然保持完整，无明显的嘎裂（Creaky）或耳语（Whispery）现象。\n\n综上所述，整段音频为标准的常态发声（Modal voice），不存在气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

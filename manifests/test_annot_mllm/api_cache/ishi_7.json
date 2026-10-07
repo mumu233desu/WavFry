@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_7",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 2.587,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 2.587,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **0.00 - 0.75 秒（“しかも”）**：\n   - 包含清擦音 [ɕ] 及后续元音段。元音 [i]、[a]、[o] 声带振动规律，基频（F0）稳定，谐波结构完整，声门闭合正常，未见伴随声带振动的湍流气流泄漏，属于典型的常态发声（Modal voice）。\n\n2. **0.75 - 1.25 秒（“股を”）**：\n   - 双唇鼻音 [m] 与元音 [a]、[o] 声能充足，周期性振动明显，声门无漏气感。\n\n3. **1.25 - 1.75 秒（“ガーっ”）**：\n   - 带有一定强调语气的浊塞音及长元音 [aː]，发声力度增大，谐波能量强劲且饱满，声带内收充分，无气声或嘎裂声特征。\n\n4. **1.75 - 2.75 秒（“て開いて”）**：\n   - 词首爆破音 [t] 与清擦音 [h] 呈现正常的辅音气流特征；后续元音 [i]、[a]、[i]、[e] 均表现为基频清晰、共振峰明确的常态振动，无显著漏气性噪声叠加。\n\n**总结**：全段音频发音清脆、声带闭合良好，谐波丰满，所有可察觉的气流声均源自日语清辅音固有的摩擦或送气，不存在病理或风格化的气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

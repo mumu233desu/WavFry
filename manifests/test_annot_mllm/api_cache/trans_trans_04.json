@@ -1,0 +1,31 @@
+{
+  "sample_id": "trans_trans_04",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 4.027,
+      "end_sec": 4.95,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 4.95,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学与发声态分析\n\n1. **0.00 秒 - 3.65 秒（说话人 1：男声）**\n   - **声学与生理特征**：该段男声发音清晰平稳（内容为「とりあえず店の前掃除しといてくれ、打ち水も頼む」）。声带规律性周期振动显著，基频（F0）轨迹连续稳定，谐波结构丰满，声门在振动周期中闭合充分，没有异常的气流泄漏或非周期性扰动，属于典型的**常态发声（Modal voice）**。\n\n2. **3.65 秒 - 4.90 秒（说话人 2：女声）**\n   - **声学与生理特征**：该段女声低声喃喃自语「知らなかった」。声学上完全缺乏稳定的声带周期性振动和谐波结构（基频 F0 基本缺失），发音完全由呼气性气流通过声门形成的湍流摩擦噪声驱动，呈现出典型且极其清晰的**耳语发声态（Whispery voice）**。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 3.65,\n      \"end_sec\": 4.9,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"女声发音时缺乏稳定的声带周期性振动（无明显基频音高谐波），整段由强烈的声门湍流气流摩擦噪声主导，呈现典型的耳语特征。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 3.65,
+        "end_sec": 4.9,
+        "phonation_type": "whispery",
+        "acoustic_reason": "女声发音时缺乏稳定的声带周期性振动（无明显基频音高谐波），整段由强烈的声门湍流气流摩擦噪声主导，呈现典型的耳语特征。"
+      }
+    ]
+  }
+}

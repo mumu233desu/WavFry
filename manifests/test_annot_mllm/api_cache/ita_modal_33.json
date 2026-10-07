@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_33",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 9.461,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态与声门闭合情况**：\n   - 整段音频由清晰、标准的女性发音人（朗读风格/TTS合成音质）朗读日语句子。\n   - 纵观整段音频（0.00 秒至 09.30 秒），说话人的声带振动周期性极其稳定，谐波结构完整饱满，声门在元音及浊音段均呈现良好的完全闭合状态。\n\n2. **湍流气流与异常发声态排查**：\n   - **气声（Breathy voice）**：元音共振峰清晰锐利，高频区未见由于声门未完全闭合而产生的弥散性湍流噪声能量，无漏气感或沙哑气流感。清辅音（如「せっけい」中的 [s]、「しょくはつ」中的 [ɕ]）所带有的摩擦能量属于清辅音固有声学特征，元音起始与发声过程均无声门气流泄漏。\n   - **耳语声（Whispery voice）**：声带振动基频（F0）极其明确连续，没有出现基频缺失且由强烈气流噪声主导的现象。\n   - **嘎裂声（Creaky voice）**：句末（「〜である」）及语调下倾处声带振动依然保持均匀平稳，未出现低频非周期脉冲或声门挤压颗粒感。\n\n3. **结论**：\n   - 整体发声态属于典型且清晰的**常态发声（Modal voice）**，不存在气声、耳语声或嘎裂声。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

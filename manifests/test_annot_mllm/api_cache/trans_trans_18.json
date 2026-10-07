@@ -1,0 +1,24 @@
+{
+  "sample_id": "trans_trans_18",
+  "source": "synthesized_transition",
+  "gt_has_breathy": true,
+  "gt_type": "transition_modal_to_breathy",
+  "gt_segments": [
+    {
+      "start_sec": 4.254,
+      "end_sec": 4.9,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 4.9,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学与发声机制分析\n\n1. **0.00 秒 – 4.05 秒（说话人 1：少女声线）**\n   - **内容**：「太陽も花も楽しめないし、私たちの子供時代も楽しめないのよ」\n   - **声学与生理特征**：该段语音整体语调带有轻微叹息、低落的情绪色彩，但声带发声态属于标准的**常态发声（Modal voice）**。元音发音期间，声门完成规律且充分的周期性闭合，基频（F0）及中高频谐波结构规整清晰。语音中听到的摩擦气流成分均严格来自清辅音本身的生理构音（如 /h/、/tɕ/、/s/ 等），元音共振峰区域并无由声门未闭合引起的持续弥散性湍流噪声。不存在气声（Breathy voice）或耳语声（Whispery voice）。\n\n2. **4.05 秒 – 4.70 秒（说话人 2：惊呼声）**\n   - **内容**：「えー！」\n   - **声学与生理特征**：高能量的感叹发声。声带闭合极其紧密，周期性脉冲振动强劲，谐波饱满明亮，完全属于充分闭合的常态发声（Modal voice），未检出气声、耳语或嘎裂声。\n\n### 总结\n整段音频各语句元音区段声门闭合良好，谐波能量饱满，无持续的声门漏气与气流摩擦声，未出现气声（Breathy voice）、耳语（Whispery voice）及嘎裂声（Creaky voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

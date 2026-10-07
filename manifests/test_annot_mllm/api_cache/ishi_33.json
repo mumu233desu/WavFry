@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_33",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 1.169,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 1.169,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态特征**：\n   - 音频内容为一句简短的惊叹语（类似“Oh gosh”）。\n   - **0.00 - 0.35 秒**：起始感叹部分（“Oh”），虽然带有轻微的情绪化呼气起音，但声门迅速进入正常的周期性闭合振动，基频（F0）清晰可见，谐波结构完整，未检测到声门未闭合导致的持续性湍流漏气能量。\n   - **0.35 - 0.85 秒**：主体词（“gosh”），软腭塞音 [g] 释放后元音发声饱满，声带闭合良好，谐波能量丰富，呈现典型常态发声（Modal voice）；词尾的高频湍流摩擦为英语清辅音 [ʃ] 自身固有的气流摩擦，属于辅音发音特征，而非声带水平的气声（Breathy voice）或耳语声（Whispery voice）。\n\n2. **结论**：\n   - 说话人发音期间声门周期性振动正常，无异常漏气、声带极度松弛或过度挤压现象，整体属于常态发声（Modal voice）。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

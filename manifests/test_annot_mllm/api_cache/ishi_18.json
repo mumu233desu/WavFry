@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_18",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.646,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.646,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体声学特征**：\n   - 音频为一个极短的疑问/惊奇感叹词（类似“え？”），持续时间约 0.6 秒。\n   - 基频（F0）较高且具有清晰的周期性振动，谐波结构完整饱满。\n\n2. **发声态与声门运动机制**：\n   - **0.00 - 0.40 秒**：元音发声期间，声带规律性开合，闭合程度良好，没有明显的声门湍流或漏气噪声，排除了气声（Breathy voice）和耳语声（Whispery voice）。\n   - **0.40 - 0.50 秒左右**：音尾通过声门紧闭迅速截断（声门塞音机制），但未出现低频松散的脉冲式非周期振动，不构成嘎裂声（Creaky voice）。\n\n3. **结论**：\n   - 整体发声态属于标准的常态发声（Modal voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

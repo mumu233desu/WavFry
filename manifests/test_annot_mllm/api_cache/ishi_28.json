@@ -1,0 +1,31 @@
+{
+  "sample_id": "ishi_28",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 3.095,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 3.095,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体发声态特征**：\n   - 输入音频为一段典型的近场低语/耳语（Whispery voice）发音。发音内容为日语“誰が一番高いでしょうかね”（Dare ga ichiban takai deshō ka ne）。\n   - 在整个发音过程中，说话人声带并未发生规整的闭合与周期性振动（缺乏明确的基频 F0 与谐波结构），整体声音由强烈的声门湍流气流摩擦主导并激励上声道共鸣，符合耳语发声态（Whispery voice）的物理定义。\n\n2. **分段声学特征与生理机制**：\n   - **0.1 秒 – 3.3 秒**：\n     - 说话人以耳语态通篇发音。无论是原本带声的元音（如 /a/, /e/, /i/, /o/）还是浊辅音（如 /d/, /g/），声门裂均保持适度张开状态，声带处于不振动或几乎无周期振动状态。\n     - 能量分布呈现典型的连续宽频带弥散摩擦噪声，共振峰（Formants）轮廓清晰但内部无规律脉冲列和谐波线。\n     - 该段不存在维持周期性 F0 同时伴随漏气的气声（Breathy voice），亦无声门紧闭形成的嘎裂声（Creaky voice），而是完全由耳语发声（Whispery voice）主导。\n\n---\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": true,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": [\n    {\n      \"start_sec\": 0.1,\n      \"end_sec\": 3.3,\n      \"phonation_type\": \"whispery\",\n      \"acoustic_reason\": \"全句发音缺乏稳定的基频(F0)和谐波周期性，声带未闭合振动，能量呈现完全由气流摩擦激励共振峰构成的耳语发声态。\"\n    }\n  ]\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": true,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": [
+      {
+        "start_sec": 0.1,
+        "end_sec": 3.3,
+        "phonation_type": "whispery",
+        "acoustic_reason": "全句发音缺乏稳定的基频(F0)和谐波周期性，声带未闭合振动，能量呈现完全由气流摩擦激励共振峰构成的耳语发声态。"
+      }
+    ]
+  }
+}

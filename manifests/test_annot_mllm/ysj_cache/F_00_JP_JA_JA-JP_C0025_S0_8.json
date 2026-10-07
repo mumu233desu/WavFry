@@ -1,0 +1,17 @@
+{
+  "file_key": "F_00_JP_JA_JA-JP_C0025_S0_8",
+  "audio_path": "E:\\Corpus\\Breathy\\YSJ\\audio\\F_00_JP_JA_JA-JP_C0025_S0_8.flac",
+  "duration_sec": 22.86,
+  "gt_has_breathy": false,
+  "user_breathy_count": 0,
+  "user_breathy_intervals": [],
+  "api_status": "success",
+  "raw_reasoning": "### 第一阶段：听觉声学与生理机制分析\n\n1. **基频与声门闭合状态**：\n   - 说话人（女性）整体发声清脆明亮，基频（$F_0$）周期性非常规整，谐波结构丰满且高频共振峰能量分布清晰。\n   - 在各元音及有声音段中，声带内收充分，声门闭合周期完整，能量集中于声带振动产生的谐波成分上，未见声门后部闭合不全导致的持续呼气性湍流噪声（无气声/Breathy voice 特征）。\n\n2. **气流摩擦与辅音特征**：\n   - 音频中出现的轻微气流声仅为正常发音过程中的自然呼吸换气，或清辅音（如 [ts]、[k]、[s] 等）本身的生理成阻与释放噪声，并不属于发声态层面的气声泄漏。\n   - 整体无声带微弱或无振动的耳语声（Whispery voice），亦无声门受压的低频脉冲嘎裂声（Creaky voice）。\n\n3. **结论**：\n   - 整段音频均处于稳定的**常态发声（Modal voice）**状态。\n\n---\n\n### 第二阶段：结构化输出\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

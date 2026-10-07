@@ -1,0 +1,18 @@
+{
+  "sample_id": "ita_modal_03",
+  "source": "ita_modal_corpus",
+  "gt_has_breathy": false,
+  "gt_type": "pure_modal",
+  "gt_segments": [],
+  "duration_sec": 9.273,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 第一阶段：听觉声学分析\n\n1. **整体发声态与声带振动特性**：\n   - 音频中说话人表现为典型的成年男性常态发声（Modal voice），基频（F0）稳定且处于适中偏低的正常发声区间。\n   - 在各元音发音段内，声带闭合规律充分，谐波能量结构完整且清晰，未出现声门闭合不全导致的持续呼气性湍流噪声（无气声/Breathy voice），亦无声门完全未振动仅靠气流激发的耳语态（无Whispery voice）。\n\n2. **辅音与局部音变观察**：\n   - 语句中出现的擦音与塞擦音（如「し」[ɕ]、「さん」[s] 等）及清塞音（如「け」[k]、「て」[t] 等），其气流摩擦/爆破能量均属于辅音本身的生理阻碍机制所致，辅音段后随的元音发声态迅速恢复为正常周期振动，不存在发声态层面的漏气。\n   - 句末语调下降段（「非現実的なのだ」）声门振动周期虽有规律性拉长，但仍保持了良好的谐波连续性，未见明显的脉冲性声门顿音或嘎裂挤压（Creaky voice）。\n\n综上所述，该音频全段均为规整的常态发声（Modal voice）。\n\n---\n\n### 第二阶段：结构化判定数据\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

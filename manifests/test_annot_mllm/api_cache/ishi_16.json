@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_16",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 4.84,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 4.84,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n1. **整体音质与发声态（Phonation Type）**：\n   - 音频为一段日语女性语音，语调轻快柔和、带有轻度动漫幼态风格。\n   - 纵观整段音频，声门闭合良好且规律，声带振动周期性清晰稳定，基频（F0）及谐波能量集中且明亮，共振峰清晰，未观察到持续的声门漏气湍流声。\n\n2. **分段详细听觉特征**：\n   - **00:00 - 00:02（「栗を籠いっぱい拾ったら」）**：\n     元音部分声带振动规律充分，声门闭合完全，虽语调明快，但谐波丰富饱满；辅音部分的清塞音与摩擦音气流属于正常辅音送气特征，元音发声态完全属于常态发声（Modal voice）。\n   - **00:02 - 00:05（「柔らかく茹でてクリームにしようね」）**：\n     句尾语调轻快上扬，声带仍维持正常的声门闭合与振动周期，无弥散性摩擦噪声叠加，未出现气声（Breathy voice）、耳语态（Whispery voice）或声门挤压形成的嘎裂声（Creaky voice）。\n\n3. **结论**：\n   整段音频全过程均为典型的常态发声（Modal voice），不含有气声、耳语声或嘎裂声。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "sample_id": "ishi_36",
+  "source": "ishi_corpus",
+  "gt_has_breathy": true,
+  "gt_type": "breathy_or_whispery",
+  "gt_segments": [
+    {
+      "start_sec": 0.0,
+      "end_sec": 0.786,
+      "phonation_type": "breathy_or_whispery"
+    }
+  ],
+  "duration_sec": 0.786,
+  "api_status": "success",
+  "model_used": "gemini-3.8-flash-high",
+  "raw_reasoning": "### 听觉声学分析\n\n该音频内容为日语口语表达「わかんねえな」（Wakanneena），整体发声自然、语调随意：\n\n1. **0.00 - 0.70 秒（「わかんねえ」部分）**：\n   - **声门闭合与振动特征**：声带周期性振动稳定且规律，基频（F0）与谐波结构清晰丰富。声门完全闭合良好，没有听觉上显著的呼气性气流泄漏，亦无异常的低频颗粒脉冲（嘎裂声）。\n   - **声学判定**：属于典型的**常态发声（Modal voice）**。\n\n2. **0.70 - 1.05 秒（句尾「な」及尾声衰减）**：\n   - **声门闭合与振动特征**：句末音节「な」呈现自然的能量衰减（final decrescendo）。元音 [a] 阶段声带振动依然占主导地位，谐波形态维持正常；音节收尾处释放声门，紧随轻微自然的呼气动作，属于正常的语末停顿与呼吸交替，而非声带振动期间声门不完全闭合导致的持续气流湍流摩擦（即不构成 Breathy voice）。\n   - **声学判定**：仍属常态发声范畴。\n\n综上所述，整段音频发音主要为常态发声（Modal voice），未检测到显著的气声（Breathy voice）、耳语声（Whispery voice）或嘎裂声（Creaky voice）。\n\n```json\n{\n  \"has_breathy\": false,\n  \"has_whispery\": false,\n  \"has_creaky\": false,\n  \"overall_confidence\": \"high\",\n  \"segments\": []\n}\n```",
+  "prediction": {
+    "has_breathy": false,
+    "has_whispery": false,
+    "has_creaky": false,
+    "overall_confidence": "high",
+    "segments": []
+  }
+}
