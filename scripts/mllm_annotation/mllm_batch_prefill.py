@@ -314,6 +314,11 @@ def record_failure(
 
 # ── MLLM API and Parsing Core ──────────────────────────────────────────────────
 
+class GeminiSafetyBlockedError(Exception):
+    """Raised when Gemini content or safety filters block a prompt/audio."""
+    pass
+
+
 def encode_audio_base64(path: Path) -> Tuple[str, str]:
     """Base64 encode audio file and return (data, format)."""
     ext = path.suffix.lower()
@@ -379,16 +384,27 @@ def call_gemini_api(
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
 
     res_data = r.json()
+    pf = res_data.get("promptFeedback", {})
+    if pf.get("blockReason"):
+        raise GeminiSafetyBlockedError(f"Prompt blocked by Gemini: {pf.get('blockReason')}")
+
     candidates = res_data.get("candidates", [])
     if not candidates:
         raise ValueError(f"Empty candidates in response: {json.dumps(res_data, ensure_ascii=False)[:300]}")
 
-    parts = candidates[0].get("content", {}).get("parts", [])
+    c0 = candidates[0]
+    if c0.get("finishReason") in ("SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT"):
+        raise GeminiSafetyBlockedError(f"Candidate blocked with finishReason: {c0.get('finishReason')}")
+
+    parts = c0.get("content", {}).get("parts", [])
     thoughts = [p.get("text", "") for p in parts if p.get("thought", False)]
     non_thoughts = [p.get("text", "") for p in parts if not p.get("thought", False)]
 
     content = "".join(non_thoughts) if non_thoughts else "".join([p.get("text", "") for p in parts])
     raw_thought = "".join(thoughts)
+
+    if "blocked by gemini's filters" in content.lower():
+        raise GeminiSafetyBlockedError(f"Response text indicates filter block: {content[:200]}")
 
     return {
         "status": "success",
@@ -659,6 +675,25 @@ class BatchPrefillRunner:
                     break
 
                 except Exception as err:
+                    err_str = str(err).lower()
+                    is_safety_block = isinstance(err, GeminiSafetyBlockedError) or any(
+                        k in err_str for k in [
+                            "blocked by gemini's filters",
+                            "blockreason",
+                            "finishreason: safety",
+                            "finishreason: blocklist",
+                            "prohibited_content",
+                        ]
+                    )
+                    if is_safety_block:
+                        with self.lock:
+                            self.failed_count += 1
+                            record_failure(self.failed_files_path, fk, b_id, f"Gemini filter blocked: {err}")
+                        self.logger.warning(
+                            f"[{fk}] Request blocked by Gemini filters. Skipping immediately to protect account."
+                        )
+                        break
+
                     if attempt < self.max_retries and not _SHUTDOWN_REQUESTED:
                         wait_sec = backoffs[attempt] if attempt < len(backoffs) else 8.0
                         self.logger.warning(
