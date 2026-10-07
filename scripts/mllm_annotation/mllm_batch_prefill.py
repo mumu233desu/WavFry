@@ -53,7 +53,9 @@ DEFAULT_VOWEL_COVERAGE = 0.8
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_LOG_INTERVAL = 20
 
-HUMAN_STATES: Set[str] = {"breathy", "non_breathy", "uncertain", "modal", "creaky"}
+HUMAN_STATES: Set[str] = {
+    "breathy", "non_breathy", "uncertain", "modal", "creaky", "non_creaky"
+}
 
 CORPUS_PRESETS: Dict[str, Dict[str, Any]] = {
     "ysj": {
@@ -128,9 +130,15 @@ def setup_logger(log_dir: Path, corpus_name: str) -> logging.Logger:
 # ── File and Shard Utilities ──────────────────────────────────────────────────
 
 def compute_shard_path(batch_dir: Path, file_key: str) -> Path:
-    """Return path to shard: <batch_dir>/manual_breathy_annotations.json.d/<sha256>.json"""
+    """Return path to shard, checking both breathy and fallback creaky shard directories."""
     digest = hashlib.sha256(str(file_key).encode("utf-8")).hexdigest()
-    return batch_dir / "manual_breathy_annotations.json.d" / f"{digest}.json"
+    breathy_path = batch_dir / "manual_breathy_annotations.json.d" / f"{digest}.json"
+    if breathy_path.exists():
+        return breathy_path
+    creaky_path = batch_dir / "manual_creaky_annotations.json.d" / f"{digest}.json"
+    if creaky_path.exists():
+        return creaky_path
+    return breathy_path
 
 
 def find_audio_path(audio_dir: Path, file_key: str) -> Optional[Path]:
@@ -155,9 +163,10 @@ def is_human_annotated(shard_path: Path) -> bool:
     """Check if the shard file contains any manual human annotations.
     
     Returns True if:
-    1. 'reviewed_at' key is present.
-    2. Any interval state is in HUMAN_STATES ('breathy', 'non_breathy', 'uncertain', etc.).
-    Returns False if shard does not exist or only contains 'mllm_breathy'.
+    1. 'reviewed_at', 'is_frame_verified', or 'is_golden_file' is present.
+    2. 'exact_creak_spans' or 'uncertain_spans' is present.
+    3. Any interval state is in HUMAN_STATES ('breathy', 'non_breathy', 'uncertain', 'non_creaky', etc.).
+    Returns False only if shard does not exist or only contains 'mllm_breathy'.
     """
     if not shard_path.exists():
         return False
@@ -167,7 +176,9 @@ def is_human_annotated(shard_path: Path) -> bool:
         if not isinstance(data, dict):
             return False
 
-        if "reviewed_at" in data:
+        if "reviewed_at" in data or data.get("is_frame_verified") or data.get("is_golden_file"):
+            return True
+        if data.get("exact_creak_spans") or data.get("uncertain_spans"):
             return True
 
         annotations = data.get("annotations", {})
@@ -181,26 +192,54 @@ def is_human_annotated(shard_path: Path) -> bool:
         return True
 
 
+def _safe_atomic_write_json(path: Path, payload: Dict[str, Any], max_retries: int = 5) -> None:
+    """Atomically write JSON with flush, fsync, and Windows PermissionError lock retries."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.{os.getpid()}_{int(time.time() * 1000)}.tmp")
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+
+    for attempt in range(max_retries):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except PermissionError:
+            if attempt < max_retries - 1:
+                time.sleep(0.05 * (2 ** attempt))
+            else:
+                tmp_path.unlink(missing_ok=True)
+                raise
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+
 def write_prefill_shard(
     shard_path: Path,
     file_key: str,
     candidate_vowels: List[Dict[str, Any]],
     model_name: str,
 ) -> None:
-    """Atomically write candidate vowels as 'mllm_breathy' into Qt annotation shard."""
+    """Atomically write candidate vowels as 'mllm_breathy', purging stale prefilled vowels."""
     shard_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Read existing annotations if shard existed
-    existing_annos: Dict[str, str] = {}
+    # Preserve non-mllm annotations (e.g. auto_sp) if shard existed, purge old mllm_breathy
+    preserved_annos: Dict[str, str] = {}
     if shard_path.exists():
         try:
-            data = json.loads(shard_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("annotations"), dict):
-                existing_annos = data["annotations"]
+            old_data = json.loads(shard_path.read_text(encoding="utf-8"))
+            if isinstance(old_data, dict) and isinstance(old_data.get("annotations"), dict):
+                for k, v in old_data["annotations"].items():
+                    if v != "mllm_breathy":
+                        preserved_annos[k] = v
         except Exception:
             pass
 
-    new_annos = dict(existing_annos)
+    new_annos = dict(preserved_annos)
     for v in candidate_vowels:
         iv_id = v["interval_id"]
         new_annos[iv_id] = "mllm_breathy"
@@ -213,11 +252,7 @@ def write_prefill_shard(
         "prefilled_by": model_name,
         "prefilled_at": time.time(),
     }
-
-    # Atomic write via tempfile
-    tmp_path = shard_path.with_name(f"{shard_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(shard_path)
+    _safe_atomic_write_json(shard_path, payload)
 
 
 def clean_prefill_shard_if_modal(shard_path: Path) -> None:
@@ -240,17 +275,12 @@ def update_batch_manifest(manifest_path: Path) -> None:
         "storage_mode": "sharded_json_v2",
         "updated_unix_time": time.time(),
     }
-    tmp_path = manifest_path.with_name(f"{manifest_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(manifest_path)
+    _safe_atomic_write_json(manifest_path, payload)
 
 
 def save_mllm_cache(cache_path: Path, record: Dict[str, Any]) -> None:
     """Atomically persist MLLM inference and alignment result."""
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = cache_path.with_name(f"{cache_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(cache_path)
+    _safe_atomic_write_json(cache_path, record)
 
 
 def record_failure(
@@ -277,10 +307,7 @@ def record_failure(
         "error": error_msg,
         "timestamp": datetime.datetime.now().isoformat(),
     })
-
-    tmp_path = failed_path.with_name(f"{failed_path.name}.{os.getpid()}.tmp")
-    tmp_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(failed_path)
+    _safe_atomic_write_json(failed_path, records)
 
 
 # ── MLLM API and Parsing Core ──────────────────────────────────────────────────
@@ -560,131 +587,141 @@ class BatchPrefillRunner:
         start_time = time.time()
         touched_batches: Set[int] = set()
 
-        for idx, item in enumerate(files_to_process, 1):
-            if _SHUTDOWN_REQUESTED:
-                self.logger.info("[SHUTDOWN] Terminating loop cleanly upon user request.")
-                break
+        try:
+            for idx, item in enumerate(files_to_process, 1):
+                if _SHUTDOWN_REQUESTED:
+                    self.logger.info("[SHUTDOWN] Terminating loop cleanly upon user request.")
+                    break
 
-            fk = item["file_key"]
-            b_id = item["batch_id"]
-            audio_path: Path = item["audio_path"]
-            tg_path: Path = item["textgrid_path"]
-            shard_path: Path = item["shard_path"]
-            cache_file: Path = item["cache_file"]
-            batch_dir: Path = item["batch_dir"]
+                fk = item["file_key"]
+                b_id = item["batch_id"]
+                audio_path: Path = item["audio_path"]
+                tg_path: Path = item["textgrid_path"]
+                shard_path: Path = item["shard_path"]
+                cache_file: Path = item["cache_file"]
+                batch_dir: Path = item["batch_dir"]
 
-            file_start = time.time()
-            prediction_record: Optional[Dict[str, Any]] = None
+                file_start = time.time()
+                prediction_record: Optional[Dict[str, Any]] = None
 
-            # Check cache first unless --force
-            if cache_file.exists() and not self.force:
-                try:
-                    cached_data = json.loads(cache_file.read_text(encoding="utf-8"))
-                    if isinstance(cached_data, dict) and "parsed_prediction" in cached_data:
-                        prediction_record = cached_data
-                        self.cached_hits += 1
-                except Exception as e:
-                    self.logger.warning(f"Cache file corrupted for {fk}, will re-infer: {e}")
-
-            # If not in cache, invoke Gemini API with 3x retry
-            if prediction_record is None:
-                backoffs = [2.0, 4.0, 8.0]
-                call_success = False
-
-                for attempt in range(self.max_retries + 1):
-                    if _SHUTDOWN_REQUESTED:
-                        break
-
+                # Check cache first unless --force
+                if cache_file.exists() and not self.force:
                     try:
-                        self.api_calls += 1
-                        api_res = call_gemini_api(
-                            audio_path,
-                            self.endpoint,
-                            self.api_key,
-                            self.model,
-                            timeout=90,
-                        )
-                        parsed_pred = parse_response_json(api_res["raw_content"])
-                        latency = round(time.time() - file_start, 2)
+                        cached_data = json.loads(cache_file.read_text(encoding="utf-8"))
+                        if isinstance(cached_data, dict) and "parsed_prediction" in cached_data:
+                            prediction_record = cached_data
+                            self.cached_hits += 1
+                    except Exception as e:
+                        self.logger.warning(f"Cache file corrupted for {fk}, will re-infer: {e}")
 
-                        prediction_record = {
-                            "version": 1,
-                            "file_key": fk,
-                            "audio_path": str(audio_path),
-                            "textgrid_path": str(tg_path),
-                            "model": self.model,
-                            "created_at": datetime.datetime.now().isoformat(),
-                            "latency_sec": latency,
-                            "raw_thought": api_res.get("raw_thought", ""),
-                            "raw_content": api_res.get("raw_content", ""),
-                            "parsed_prediction": parsed_pred,
-                        }
-                        call_success = True
-                        break
+                # If not in cache, invoke Gemini API with 3x retry
+                if prediction_record is None:
+                    backoffs = [2.0, 4.0, 8.0]
+                    call_success = False
 
-                    except Exception as err:
-                        if attempt < self.max_retries and not _SHUTDOWN_REQUESTED:
-                            wait_sec = backoffs[attempt] if attempt < len(backoffs) else 8.0
-                            self.logger.warning(
-                                f"[{fk}] Attempt {attempt + 1}/{self.max_retries + 1} failed: {err}. "
-                                f"Retrying in {wait_sec}s..."
+                    for attempt in range(self.max_retries + 1):
+                        if _SHUTDOWN_REQUESTED:
+                            break
+
+                        try:
+                            self.api_calls += 1
+                            api_res = call_gemini_api(
+                                audio_path,
+                                self.endpoint,
+                                self.api_key,
+                                self.model,
+                                timeout=90,
                             )
-                            time.sleep(wait_sec)
-                        else:
-                            self.failed_count += 1
-                            self.logger.error(
-                                f"[{fk}] All {self.max_retries + 1} attempts failed! Error: {err}. Skipping file."
-                            )
-                            record_failure(self.failed_files_path, fk, b_id, str(err))
+                            parsed_pred = parse_response_json(api_res["raw_content"])
+                            latency = round(time.time() - file_start, 2)
 
-                if not call_success or prediction_record is None:
-                    continue
+                            prediction_record = {
+                                "version": 1,
+                                "file_key": fk,
+                                "audio_path": str(audio_path),
+                                "textgrid_path": str(tg_path),
+                                "model": self.model,
+                                "created_at": datetime.datetime.now().isoformat(),
+                                "latency_sec": latency,
+                                "raw_thought": api_res.get("raw_thought", ""),
+                                "raw_content": api_res.get("raw_content", ""),
+                                "parsed_prediction": parsed_pred,
+                            }
+                            call_success = True
+                            break
 
-            # Step 3: Dual-constraint alignment & micro vowel projection
-            try:
-                parsed_pred = prediction_record["parsed_prediction"]
-                align_res = project_mllm_prediction_to_vowels(
-                    tg_path,
-                    parsed_pred,
-                    vowel_coverage_threshold=self.vowel_coverage,
-                )
-                prediction_record["alignment_result"] = align_res
+                        except Exception as err:
+                            if attempt < self.max_retries and not _SHUTDOWN_REQUESTED:
+                                wait_sec = backoffs[attempt] if attempt < len(backoffs) else 8.0
+                                self.logger.warning(
+                                    f"[{fk}] Attempt {attempt + 1}/{self.max_retries + 1} failed: {err}. "
+                                    f"Retrying in {wait_sec}s..."
+                                )
+                                time.sleep(wait_sec)
+                            else:
+                                self.failed_count += 1
+                                self.logger.error(
+                                    f"[{fk}] All {self.max_retries + 1} attempts failed! Error: {err}. Skipping file."
+                                )
+                                record_failure(self.failed_files_path, fk, b_id, str(err))
 
-                # Persist to MLLM cache
-                save_mllm_cache(cache_file, prediction_record)
+                    if not call_success or prediction_record is None:
+                        continue
 
-                candidate_vowels = align_res.get("candidate_vowels", [])
-                if candidate_vowels:
-                    write_prefill_shard(shard_path, fk, candidate_vowels, self.model)
-                    self.prefilled_breathy_files += 1
-                    self.prefilled_vowels_count += len(candidate_vowels)
-                    status_str = f"PREFILLED ({len(candidate_vowels)} vowels)"
-                else:
-                    clean_prefill_shard_if_modal(shard_path)
-                    self.modal_files_count += 1
-                    status_str = "MODAL (clean)"
+                # Step 3: Dual-constraint alignment & micro vowel projection
+                try:
+                    parsed_pred = prediction_record["parsed_prediction"]
+                    align_res = project_mllm_prediction_to_vowels(
+                        tg_path,
+                        parsed_pred,
+                        vowel_coverage_threshold=self.vowel_coverage,
+                    )
+                    prediction_record["alignment_result"] = align_res
 
-                touched_batches.add(b_id)
-                self.processed_count += 1
-                dur = time.time() - file_start
+                    # Persist to MLLM cache
+                    save_mllm_cache(cache_file, prediction_record)
 
-                self.logger.info(
-                    f"[{idx}/{len(files_to_process)}] {fk} (B{b_id}) -> {status_str} [{dur:.1f}s]"
-                )
+                    candidate_vowels = align_res.get("candidate_vowels", [])
+                    is_uncertain = (
+                        parsed_pred.get("has_breathy") == "uncertain"
+                        or any(s.get("phonation_type") == "uncertain" for s in parsed_pred.get("segments", []))
+                    )
 
-            except Exception as e:
-                self.failed_count += 1
-                self.logger.error(f"[{fk}] Alignment/Storage error: {e}")
-                record_failure(self.failed_files_path, fk, b_id, f"Alignment error: {e}")
+                    if candidate_vowels:
+                        write_prefill_shard(shard_path, fk, candidate_vowels, self.model)
+                        self.prefilled_breathy_files += 1
+                        self.prefilled_vowels_count += len(candidate_vowels)
+                        status_str = f"PREFILLED ({len(candidate_vowels)} vowels)"
+                    else:
+                        clean_prefill_shard_if_modal(shard_path)
+                        self.modal_files_count += 1
+                        status_str = "UNCERTAIN (clean)" if is_uncertain else "MODAL (clean)"
 
-            # Step 4: Periodic summary print
-            if idx % self.log_interval == 0:
-                self.print_progress_box(idx, len(files_to_process), time.time() - start_time)
+                    touched_batches.add(b_id)
+                    self.processed_count += 1
+                    dur = time.time() - file_start
 
-        # Step 5: Finalize touched batch manifests
-        for b_id in touched_batches:
-            manifest_path = self.cache_dir / "batches" / f"batch_{b_id}" / "manual_breathy_annotations.json"
-            update_batch_manifest(manifest_path)
+                    self.logger.info(
+                        f"[{idx}/{len(files_to_process)}] {fk} (B{b_id}) -> {status_str} [{dur:.1f}s]"
+                    )
+
+                except Exception as e:
+                    self.failed_count += 1
+                    self.logger.error(f"[{fk}] Alignment/Storage error: {e}")
+                    record_failure(self.failed_files_path, fk, b_id, f"Alignment error: {e}")
+
+                # Step 4: Periodic summary print
+                if idx % self.log_interval == 0:
+                    self.print_progress_box(idx, len(files_to_process), time.time() - start_time)
+
+        finally:
+            # Step 5: Always finalize touched batch manifests, even on interrupt or error
+            for b_id in touched_batches:
+                manifest_path = self.cache_dir / "batches" / f"batch_{b_id}" / "manual_breathy_annotations.json"
+                try:
+                    update_batch_manifest(manifest_path)
+                except Exception as e:
+                    self.logger.error(f"Failed to update manifest for batch {b_id}: {e}")
 
         total_elapsed = time.time() - start_time
         self.logger.info("\n" + "=" * 65)
