@@ -22,10 +22,26 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-VOWEL_SET: Set[str] = {
-    "a", "i", "u", "e", "o", "um",
-    "ɯ", "aː", "iː", "uː", "eː", "oː", "ɯː", "i̥", "ɯ̥",
-}
+try:
+    import jaconv
+except ImportError:
+    jaconv = None
+
+try:
+    import fugashi
+    _FUGASHI_TAGGER = fugashi.Tagger()
+except Exception:
+    _FUGASHI_TAGGER = None
+
+# Official TIFA Japanese Vowel Inventory from Qt Annotation App (phone_inventory.py)
+# TIFA TextGrids transcribe vowels as single letters: a, i, u, e, o (plus um for unvoiced u).
+TIFA_JAPANESE_VOWEL_PHONEMES: Set[str] = {"a", "i", "u", "e", "o", "um"}
+VOWEL_SET: Set[str] = TIFA_JAPANESE_VOWEL_PHONEMES
+
+
+def make_interval_id(start: float, end: float, raw_phone: str) -> str:
+    """Canonical interval_id matching Qt annotation app (start|end|phone)."""
+    return f"{float(start):.4f}|{float(end):.4f}|{str(raw_phone)}"
 
 
 # ── TextGrid Parsing and Serializing ──────────────────────────────────────────
@@ -121,11 +137,98 @@ def build_continuous_tier(
 
 # ── Text Normalization and Alignment ──────────────────────────────────────────
 
+_O_DAN = set("おこそとのほもよろをごぞどぼぽ")
+_E_DAN = set("えけせてねへめれげぜでべぺ")
+_A_DAN = set("あかさたなはまやらわがざだばぱ")
+_I_DAN = set("いきしちにひみりぎじぢびぴ")
+_U_DAN = set("うくすつぬふむゆるぐずづぶぷ")
+_SMALL_KANA_MAP = {
+    "ぁ": "あ", "ぃ": "い", "ぅ": "う", "ぇ": "え", "ぉ": "お",
+    "ゎ": "わ", "ゃ": "や", "ゅ": "ゆ", "ょ": "よ",
+}
+
+
 def normalize_japanese_text(text: str) -> str:
     """Normalize text by stripping punctuation, wave dashes (U+301C, U+FF5E), brackets, and prolonged marks."""
     if not text:
         return ""
     return re.sub(r'[、。！？\sー~〜～・「」『』【】〔〕\'"・\(\)（）\.\,\!\?]', "", str(text))
+
+
+def to_phonetic_kana(text: str) -> str:
+    """Convert Japanese text (Kanji/Kana) to canonical phonetic Hiragana.
+    
+    Handles:
+    1. Kanji to reading (via fugashi if available).
+    2. Katakana to Hiragana (via jaconv).
+    3. Small kana interjections (ぁ->あ, ぃ->い, ぅ->う, ぇ->え, ぉ->お).
+    4. Long vowel / phonological spelling equivalence:
+       - [O-dan]お -> [O-dan]う (e.g. ありがとお -> ありがとう)
+       - [E-dan]え -> [E-dan]い (e.g. せんせえ -> せんせい)
+       - Prolonged sound mark (ー) converted to preceding vowel sound.
+    """
+    if not text:
+        return ""
+    cleaned = re.sub(r'[、。！？\s~〜～・「」『』【】〔〕\'"・\(\)（）\.\,\!\?]', "", str(text))
+    if not cleaned:
+        return ""
+
+    # Step 1: Kanji to Kana reading
+    if _FUGASHI_TAGGER is not None:
+        try:
+            words_kana = []
+            for w in _FUGASHI_TAGGER(cleaned):
+                kana = getattr(w.feature, "kana", None) or getattr(w.feature, "pron", None) or w.surface
+                words_kana.append(kana)
+            cleaned = "".join(words_kana)
+        except Exception:
+            pass
+
+    # Step 2: Katakana to Hiragana
+    if jaconv is not None:
+        hira = jaconv.kata2hira(cleaned)
+    else:
+        hira = "".join(
+            chr(ord(c) - 0x60) if "\u30a1" <= c <= "\u30f6" else c
+            for c in cleaned
+        )
+
+    # Step 3: Small vowel normalization (e.g. はぁ -> はあ)
+    res = [_SMALL_KANA_MAP.get(ch, ch) for ch in hira]
+    s = "".join(res)
+
+    # Step 4: Long vowel and phonological spelling canonicalization
+    norm = []
+    for i, ch in enumerate(s):
+        if i > 0:
+            prev = norm[-1] if norm else s[i - 1]
+            # Handle prolonged mark ー
+            if ch == "ー":
+                if prev in _O_DAN:
+                    norm.append("う")
+                    continue
+                elif prev in _E_DAN:
+                    norm.append("い")
+                    continue
+                elif prev in _A_DAN:
+                    norm.append("あ")
+                    continue
+                elif prev in _I_DAN:
+                    norm.append("い")
+                    continue
+                elif prev in _U_DAN:
+                    norm.append("う")
+                    continue
+            # Handle [O-dan]お -> [O-dan]う
+            if prev in _O_DAN and ch == "お":
+                norm.append("う")
+                continue
+            # Handle [E-dan]え -> [E-dan]い
+            if prev in _E_DAN and ch == "え":
+                norm.append("い")
+                continue
+        norm.append(ch)
+    return "".join(norm)
 
 
 def match_contiguous_words(
@@ -134,17 +237,18 @@ def match_contiguous_words(
 ) -> Optional[List[Tuple[float, float, str]]]:
     """Find the contiguous slice of Tier 1 words matching target_text.
     
-    Uses multi-pass alignment:
-    1. Exact contiguous substring match (100% exact character sequence).
-    2. Tightest substring containment (finds the shortest contiguous word slice containing target_text).
-    3. Longest substring containment (fallback when target is partial).
+    Uses multi-stage alignment:
+    Stage 1: Exact surface string match (fast path).
+    Stage 2: Exact phonetic reading match (handles Kanji<->Kana, お<->う, はぁ<->はあ, Katakana<->Hiragana).
+    Stage 3: Tightest phonetic substring containment (finds the shortest contiguous word slice).
+    Stage 4: Longest phonetic substring match (fallback for partial overlaps).
     """
     norm_target = normalize_japanese_text(target_text)
     if not norm_target:
         return None
 
     n = len(candidate_words)
-    # Pass 1: Exact concatenated sequence match
+    # Stage 1: Exact concatenated surface match
     for i in range(n):
         concatenated = ""
         for j in range(i, n):
@@ -152,15 +256,30 @@ def match_contiguous_words(
             if concatenated == norm_target:
                 return candidate_words[i : j + 1]
 
-    # Pass 2: Tightest substring containment (avoids greedy left-window expansion)
+    # Convert target and candidate words to canonical phonetic Hiragana
+    target_phonetic = to_phonetic_kana(target_text)
+    if not target_phonetic:
+        return None
+
+    cand_phonetics = [to_phonetic_kana(w[2]) for w in candidate_words]
+
+    # Stage 2: Exact phonetic reading match
+    for i in range(n):
+        concatenated_p = ""
+        for j in range(i, n):
+            concatenated_p += cand_phonetics[j]
+            if concatenated_p == target_phonetic:
+                return candidate_words[i : j + 1]
+
+    # Stage 3: Tightest phonetic substring containment (avoids greedy window expansion)
     best_match = None
     min_span_len = float("inf")
     for i in range(n):
-        concatenated = ""
+        concatenated_p = ""
         for j in range(i, n):
-            concatenated += normalize_japanese_text(candidate_words[j][2])
-            if norm_target in concatenated:
-                span_len = len(concatenated)
+            concatenated_p += cand_phonetics[j]
+            if target_phonetic in concatenated_p:
+                span_len = len(concatenated_p)
                 if span_len < min_span_len:
                     min_span_len = span_len
                     best_match = candidate_words[i : j + 1]
@@ -169,14 +288,14 @@ def match_contiguous_words(
     if best_match is not None:
         return best_match
 
-    # Pass 3: Longest substring match (partial target overlap)
+    # Stage 4: Longest phonetic substring match (partial target overlap fallback)
     best_len = 0
     for i in range(n):
-        concatenated = ""
+        concatenated_p = ""
         for j in range(i, n):
-            concatenated += normalize_japanese_text(candidate_words[j][2])
-            if concatenated in norm_target and len(concatenated) > best_len:
-                best_len = len(concatenated)
+            concatenated_p += cand_phonetics[j]
+            if concatenated_p in target_phonetic and len(concatenated_p) > best_len:
+                best_len = len(concatenated_p)
                 best_match = candidate_words[i : j + 1]
 
     return best_match
@@ -288,7 +407,7 @@ def project_mllm_prediction_to_vowels(
                 inter = max(0.0, min(x2, snap_end) - max(x1, snap_start))
                 dur = x2 - x1
                 if dur > 0 and (inter / dur) >= vowel_coverage_threshold:
-                    interval_id = f"{x1:.4f}|{x2:.4f}|{ph}"
+                    interval_id = make_interval_id(x1, x2, ph)
                     if interval_id not in seen_vowel_ids:
                         seen_vowel_ids.add(interval_id)
                         candidate_vowels.append({
