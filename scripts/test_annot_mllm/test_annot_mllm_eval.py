@@ -24,14 +24,17 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from tqdm import tqdm
 
-from test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
+try:
+    from test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
+except ImportError:
+    from scripts.test_annot_mllm.test_annot_mllm_prompts import SYSTEM_INSTRUCTION, USER_PROMPT_TEMPLATE
 
 # Reconfigure stdout for UTF-8
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-DEFAULT_ENDPOINT = "https://aaawinn.xyz"
-DEFAULT_KEY = "sk-iloOlP2gjQ6EngcSzohnma1kRueew2XMnYTTSYXyWysbErV0"
+DEFAULT_ENDPOINT = "http://127.0.0.1:8045"
+DEFAULT_KEY = "sk-c1c7dbb68c714d3399a14b05ca9906d6"
 DEFAULT_MODEL = "gemini-3.8-flash-high"
 DEFAULT_MANIFEST = Path("manifests/test_annot_mllm/benchmark_manifest.json")
 CACHE_DIR = Path("manifests/test_annot_mllm/api_cache")
@@ -89,8 +92,14 @@ def call_gemini_api(
         }
     }
 
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "x-goog-api-key": api_key,
+    }
+
     try:
-        r = requests.post(url, json=payload, timeout=timeout)
+        r = requests.post(url, json=payload, headers=headers, timeout=timeout)
     except Exception as e:
         print(f"\n[FATAL ERROR] Network exception when calling model '{model}': {e}", file=sys.stderr)
         sys.exit(1)
@@ -107,12 +116,18 @@ def call_gemini_api(
         print(f"Full response:\n{json.dumps(res_data, indent=2, ensure_ascii=False)}", file=sys.stderr)
         sys.exit(1)
 
-    content = candidates[0]["content"]["parts"][0]["text"]
+    parts = candidates[0].get("content", {}).get("parts", [])
+    thoughts = [p.get("text", "") for p in parts if p.get("thought", False)]
+    non_thoughts = [p.get("text", "") for p in parts if not p.get("thought", False)]
+    content = "".join(non_thoughts) if non_thoughts else "".join([p.get("text", "") for p in parts])
+    raw_thought = "".join(thoughts)
+
     return {
         "status": "success",
         "model_used": model,
         "raw_content": content,
-        "usage": res_data.get("usageMetadata", {})
+        "raw_thought": raw_thought,
+        "usage": res_data.get("usageMetadata", {}),
     }
 
 
