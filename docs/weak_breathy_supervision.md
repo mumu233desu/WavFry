@@ -34,13 +34,25 @@ CSV 保存 eligible / unknown / review / redundant / human_reviewed 全部导入
 
 ```bash
 HF_HUB_OFFLINE=1 CUDA_VISIBLE_DEVICES=-1 uv run python scripts/review_annotation_quality.py \
-  --checkpoint <checkpoint.pt> --weak-manifest manifests/weak_breathy_v1.csv \
-  --manual-manifest manifests/segments_multi.csv \
-  --task breathy --device cpu --output-dir <new_report_directory>
+  --checkpoint <checkpoint.pt> --annotation-cache <_creaky_cache> \
+  --audio-dir <audio_directory> --batches 0,1 --dataset-id cs_dialogue \
+  --task creaky --device cpu --output-dir <new_report_directory>
 ```
 
-需要已训练且启用的 breathy 帧头，第一版支持 LSE 池化。没有帧头时明确报错。
+气声使用 `--task breathy` 和对应的 `_breathy_cache`、音频目录、dataset ID。
+主入口直接读取原始 batch 的 `manual_*_annotations.json.d`，不依赖训练 manifest；
+保留所有原始音素（不按训练时长/音素白名单过滤）、原状态、批次、分片路径与复核时间。
+可用 `--annotation-shards <manual_creaky_annotations.json.d>` 仅检查一个分片目录；
+`--manual-manifest` 是兼容的 CSV 入口，与原始分片入口互斥。
+`--audio-dir` 可接多个目录（例如英语与汉语），同名音频有歧义时明确报错。
+可额外加 `--weak-manifest` 检查 MLLM 切片标签。
+
+嘎裂声和气声都要求 checkpoint 有已启用、保存了权重的目标帧头；
+第一版支持 LSE 池化。缺帧头权重或声明该任务训练禁用时明确报错，不用随机帧头评分。
 质检使用 checkpoint 的 block 长度、步长和 LSE temperature。
+自动静音与机器预填单列来源；uncertain 不获得正负一致性 Q。
+短于一帧步长或越出音频的标注保留，但标记无法可靠评分。
+精确嘎裂正范围可以评分，不从其余空白区域自动生成负标签。
 
 - all_scores.csv：人工标签、区间头/帧头分数、帧时间曲线、上下文差异、音频及原候选位置。
 - review_queues.csv：按来源/任务/正负类别分别选择低一致性、不稳定、随机和高一致性对照。

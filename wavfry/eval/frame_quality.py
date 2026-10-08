@@ -91,10 +91,12 @@ def review_queues(df: pd.DataFrame, top_k=20, random_k=5, seed=42) -> pd.DataFra
     for _, group in df.groupby(["source", "task", "label"], dropna=False):
         rankings = {
             "low_agreement": group.dropna(subset=["agreement"]).nsmallest(top_k, "agreement"),
-            "unstable_context": group.nlargest(top_k, "context_std"),
+            "unstable_context": group.dropna(subset=['context_std']).nlargest(top_k, "context_std"),
             "high_agreement": group.dropna(subset=["agreement"]).nlargest(random_k, "agreement"),
             "random_control": group.sample(n=min(random_k, len(group)), random_state=seed),
         }
+        if group['agreement'].isna().any():
+            rankings['unscored_or_uncertain'] = group[group['agreement'].isna()]
         for kind, rows in rankings.items():
             subset = rows.copy()
             subset["queue"] = kind
