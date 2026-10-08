@@ -105,6 +105,7 @@ def generate_single_script(
 4. 発話Bは必ず以下の2つのパートに論理的に分割してください：
    - modal_text: 導入部の通常の常態音（Modal Voice）で話す部分（例: 相槌、前置きなど、全体の30%〜50%）
    - breathy_text: 感情や意図が強く込められ、気声（Breathy Voice）で話す核心部分（全体の50%〜70%）
+     ※重要：気声（Breathy Voice）は声帯の振動（音程・ピッチ）を維持したまま息が漏れる発声です。ささやき声（Whisper）ではありません。styleにwhisperやwhisper-likeという単語は絶対に含めないでください。
 5. breathy_textの先頭には、息の漏れを表すタグ {context_info.get('tag_recommendation', '<breath>')} を挿入してください。
 6. 出力は以下のJSONフォーマットのみを返してください：
 
