@@ -102,7 +102,26 @@ train_heads.breathy 不能为 false，epochs 必须覆盖 start_epoch。
 本版实现完整切片 batch，不对单句进行梯度分块；显存不足先减少 max_windows 或
 排查超长记录。若要训练超长音频，应另行实现经过验证的梯度分块，而不是随机选块。
 
-## 验证范围
+## 4. 帧到区间的可选对照
+
+如果要让区间监督直接训练帧头，可以在 block 配置的 `frame_head` 下打开：
+
+```yaml
+frame_head:
+  enabled: true
+  loss_weight: 0.1
+  mil_mode: lse
+  interval_from_frame:
+    enabled: true
+    mode: lse
+    temperature: 1.0
+    topk_ratio: 0.2
+```
+
+打开后，block 模式的 `interval_logits` 直接由对应任务的 `frame_logits` 在该区间内池化得到；区间损失会直接反向传播到帧头。原来的独立区间头仍保留，用于兼容旧 checkpoint 和 segment 模式，但不再作为这条 block 输出路径。
+
+建议第一组实验只打开 `enabled`，保持 `mode=lse`、`temperature=1.0` 和原有 `loss_weight` 不变。`max`、`top_k_mean`、`linear_softmax`、`lse_mean` 可作为后续对照。该开关默认关闭，不会改变已有配置的训练行为，也不等同于新增 Transformer。
+
 
 使用 CPU 小型随机 WavLM 测试时间覆盖、尾部事件、帧合并梯度、padding、
 文件/说话人隔离、正例过滤、调度步数、断点恢复与指纹变化拒绝。
