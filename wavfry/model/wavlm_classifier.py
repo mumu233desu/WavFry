@@ -519,6 +519,7 @@ class WavFryClassifier(nn.Module):
         interval_bounds: torch.Tensor | None = None,
         interval_valid: torch.Tensor | None = None,
         layer_mask: torch.Tensor | None = None,
+        return_frames: bool = False,
     ) -> dict[str, Any]:
         """Forward pass supporting multi-task block and segment inference.
 
@@ -529,10 +530,30 @@ class WavFryClassifier(nn.Module):
                 Dict with {task: Tensor[B]}
         """
         hidden_by_task, out_lengths, valid_mask = self._encode_sequence(x, lengths, layer_mask=layer_mask)
+        frames = None
+        if return_frames:
+            if not self.frame_head_enabled:
+                raise ValueError("Frame output requires training.block.frame_head.enabled=true")
+            stride, receptive = 1, 1
+            for kernel, step in zip(self.wavlm.config.conv_kernel, self.wavlm.config.conv_stride):
+                receptive += (int(kernel) - 1) * stride
+                stride *= int(step)
+            frames = {
+                "frame_logits": {task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
+                                 for task in self.tasks},
+                "frame_valid": valid_mask,
+                "frame_stride_samples": stride,
+                "frame_receptive_samples": receptive,
+            }
         if interval_bounds is not None:
             if interval_valid is None:
                 interval_valid = torch.ones(interval_bounds.shape[:2], dtype=torch.bool, device=x.device)
-            return self._forward_block(hidden_by_task, valid_mask, lengths, interval_bounds, interval_valid)
+            result = self._forward_block(hidden_by_task, valid_mask, lengths, interval_bounds, interval_valid)
+            if frames is not None:
+                result.update(frames)
+            return result
+        if frames is not None:
+            return frames
 
         # Segment / Utterance mode
         outputs: dict[str, torch.Tensor] = {}
