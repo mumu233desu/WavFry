@@ -4,7 +4,7 @@ contexts:
     description: "聞き手の注意を惹きつける、重要な情報や強い感情の焦点を際立たせる発話。"
     recommended_styles:
       modal_part: "casual, clear speaking tone"
-      breathy_part: "intense, breathy emphasized whisper-like tone"
+      breathy_part: "voiced breathy tone, continuous vocal cord vibration with audible pitch, sighing airy overtone, strictly NOT whisper"
     tag_recommendation: "<breath>"
     seed_scenarios:
       - prompt_hint: "同僚との雑談で、自分が予想外に大量のカロリーを摂取していたことに気づいて熱を込めて語る。"
@@ -15,7 +15,7 @@ contexts:
     description: "「本当に」「実は」という意味を込めて、心からの本音・率直な感情を吐露する発話。"
     recommended_styles:
       modal_part: "conversational and friendly"
-      breathy_part: "intimate, genuine and soft breathy tone"
+      breathy_part: "voiced breathy phonation, heartfelt sincere tone with clear pitch and vocal fold vibration, airy sigh"
     tag_recommendation: "<breath>"
     seed_scenarios:
       - prompt_hint: "相手から意外な事実を聞かされ、本当に全く知らなかったと本音で打ち明ける。"
@@ -26,7 +26,7 @@ contexts:
     description: "相手の話に深く共感し、出しゃばらず謙虚に、思いやりを込めて受容する相槌と返答。"
     recommended_styles:
       modal_part: "polite, attentive tone"
-      breathy_part: "gentle, soft breathy compassionate voice"
+      breathy_part: "voiced, polite compassionate tone with soft breathy leakage, maintain clear pitch"
     tag_recommendation: "<sigh>"
     seed_scenarios:
       - prompt_hint: "悩みを打ち明けてくれた相手に対し、理解と深い同情を示しながら優しく受け止める。"
@@ -37,7 +37,7 @@ contexts:
     description: "絵本の読み聞かせや、親しい相手・子供を包み込むような温かく柔らかい語りかけ。"
     recommended_styles:
       modal_part: "warm, calm narrative tone"
-      breathy_part: "whispery, very soft and breathy bedtime-story tone"
+      breathy_part: "warm voiced breathy tone, clear gentle pitch and vocal vibration, airy storytelling tone, strictly NOT whisper"
     tag_recommendation: "<breath>"
     seed_scenarios:
       - prompt_hint: "秋の森で拾った栗を使って甘いお菓子を作る様子を、優しく穏やかに語りかける。"
@@ -48,7 +48,7 @@ contexts:
     description: "予期せぬ出来事や素晴らしい成果に触れ、思わず息を呑むような驚きと感心の表出。"
     recommended_styles:
       modal_part: "casual conversational"
-      breathy_part: "breathless, astonished and admiring airy tone"
+      breathy_part: "voiced breathy phonation, astonished admiring tone with sustained vocal cord pitch and breathless leakage"
     tag_recommendation: "<gasp>"
     seed_scenarios:
       - prompt_hint: "友人が自作した料理や作品のクオリティがあまりに高くて、思わず息を呑んで感嘆する。"

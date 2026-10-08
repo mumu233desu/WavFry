@@ -161,24 +161,30 @@ def generate_validation_summary(results: List[Dict[str, Any]]) -> str:
     """Format acoustic verification report in Markdown."""
     lines = [
         "# Gemini TTS 气声声学特征验证汇总报告\n",
-        "| 样本音频 | 模态 | 元音数 | 平均 CPPS (dB) | 高频/低频能量比 (dB) | 周期性峰值 (Voicing) |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- |",
+        "| 样本音频 | 模态 | 元音数 | 平均 CPPS (dB) | 高频/低频能量比 (dB) | 周期性峰值 (Voicing) | 物理判定状态 |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
 
     for r in results:
         w = r["wav_file"]
+        bv = r.get("breathy_avg_voicing") or 0.0
+        if bv < 0.55:
+            verdict = "⚠️ **耳语化倾向 (Whispery Warning, 基频偏弱)**"
+        else:
+            verdict = "✅ **标准气声 (Valid Breathy, 声带周期振动完整)**"
+
         # Modal row
         lines.append(
-            f"| `{w}` | **Modal** | {r['modal_count']} | {r['modal_avg_cpps']} | {r['modal_avg_hl_db']} | {r['modal_avg_voicing']} |"
+            f"| `{w}` | **Modal** | {r['modal_count']} | {r['modal_avg_cpps']} | {r['modal_avg_hl_db']} | {r['modal_avg_voicing']} | 常态基线 |"
         )
         # Breathy row
         lines.append(
-            f"| | **Breathy** | {r['breathy_count']} | {r['breathy_avg_cpps']} | {r['breathy_avg_hl_db']} | {r['breathy_avg_voicing']} |"
+            f"| | **Breathy** | {r['breathy_count']} | {r['breathy_avg_cpps']} | {r['breathy_avg_hl_db']} | {r['breathy_avg_voicing']} | {verdict} |"
         )
 
     lines.append("\n### 声学学理解读准则：")
     lines.append("- **CPPS (倒谱峰值突出度)**：气声音频由于声门湍流噪声增加，其 CPPS 应**显著低于**常态音。")
     lines.append("- **高低频能量比 (High/Low Ratio)**：气声伴随高频漏气湍流噪声，高频能量占比较常态音通常**更高**。")
-    lines.append("- **周期性峰值 (Voicing)**：气声必须维持明确的声带基频振动（周期性峰值 > 0.4），若趋近于 0 则代表退化为完全耳语（Whisper）。")
+    lines.append("- **周期性峰值 (Voicing)**：气声必须维持明确的声带基频振动（周期性峰值 >= 0.55），若低于此阈值代表退化为完全耳语（Whispery Voice）。")
 
     return "\n".join(lines)
