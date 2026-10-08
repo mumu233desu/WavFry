@@ -458,6 +458,7 @@ class BatchPrefillRunner:
         concurrency: int = 2,
         dry_run: bool = False,
         force: bool = False,
+        cache_only: bool = False,
     ):
         self.corpus_key = corpus_key
         self.target_batches = target_batches
@@ -475,6 +476,7 @@ class BatchPrefillRunner:
         self.concurrency = max(1, concurrency)
         self.dry_run = dry_run
         self.force = force
+        self.cache_only = cache_only
         self.lock = threading.Lock()
 
         # Derived paths
@@ -639,6 +641,10 @@ class BatchPrefillRunner:
 
         # If not in cache, invoke Gemini API with 3x retry
         if prediction_record is None:
+            if self.cache_only:
+                self.logger.info(f"[{fk}] Skipped in cache-only mode (no cached inference).")
+                return
+
             backoffs = [2.0, 4.0, 8.0]
             call_success = False
 
@@ -932,6 +938,7 @@ def main():
     parser.add_argument("--concurrency", type=int, default=2, help="Number of concurrent worker threads (default: 2)")
     parser.add_argument("--dry-run", action="store_true", help="Inspect and simulate files without making API calls or shard modifications")
     parser.add_argument("--force", action="store_true", help="Force re-inference even if file already exists in MLLM cache")
+    parser.add_argument("--cache-only", action="store_true", help="Only re-align and prefill files that already exist in MLLM cache (0 API calls, 0 token cost)")
 
     # Path overrides
     parser.add_argument("--audio-dir", type=Path, default=None, help="Custom audio directory")
@@ -982,6 +989,7 @@ def main():
         concurrency=args.concurrency,
         dry_run=args.dry_run,
         force=args.force,
+        cache_only=args.cache_only,
     )
 
     runner.run()
