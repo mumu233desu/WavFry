@@ -14,7 +14,7 @@ WEAK_COLUMNS = [
     "supervision_id", "dataset_id", "file_key", "speaker_id", "audio_path", "tg_path",
     "start_s", "end_s", "task", "label", "batch_split", "source", "source_model",
     "review_status", "import_status", "reason", "cache_path", "alignment_modes",
-    "candidate_intervals", "vowel_intervals", "fingerprint",
+    "candidate_intervals", "vowel_intervals", "source_stamp", "fingerprint",
 ]
 
 
@@ -27,7 +27,26 @@ def manifest_digest(df: pd.DataFrame) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def validate_source_stamps(df: pd.DataFrame) -> None:
+    if 'source_stamp' not in df:
+        raise ValueError('Weak manifest lacks source stamps; rebuild it with build_weak_manifest.py')
+    for row in df.to_dict('records'):
+        stamp = json.loads(row['source_stamp'])
+        audio = Path(row['audio_path'])
+        stat = audio.stat()
+        if stat.st_size != stamp['audio_size'] or stat.st_mtime_ns != stamp['audio_mtime_ns']:
+            raise ValueError(f"Stale weak manifest audio: {row['file_key']}")
+        if file_digest(Path(row['tg_path'])) != stamp['grid']:
+            raise ValueError(f"Stale weak manifest TextGrid: {row['file_key']}")
+        if stamp.get('cache') and file_digest(Path(row['cache_path'])) != stamp['cache']:
+            raise ValueError(f"Stale weak manifest MLLM cache: {row['file_key']}")
+        if file_digest(Path(stamp['sampling_state_path'])) != stamp['sampling_state']:
+            raise ValueError('Sampling assignments changed; rebuild weak manifest')
+
+
 def classify_prediction(prediction: dict) -> tuple[str, str]:
+    if not isinstance(prediction, dict):
+        return "review", "invalid_prediction"
     value = prediction.get("has_breathy")
     if value is not True and value is not False and value != "uncertain":
         return "review", "invalid_has_breathy"
@@ -161,15 +180,16 @@ def build_weak_manifest(
             "audio_size": stat.st_size, "audio_mtime_ns": stat.st_mtime_ns,
             "manual": current_manual.fillna("").to_dict("records"), "human_clip_review": human,
             "vowel_phones": sorted(vowel_phones), "phone_tier": phone_tier,
+            "sampling_state_path": str(sampling_state.resolve()), "sampling_state": file_digest(sampling_state),
         }
         fingerprint = hashlib.sha256(json.dumps(stamp, sort_keys=True, default=str).encode()).hexdigest()
         rows.append(dict(
             supervision_id=f"{dataset_id}|{key}|breathy|utterance", dataset_id=dataset_id,
             file_key=key, speaker_id=speaker, audio_path=str(audio.resolve()), tg_path=str(grid.resolve()),
-            start_s=0.0, end_s=duration, task="breathy", label=1.0 if kind == "positive" else float("nan"),
-            batch_split=split, source="mllm", source_model=cached.get("model", "unknown"),
+            start_s=0.0, end_s=duration, task="breathy", label=float(human) if human is not None else (1.0 if kind == "positive" else float("nan")),
+            batch_split=split, source="human_clip_review" if human is not None else "mllm", source_model=cached.get("model", "unknown"),
             review_status=reviewed, import_status=status, reason=reason, cache_path=str(cached_path.resolve()),
             alignment_modes=json.dumps(modes), candidate_intervals=json.dumps(candidates),
-            vowel_intervals=json.dumps(vowels), fingerprint=fingerprint,
+            vowel_intervals=json.dumps(vowels), source_stamp=json.dumps(stamp, sort_keys=True, default=str), fingerprint=fingerprint,
         ))
     return pd.DataFrame(rows, columns=WEAK_COLUMNS)

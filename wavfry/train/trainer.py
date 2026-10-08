@@ -24,7 +24,7 @@ from . import metrics as metrics_mod
 compute_metrics = metrics_mod.compute_metrics
 
 class Trainer:
-    def __init__(self, model, train_loader, val_loader, config, device, augmentor=None):
+    def __init__(self, model, train_loader, val_loader, config, device, augmentor=None, heldout_df=None):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -47,6 +47,19 @@ class Trainer:
         import math
         steps_per_epoch = math.ceil(len(self.train_loader) / grad_acc)
         self.total_steps = self.epochs * steps_per_epoch
+        from .weak_supervision import create_weak_loader, dataset_rows, epoch_update_counts, training_provenance
+        self.weak_cfg = config['training'].get('weak_supervision', {})
+        manual_train = dataset_rows(train_loader.dataset)
+        manual_val = dataset_rows(val_loader.dataset)
+        if heldout_df is not None:
+            manual_val = pd.concat([manual_val, heldout_df], ignore_index=True) if manual_val is not None else heldout_df
+        self.weak_loader, self.weak_fingerprint = create_weak_loader(config, model, manual_train, manual_val)
+        self.training_provenance = training_provenance(
+            manual_train, self.weak_loader.dataset.df if self.weak_loader is not None else None
+        )
+        if self.weak_loader is not None:
+            self.total_steps = sum(epoch_update_counts(train_loader, self.weak_loader, self.epochs,
+                                                      int(self.weak_cfg.get('start_epoch', 2)), grad_acc))
         
         # Optimizer with differential learning rate
         self.optimizer = self.create_optimizer()
@@ -500,6 +513,14 @@ class Trainer:
         if torch.isnan(entry[1]) and not torch.isnan(label_cpu):
             entry[1] = label_cpu
 
+    def _forward_weak_batch(self, batch):
+        from ..data.utterance_bag import utterance_logits
+        tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        outputs = self.model(tensors['waveforms'], tensors['lengths'], return_frames=True)
+        logits = utterance_logits(outputs, tensors, temperature=float(self.frame_cfg.get('temperature', 1.0)))
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(logits.float(), torch.ones_like(logits).float())
+        return float(self.weak_cfg.get('loss_weight', .05)) * loss, len(logits)
+
     def train_epoch(self, epoch):
         if hasattr(self.train_loader.dataset, 'set_epoch'):
             self.train_loader.dataset.set_epoch(epoch)
@@ -520,13 +541,35 @@ class Trainer:
         all_logits = {task: [] for task in tasks}
         all_labels = {task: [] for task in tasks}
 
-        pbar = self.train_loader if self.quiet else tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]")
-        for i, batch in enumerate(pbar):
+        from .weak_supervision import interleave_batches
+        weak_loader = getattr(self, 'weak_loader', None)
+        if weak_loader is not None and epoch < int(self.weak_cfg.get('start_epoch', 2)):
+            weak_loader = None
+        if weak_loader is not None:
+            weak_loader.batch_sampler.set_epoch(epoch)
+        batch_count = len(self.train_loader) + (len(weak_loader) if weak_loader is not None else 0)
+        weak_loss_sum, weak_examples, weak_batches = 0.0, 0, 0
+        stream = interleave_batches(self.train_loader, weak_loader)
+        pbar = stream if self.quiet else tqdm(stream, total=batch_count, desc=f"Epoch {epoch} [Train]")
+        for i, (source, batch) in enumerate(pbar):
             device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                loss, logits_dict, labels_dict, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
+                if source == 'weak':
+                    loss, examples = self._forward_weak_batch(batch)
+                    weak_loss_sum += loss.detach().item()
+                    weak_examples += examples
+                    weak_batches += 1
+                    logits_dict, labels_dict = {}, {}
+                    self._current_losses = {}
+                else:
+                    loss, logits_dict, labels_dict, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
 
-            loss = loss / self.config['training']['gradient_accumulation_steps']
+            accumulation = self.config['training']['gradient_accumulation_steps']
+            group_size = accumulation
+            if getattr(self, 'weak_loader', None) is not None:
+                group_start = (i // accumulation) * accumulation
+                group_size = min(accumulation, batch_count - group_start)
+            loss = loss / group_size
 
             if self.scaler:
                 self.scaler.scale(loss).backward()
@@ -550,7 +593,7 @@ class Trainer:
                 if not skip_lr_sched:
                     self.scheduler.step()
 
-            total_loss += loss.item() * self.config['training']['gradient_accumulation_steps']
+            total_loss += loss.item() * group_size
             if hasattr(self, "_current_losses") and self._current_losses:
                 for task in tasks:
                     if task in self._current_losses:
@@ -568,8 +611,8 @@ class Trainer:
 
             if not self.quiet:
                 pbar.set_postfix({'loss': loss.item()})
-            elif (i + 1) % 50 == 0 or (i + 1) == len(self.train_loader):
-                print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{len(self.train_loader)} - Batch Loss: {loss.item():.4f}", flush=True)
+            elif (i + 1) % 50 == 0 or (i + 1) == batch_count:
+                print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{batch_count} - Batch Loss: {loss.item():.4f}", flush=True)
 
         # Flush remaining gradients
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
@@ -583,10 +626,16 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.trainable_params, self.config['training']['grad_clip'])
                 self.optimizer.step()
             self.optimizer.zero_grad()
-            self.scheduler.step()
+            if not self.scaler or self.scaler.get_scale() >= scale_before:
+                self.scheduler.step()
 
         primary_task = self.primary_task
         metrics = {}
+        if getattr(self, 'weak_loader', None) is not None:
+            metrics['loss_weak_breathy'] = weak_loss_sum / max(weak_batches, 1)
+            metrics['weak_utterances'] = weak_examples
+            metrics['manual_batches'] = len(self.train_loader)
+            metrics['weak_batches'] = weak_batches
         for task in tasks:
             if task_loss_counts[task] > 0:
                 metrics[f"loss_{task}"] = task_loss_sums[task] / task_loss_counts[task]
@@ -614,7 +663,7 @@ class Trainer:
                         metrics["auc_pr"] = 0.0
                         metrics["f1"] = 0.0
 
-        return total_loss / len(self.train_loader), metrics
+        return total_loss / batch_count, metrics
 
     def validate(self, epoch):
         self.model.eval()
@@ -767,6 +816,9 @@ class Trainer:
             train_loss, train_metrics = self.train_epoch(epoch)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('total_loss/train', train_loss, epoch)
+            for key in ('loss_weak_breathy', 'weak_utterances', 'manual_batches', 'weak_batches'):
+                if key in train_metrics:
+                    self.writer.add_scalar(f'Weak/{key}', train_metrics[key], epoch)
             if len(tasks) == 1:
                 self.writer.add_scalar('PR_AUC/train', train_metrics.get('auc_pr', 0.0), epoch)
                 self.writer.add_scalar('F1/train', train_metrics.get('f1', 0.0), epoch)
@@ -915,6 +967,9 @@ class Trainer:
                     epoch_record[f'train_loss_{task}_frame'] = float(train_metrics[f'loss_{task}_frame'])
                 if f'loss_{task}_frame' in val_metrics:
                     epoch_record[f'val_loss_{task}_frame'] = float(val_metrics[f'loss_{task}_frame'])
+            for key in ('loss_weak_breathy', 'weak_utterances', 'manual_batches', 'weak_batches'):
+                if key in train_metrics:
+                    epoch_record[key] = train_metrics[key]
             self.history.append(epoch_record)
             self.save_history()
                 
@@ -1074,6 +1129,19 @@ class Trainer:
             # best_threshold / threshold_f1 are injected later by _update_checkpoint_threshold
             'metrics': metrics_to_save,
             'config': self.config,
+            'weak_supervision_state': {
+                'fingerprint': getattr(self, 'weak_fingerprint', None),
+                'configuration': getattr(self, 'weak_cfg', {}),
+                'schedule': {
+                    'epochs': self.config.get('training', {}).get('epochs'),
+                    'accumulation': self.config.get('training', {}).get('gradient_accumulation_steps', 1),
+                    'seed': self.config.get('training', {}).get('seed', 42),
+                    'block': self.config.get('training', {}).get('block', {}),
+                },
+                'total_steps': getattr(self, 'total_steps', None),
+                'completed_epoch': epoch,
+            },
+            'training_provenance': getattr(self, 'training_provenance', {'complete': False}),
             'rng_state': {
                 'python': random.getstate(),
                 'numpy': np.random.get_state(),
@@ -1158,6 +1226,29 @@ class Trainer:
         except (TypeError, Exception):
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         
+        saved_weak = checkpoint.get('weak_supervision_state', {})
+        current_fingerprint = getattr(self, 'weak_fingerprint', None)
+        if saved_weak.get('fingerprint') != current_fingerprint:
+            raise ValueError("Weak supervision manifest changed on resume; start a new experiment")
+        if current_fingerprint is not None:
+            current_schedule = {
+                'epochs': self.config['training']['epochs'],
+                'accumulation': self.config['training'].get('gradient_accumulation_steps', 1),
+                'seed': self.config['training'].get('seed', 42),
+                'block': self.config['training'].get('block', {}),
+            }
+            if (saved_weak.get('configuration') != self.weak_cfg
+                    or saved_weak.get('schedule') != current_schedule
+                    or saved_weak.get('total_steps') != self.total_steps):
+                raise ValueError("Weak supervision schedule/configuration changed on resume")
+        self.optimizer.zero_grad(set_to_none=True)
+        inherited = checkpoint.get('training_provenance', {})
+        current = getattr(self, 'training_provenance', {'complete': False})
+        current['complete'] = bool(current.get('complete') and inherited.get('complete'))
+        for key in ('training_files', 'training_speakers'):
+            current[key] = sorted(set(map(tuple, current.get(key, []))) | set(map(tuple, inherited.get(key, []))))
+        self.training_provenance = current
+
         # Load model weights (handle delta or full)
         result = self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         if result.missing_keys:

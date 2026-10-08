@@ -15,12 +15,12 @@ import torchaudio
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from wavfry.data.weak_manifest import manifest_digest
+from wavfry.data.weak_manifest import manifest_digest, validate_source_stamps
 from wavfry.eval.frame_quality import exposure, interval_mask, merge_frames, pooled_score, review_queues, window_starts
 from wavfry.model.wavlm_classifier import WavFryClassifier
 
 
-def score_file(model, rows, device, temperature=1.0):
+def score_file(model, rows, device, temperature=1.0, block_cfg=None):
     audio, sr = sf.read(rows[0]["audio_path"], dtype="float32", always_2d=True)
     waveform = torch.from_numpy(audio.mean(axis=1))
     if sr != 16000:
@@ -29,15 +29,18 @@ def score_file(model, rows, device, temperature=1.0):
     for kernel, step in zip(model.wavlm.config.conv_kernel, model.wavlm.config.conv_stride):
         receptive += (kernel - 1) * stride
         stride *= step
-    starts = window_starts(len(waveform), stride=stride)
+    block_cfg = block_cfg or {}
+    block_samples = round(float(block_cfg.get('duration_ms', 2000)) * 16)
+    hop_samples = round(float(block_cfg.get('hop_ms', 1000)) * 16)
+    starts = window_starts(len(waveform), block=block_samples, hop=hop_samples, stride=stride)
     if len(waveform) < receptive:
         raise ValueError("Audio is shorter than the backbone receptive field")
     outputs, masks, class_scores = {}, [], {r["supervision_id"]: [] for r in rows}
     with torch.inference_mode():
         for start in starts:
-            wave = waveform[start:start + 32000]
+            wave = waveform[start:start + block_samples]
             length = len(wave)
-            wave = torch.nn.functional.pad(wave, (0, 32000 - length))
+            wave = torch.nn.functional.pad(wave, (0, block_samples - length))
             contained = [r for r in rows if r["scope"] == "interval"
                          and r["start_s"] * 16000 >= start
                          and r["end_s"] * 16000 <= start + length]
@@ -104,6 +107,7 @@ def main():
     inputs = []
     if args.weak_manifest:
         weak = pd.read_csv(args.weak_manifest)
+        validate_source_stamps(weak)
         weak["scope"] = "utterance"
         inputs.extend(weak[weak.task == args.task].to_dict("records"))
     if args.manual_manifest:
@@ -134,7 +138,8 @@ def main():
             raise ValueError("First-version review supports LSE checkpoints only; do not silently change pooling")
         digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
         for _, file_rows in pd.DataFrame(rows).groupby(["dataset_id", "file_key"], sort=True):
-            records = score_file(model, file_rows.to_dict("records"), args.device, frame_cfg.get("temperature", 1.0))
+            records = score_file(model, file_rows.to_dict("records"), args.device, frame_cfg.get("temperature", 1.0),
+                                 checkpoint['config']['training'].get('block', {}))
             for r in records:
                 r.update(checkpoint=path, checkpoint_fingerprint=digest,
                          exposure=exposure(r, checkpoint.get("training_provenance")))

@@ -203,8 +203,15 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             print(f"[INFO] Newly initialized keys: {result.missing_keys}")
 
     # Trainer
-    trainer = trainer_mod.Trainer(model, train_loader, val_loader, config, device, augmentor=augmentor)
-    
+    trainer = trainer_mod.Trainer(model, train_loader, val_loader, config, device,
+                                  augmentor=augmentor, heldout_df=test_df)
+    if warm_start:
+        inherited = checkpoint.get('training_provenance', {})
+        current = trainer.training_provenance
+        current['complete'] = bool(current.get('complete') and inherited.get('complete'))
+        for key in ('training_files', 'training_speakers'):
+            current[key] = sorted(set(map(tuple, current.get(key, []))) | set(map(tuple, inherited.get(key, []))))
+
     start_epoch = 1
     if resume:
         latest_path = Path(config['checkpoint']['dir']) / "latest.pt"
