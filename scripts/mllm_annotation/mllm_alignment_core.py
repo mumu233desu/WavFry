@@ -369,9 +369,9 @@ def project_mllm_prediction_to_vowels(
 
         matched_words = None
         if target_text:
-            # Temporal gate: [s_t - 0.5s, e_t + 0.5s]
-            gate_start = max(total_xmin, s_t - 0.5)
-            gate_end = min(total_xmax, e_t + 0.5)
+            # Temporal gate: [s_t - 0.8s, e_t + 0.8s]
+            gate_start = max(total_xmin, s_t - 0.8)
+            gate_end = min(total_xmax, e_t + 0.8)
             candidates = [
                 (x1, x2, txt)
                 for x1, x2, txt in tier_texts
@@ -401,23 +401,29 @@ def project_mllm_prediction_to_vowels(
         detected_phrases.append(phrase_info)
 
         # Micro vowel projection on Tier 3 (phones)
-        for x1, x2, ph in tier_phones:
-            if ph.lower() in VOWEL_SET:
-                # Submersion / Coverage calculation
-                inter = max(0.0, min(x2, snap_end) - max(x1, snap_start))
-                dur = x2 - x1
-                if dur > 0 and (inter / dur) >= vowel_coverage_threshold:
-                    interval_id = make_interval_id(x1, x2, ph)
-                    if interval_id not in seen_vowel_ids:
-                        seen_vowel_ids.add(interval_id)
-                        candidate_vowels.append({
-                            "interval_id": interval_id,
-                            "start": round(x1, 4),
-                            "end": round(x2, 4),
-                            "phone": ph,
-                            "state": "mllm_breathy",
-                            "phonation_type": p_type,
-                        })
+        # CRITICAL SAFETY RULE:
+        # Strictly require 'text_matched' before injecting candidate vowels!
+        # If target_text could not be matched against TextGrid words (alignment_mode == "temporal_fallback"),
+        # MLLM timestamps have drifted or hallucinated. To prevent false-positive / misaligned prefill,
+        # DO NOT project candidate vowels for unmatched segments.
+        if alignment_mode == "text_matched":
+            for x1, x2, ph in tier_phones:
+                if ph.lower() in VOWEL_SET:
+                    # Submersion / Coverage calculation
+                    inter = max(0.0, min(x2, snap_end) - max(x1, snap_start))
+                    dur = x2 - x1
+                    if dur > 0 and (inter / dur) >= vowel_coverage_threshold:
+                        interval_id = make_interval_id(x1, x2, ph)
+                        if interval_id not in seen_vowel_ids:
+                            seen_vowel_ids.add(interval_id)
+                            candidate_vowels.append({
+                                "interval_id": interval_id,
+                                "start": round(x1, 4),
+                                "end": round(x2, 4),
+                                "phone": ph,
+                                "state": "mllm_breathy",
+                                "phonation_type": p_type,
+                            })
 
     return {
         "has_breathy": prediction.get("has_breathy", False),
@@ -438,7 +444,11 @@ def export_enriched_textgrid(
     total_xmin, total_xmax, tiers = parse_textgrid(tifa_tg_path)
 
     macro_intervals = [
-        (p["start"], p["end"], f"{p['phonation_type']} [{p.get('target_text', '')}]")
+        (
+            p["start"],
+            p["end"],
+            f"{p['phonation_type']} [{p.get('target_text', '')}]{' (unmatched_skipped)' if p.get('alignment_mode') == 'temporal_fallback' else ''}",
+        )
         for p in detected_phrases
     ]
     micro_intervals = [
