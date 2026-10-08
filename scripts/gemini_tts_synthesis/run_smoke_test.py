@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 from typing import Any, Dict, List
@@ -95,6 +96,7 @@ def run_pipeline(
                 output_wav_path=wav_path,
             )
             synthesized_records.append({"sample_id": sample_id, "wav_path": wav_path, "meta": item})
+            time.sleep(2.0)
         except Exception as e:
             logger.error(f"Failed to synthesize {sample_id}: {e}")
 
