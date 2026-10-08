@@ -12,6 +12,7 @@ import base64
 import io
 import json
 import logging
+import os
 import random
 import time
 from pathlib import Path
@@ -23,8 +24,8 @@ import torchaudio
 
 logger = logging.getLogger("gemini_tts_client")
 
-DEFAULT_TTS_ENDPOINT = "https://ai.chuyel.top"
-DEFAULT_TTS_KEY = "ENV_TTS_KEY_PLACEHOLDER"
+DEFAULT_TTS_ENDPOINT = "https://generativelanguage.googleapis.com"
+DEFAULT_TTS_KEY = "AQ.Ab8RN6IXEfTrYSeE3tNDMiviro8jqjFgyAu-usUgahRYLbXgcA"
 DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
 
 
@@ -36,8 +37,9 @@ class GeminiTTSClient:
         endpoint: str = DEFAULT_TTS_ENDPOINT,
         api_key: str = DEFAULT_TTS_KEY,
         model: str = DEFAULT_TTS_MODEL,
+        proxy: Optional[str] = None,
         max_retries: int = 5,
-        base_backoff_sec: float = 6.0,
+        base_backoff_sec: float = 5.0,
     ):
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key
@@ -45,6 +47,16 @@ class GeminiTTSClient:
         self.max_retries = max_retries
         self.base_backoff_sec = base_backoff_sec
         self.session = requests.Session()
+
+        if proxy is not None:
+            self.session.proxies = {"http": proxy, "https": proxy}
+        elif not os.environ.get("HTTPS_PROXY") and not os.environ.get("HTTP_PROXY"):
+            # If accessing Google AI Studio directly from mainland without env proxy, default to local proxy
+            if "googleapis.com" in self.endpoint:
+                self.session.proxies = {
+                    "http": "http://127.0.0.1:10808",
+                    "https": "http://127.0.0.1:10808",
+                }
 
     def synthesize(
         self,
@@ -64,9 +76,11 @@ class GeminiTTSClient:
         """
         url = f"{self.endpoint}/v1beta/models/{self.model}:generateContent"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
         }
+        if self.api_key.startswith("sk-"):
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload = {
             "contents": [
