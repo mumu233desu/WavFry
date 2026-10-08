@@ -39,6 +39,33 @@ def test_quality_scoring_mixed_manual_and_weak_rows(tmp_path):
     trainer.writer.close()
 
 
+def test_quality_cli_writes_real_reports(tmp_path, monkeypatch):
+    trainer, _ = setup(tmp_path)
+    # Save a local backbone to make checkpoint reconstruction fully offline.
+    backbone_dir = tmp_path / 'backbone'
+    trainer.model.wavlm.save_pretrained(backbone_dir)
+    trainer.config['model']['backbone'] = str(backbone_dir)
+    trainer._best_val_logits = None
+    trainer._best_val_labels = None
+    trainer.save_checkpoint(1, {'f1': .5, 'auc_pr': .5}, only_latest=True)
+    manual = trainer.train_loader.dataset.base_df.copy()
+    manual_path = tmp_path / 'manual.csv'
+    manual.to_csv(manual_path, index=False)
+    script = Path(__file__).resolve().parents[1] / 'scripts/review_annotation_quality.py'
+    spec = importlib.util.spec_from_file_location('review_cli_test', script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    import sys
+    output = tmp_path / 'review'
+    monkeypatch.setattr(sys, 'argv', ['review', '--checkpoint', str(trainer.ckpt_dir / 'latest.pt'),
+        '--manual-manifest', str(manual_path), '--output-dir', str(output), '--device', 'cpu'])
+    module.main()
+    report = json.loads((output / 'report.json').read_text())
+    assert report['rows'] == 2
+    assert (output / 'review_queues.csv').exists()
+    trainer.writer.close()
+
+
 def test_training_run_logs_weak_metrics_and_threshold(tmp_path):
     trainer, manifest = setup(tmp_path)
     history = trainer.run()

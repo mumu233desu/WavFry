@@ -545,9 +545,13 @@ class Trainer:
         weak_loader = getattr(self, 'weak_loader', None)
         if weak_loader is not None and epoch < int(self.weak_cfg.get('start_epoch', 2)):
             weak_loader = None
+        weak_count, weak_population = 0, 0
         if weak_loader is not None:
             weak_loader.batch_sampler.set_epoch(epoch)
-        batch_count = len(self.train_loader) + (len(weak_loader) if weak_loader is not None else 0)
+            weak_schedule = weak_loader.batch_sampler.batches()
+            weak_count = len(weak_schedule)
+            weak_population = sum(len(batch) for batch in weak_schedule)
+        batch_count = len(self.train_loader) + weak_count
         weak_loss_sum, weak_examples, weak_batches = 0.0, 0, 0
         stream = interleave_batches(self.train_loader, weak_loader)
         pbar = stream if self.quiet else tqdm(stream, total=batch_count, desc=f"Epoch {epoch} [Train]")
@@ -556,7 +560,8 @@ class Trainer:
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                 if source == 'weak':
                     loss, examples = self._forward_weak_batch(batch)
-                    weak_loss_sum += loss.detach().item()
+                    weak_loss_sum += loss.detach().item() * examples
+                    loss = loss * (examples * weak_count / weak_population)
                     weak_examples += examples
                     weak_batches += 1
                     logits_dict, labels_dict = {}, {}
@@ -632,7 +637,7 @@ class Trainer:
         primary_task = self.primary_task
         metrics = {}
         if getattr(self, 'weak_loader', None) is not None:
-            metrics['loss_weak_breathy'] = weak_loss_sum / max(weak_batches, 1)
+            metrics['loss_weak_breathy'] = weak_loss_sum / max(weak_examples, 1)
             metrics['weak_utterances'] = weak_examples
             metrics['manual_batches'] = len(self.train_loader)
             metrics['weak_batches'] = weak_batches
