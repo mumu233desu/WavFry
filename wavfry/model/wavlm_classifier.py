@@ -108,6 +108,26 @@ class WavFryClassifier(nn.Module):
         )
         frame_cfg = training_cfg.get("block", {}).get("frame_head", {})
         self.frame_head_enabled = bool(frame_cfg.get("enabled", False))
+        interval_from_frame_cfg = frame_cfg.get("interval_from_frame", {})
+        self.interval_from_frame_enabled = bool(interval_from_frame_cfg.get("enabled", False))
+        self.interval_from_frame_cfg = {
+            "mode": interval_from_frame_cfg.get("mode", "lse"),
+            "temperature": float(interval_from_frame_cfg.get("temperature", 1.0)),
+            "topk_ratio": float(interval_from_frame_cfg.get("topk_ratio", 0.2)),
+        }
+        if self.interval_from_frame_enabled:
+            if not self.frame_head_enabled:
+                raise ValueError(
+                    "training.block.frame_head.interval_from_frame.enabled requires "
+                    "training.block.frame_head.enabled=true"
+                )
+            mode = self.interval_from_frame_cfg["mode"]
+            if mode not in {"lse", "max", "linear_softmax", "top_k_mean", "lse_mean"}:
+                raise ValueError(f"Unsupported interval_from_frame mode: {mode}")
+            if self.interval_from_frame_cfg["temperature"] <= 0:
+                raise ValueError("interval_from_frame.temperature must be positive")
+            if not 0 < self.interval_from_frame_cfg["topk_ratio"] <= 1:
+                raise ValueError("interval_from_frame.topk_ratio must be in (0, 1]")
         if self.frame_head_enabled:
             self.frame_heads = nn.ModuleDict({
                 task: nn.Sequential(
@@ -116,7 +136,8 @@ class WavFryClassifier(nn.Module):
                 )
                 for task in self.tasks
             })
-            if frame_cfg.get("mil_mode", "lse") == "lse_mean":
+            if (frame_cfg.get("mil_mode", "lse") == "lse_mean"
+                    or (self.interval_from_frame_enabled and self.interval_from_frame_cfg["mode"] == "lse_mean")):
                 self.frame_mil_fusions = nn.ModuleDict({
                     task: nn.Linear(2, 1) for task in self.tasks
                 })
@@ -462,42 +483,85 @@ class WavFryClassifier(nn.Module):
             pos_bias = self.pos_scorer(pos_emb).squeeze(-1)
 
         interval_logits_by_task: dict[str, torch.Tensor] = {}
-        for task in self.tasks:
-            sequence = hidden_by_task[task]
-            if self.pooling_mode == "mean":
-                counts = interval_masks.sum(dim=-1, keepdim=True).clamp_min(1.0).to(sequence.dtype)
-                norm_mask = interval_masks.to(sequence.dtype) / counts
-                pooled_tensor = torch.bmm(norm_mask, sequence)
-                pooled_tensor = pooled_tensor.masked_fill(~has_valid, 0.0)
-            elif self.pooling_mode in ("attn", "mean_attn"):
-                scores = self.attention_heads[task](sequence).squeeze(-1).unsqueeze(1).expand(-1, slots, -1)
-                if pos_bias is not None:
-                    scores = scores + pos_bias
-                scores = scores.masked_fill(~interval_masks, -1e4)
-                # Under AMP autocast, softmax returns float32; cast to sequence.dtype to ensure safe bmm
-                weights = torch.softmax(scores, dim=-1).to(sequence.dtype)
-                pooled_attn = torch.bmm(weights, sequence)
-                pooled_attn = pooled_attn.masked_fill(~has_valid, 0.0)
+        frame_logits_by_task: dict[str, torch.Tensor] | None = None
+        if self.frame_head_enabled:
+            frame_logits_by_task = {
+                task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
+                for task in self.tasks
+            }
 
-                if self.pooling_mode == "mean_attn":
+        if self.interval_from_frame_enabled:
+            from .losses import pool_frame_logits
+
+            flat_mask = interval_masks.reshape(batch * slots, -1)
+            valid_flat = slot_valid.reshape(-1)
+            for task in self.tasks:
+                frame_logits = frame_logits_by_task[task]
+                expanded = frame_logits.unsqueeze(1).expand(-1, slots, -1).reshape(batch * slots, -1)
+                pooled_flat = torch.zeros(batch * slots, dtype=frame_logits.dtype, device=frame_logits.device)
+                if valid_flat.any():
+                    valid_logits = expanded[valid_flat]
+                    valid_masks = flat_mask[valid_flat]
+                    mode = self.interval_from_frame_cfg["mode"]
+                    if mode == "lse_mean":
+                        lse = pool_frame_logits(
+                            valid_logits,
+                            valid_masks,
+                            mode="lse",
+                            temperature=self.interval_from_frame_cfg["temperature"],
+                        )
+                        mean = (
+                            valid_logits.masked_fill(~valid_masks, 0.0).sum(dim=-1)
+                            / valid_masks.sum(dim=-1).clamp_min(1)
+                        )
+                        pooled = self.frame_mil_fusions[task](torch.stack([lse, mean], dim=-1)).squeeze(-1)
+                    else:
+                        pooled = pool_frame_logits(
+                            valid_logits,
+                            valid_masks,
+                            mode=mode,
+                            topk_ratio=self.interval_from_frame_cfg["topk_ratio"],
+                            temperature=self.interval_from_frame_cfg["temperature"],
+                        )
+                    pooled_flat[valid_flat] = pooled
+                interval_logits_by_task[task] = pooled_flat.view(batch, slots)
+        else:
+            for task in self.tasks:
+                sequence = hidden_by_task[task]
+                if self.pooling_mode == "mean":
                     counts = interval_masks.sum(dim=-1, keepdim=True).clamp_min(1.0).to(sequence.dtype)
                     norm_mask = interval_masks.to(sequence.dtype) / counts
-                    pooled_mean = torch.bmm(norm_mask, sequence)
-                    pooled_mean = pooled_mean.masked_fill(~has_valid, 0.0)
-                    pooled_tensor = torch.cat([pooled_mean, pooled_attn], dim=-1)
+                    pooled_tensor = torch.bmm(norm_mask, sequence)
+                    pooled_tensor = pooled_tensor.masked_fill(~has_valid, 0.0)
+                elif self.pooling_mode in ("attn", "mean_attn"):
+                    scores = self.attention_heads[task](sequence).squeeze(-1).unsqueeze(1).expand(-1, slots, -1)
+                    if pos_bias is not None:
+                        scores = scores + pos_bias
+                    scores = scores.masked_fill(~interval_masks, -1e4)
+                    # Under AMP autocast, softmax returns float32; cast to sequence.dtype to ensure safe bmm
+                    weights = torch.softmax(scores, dim=-1).to(sequence.dtype)
+                    pooled_attn = torch.bmm(weights, sequence)
+                    pooled_attn = pooled_attn.masked_fill(~has_valid, 0.0)
+
+                    if self.pooling_mode == "mean_attn":
+                        counts = interval_masks.sum(dim=-1, keepdim=True).clamp_min(1.0).to(sequence.dtype)
+                        norm_mask = interval_masks.to(sequence.dtype) / counts
+                        pooled_mean = torch.bmm(norm_mask, sequence)
+                        pooled_mean = pooled_mean.masked_fill(~has_valid, 0.0)
+                        pooled_tensor = torch.cat([pooled_mean, pooled_attn], dim=-1)
+                    else:
+                        pooled_tensor = pooled_attn
                 else:
-                    pooled_tensor = pooled_attn
-            else:
-                pooled = []
-                for b in range(batch):
-                    rows = []
-                    for s in range(slots):
-                        mask = interval_masks[b, s]
-                        rel = self._relative_positions(mask.unsqueeze(0))[0] if self.use_pos_encoding else None
-                        rows.append(self._pool_one(sequence[b], mask, task, rel))
-                    pooled.append(torch.stack(rows))
-                pooled_tensor = torch.stack(pooled)
-            interval_logits_by_task[task] = self.heads[task](pooled_tensor).squeeze(-1)
+                    pooled = []
+                    for b in range(batch):
+                        rows = []
+                        for s in range(slots):
+                            mask = interval_masks[b, s]
+                            rel = self._relative_positions(mask.unsqueeze(0))[0] if self.use_pos_encoding else None
+                            rows.append(self._pool_one(sequence[b], mask, task, rel))
+                        pooled.append(torch.stack(rows))
+                    pooled_tensor = torch.stack(pooled)
+                interval_logits_by_task[task] = self.heads[task](pooled_tensor).squeeze(-1)
 
         result: dict[str, Any] = {
             "interval_logits": interval_logits_by_task,
@@ -506,10 +570,7 @@ class WavFryClassifier(nn.Module):
             "tasks": self.tasks,
         }
         if self.frame_head_enabled:
-            result["frame_logits"] = {
-                task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
-                for task in self.tasks
-            }
+            result["frame_logits"] = frame_logits_by_task
         return result
 
     def forward(

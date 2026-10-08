@@ -279,6 +279,92 @@ def test_linear_softmax_pool_fp16_stability():
     assert not torch.isinf(pooled).any()
 
 
+def test_interval_from_frame_pooling_path_and_gradients():
+    """The opt-in block interval output must be the configured frame MIL pool."""
+    from wavfry.model.losses import pool_frame_logits
+
+    config = _make_dummy_config()
+    config["training"]["block"]["frame_head"]["interval_from_frame"] = {
+        "enabled": True,
+        "mode": "lse",
+        "temperature": 1.0,
+        "topk_ratio": 0.2,
+    }
+    model = WavFryClassifier(config)
+    raw_audio = torch.randn(2, 16000)
+    lengths = torch.tensor([16000, 16000])
+    bounds = torch.tensor([
+        [[0, 4000], [4000, 8000], [0, 0]],
+        [[1000, 5000], [5000, 9000], [0, 0]],
+    ])
+    interval_valid = torch.tensor([
+        [True, True, False],
+        [True, True, False],
+    ])
+
+    outputs = model(raw_audio, lengths=lengths, interval_bounds=bounds, interval_valid=interval_valid)
+    assert outputs["interval_valid"].tolist() == interval_valid.tolist()
+    for task in ("creaky", "breathy"):
+        frame_logits = outputs["frame_logits"][task]
+        masks = outputs["interval_masks"]
+        expanded = frame_logits.unsqueeze(1).expand_as(masks)[masks.any(dim=-1)]
+        expected = pool_frame_logits(
+            expanded.reshape(-1, frame_logits.shape[-1]),
+            masks[masks.any(dim=-1)],
+            mode="lse",
+            temperature=1.0,
+        )
+        actual = outputs["interval_logits"][task][outputs["interval_valid"]]
+        assert torch.allclose(actual, expected)
+        assert outputs["interval_logits"][task][~outputs["interval_valid"]].eq(0).all()
+
+    loss = sum(value.sum() for value in outputs["interval_logits"].values())
+    loss.backward()
+    for task in ("creaky", "breathy"):
+        assert any(param.grad is not None for param in model.frame_heads[task].parameters())
+        assert all(param.grad is None for param in model.heads[task].parameters())
+
+
+@pytest.mark.parametrize("mode", ["max", "top_k_mean", "linear_softmax", "lse_mean"])
+def test_interval_from_frame_pooling_modes(mode):
+    config = _make_dummy_config()
+    config["training"]["block"]["frame_head"]["interval_from_frame"] = {
+        "enabled": True,
+        "mode": mode,
+        "temperature": 1.0,
+        "topk_ratio": 0.5,
+    }
+    model = WavFryClassifier(config)
+    bounds = torch.tensor([[[0, 4000], [4000, 8000]]])
+    valid = torch.ones(1, 2, dtype=torch.bool)
+    outputs = model(torch.randn(1, 16000), torch.tensor([16000]), bounds, valid)
+    assert outputs["interval_logits"]["breathy"].shape == (1, 2)
+    assert torch.isfinite(outputs["interval_logits"]["breathy"]).all()
+
+
+def test_interval_from_frame_requires_enabled_frame_head():
+    config = _make_dummy_config()
+    config["training"]["block"]["frame_head"]["enabled"] = False
+    config["training"]["block"]["frame_head"]["interval_from_frame"] = {"enabled": True}
+    with pytest.raises(ValueError, match="frame_head.enabled=true"):
+        WavFryClassifier(config)
+
+
+def test_default_interval_path_remains_independent_head():
+    config = _make_dummy_config()
+    model = WavFryClassifier(config)
+    assert model.interval_from_frame_enabled is False
+    outputs = model(
+        torch.randn(1, 16000),
+        torch.tensor([16000]),
+        torch.tensor([[[0, 4000], [4000, 8000]]]),
+        torch.ones(1, 2, dtype=torch.bool),
+    )
+    loss = outputs["interval_logits"]["breathy"].sum()
+    loss.backward()
+    assert any(param.grad is not None for param in model.heads["breathy"].parameters())
+
+
 def test_dict_loss_weight_support():
     """Verify loss_weight as a dict applies per-task weights correctly."""
     config = _make_dummy_config()

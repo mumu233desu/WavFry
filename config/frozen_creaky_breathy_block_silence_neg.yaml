@@ -84,6 +84,11 @@ training:
       mil_mode: lse              # lse | top_k_mean | linear_softmax | max | lse_mean
       temperature: 1.0
       topk_ratio: 0.2
+      interval_from_frame:       # 让区间预测直接池化帧 logits；对照实验时显式打开
+        enabled: false
+        mode: lse
+        temperature: 1.0
+        topk_ratio: 0.2
 
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk

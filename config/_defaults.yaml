@@ -86,6 +86,11 @@ training:
       mil_mode: lse              # lse | top_k_mean | linear_softmax | max | lse_mean
       temperature: 1.0
       topk_ratio: 0.2
+      interval_from_frame:       # 可选：区间 logit 直接由帧 logit 池化得到，默认关闭
+        enabled: false
+        mode: lse                # lse | top_k_mean | linear_softmax | max | lse_mean
+        temperature: 1.0
+        topk_ratio: 0.2
 
   weak_supervision:
     enabled: false
