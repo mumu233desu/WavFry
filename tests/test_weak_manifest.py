@@ -62,6 +62,8 @@ def test_explicit_human_clip_review_overrides_machine(tmp_path):
     df = build_weak_manifest(**args)
     assert df.iloc[0].import_status == "human_reviewed"
     assert df.iloc[0].review_status == "human_clip_negative"
+    assert df.iloc[0].label == 0
+    assert df.iloc[0].source == "human_clip_review"
 
 
 def test_split_conflict_fails(tmp_path):

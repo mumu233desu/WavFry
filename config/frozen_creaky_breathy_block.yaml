@@ -84,6 +84,16 @@ training:
       temperature: 1.0
       topk_ratio: 0.2
 
+  weak_supervision:
+    enabled: false
+    manifest: manifests/weak_breathy.csv
+    task: breathy
+    candidate_scope: vowels
+    loss_weight: 0.05
+    start_epoch: 2
+    samples_per_epoch: 64
+    max_windows: 16
+
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk
   topk_ratio: 0.2           # Top-K 取帧比例
