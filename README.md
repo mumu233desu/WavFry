@@ -33,6 +33,25 @@ This will create a `wavfry_exp_YYYYMMDD_{N}spks.zip` in the project root.
 uv run python scripts/export_textgrid.py --csv results.csv --tg-dir <path> --output-dir <path>
 ```
 
+## Weak Supervision & Annotation Review
+
+- **Optional breathy supervision**: `scripts/build_weak_manifest.py` imports existing MLLM caches offline. A positive label means breathy occurs somewhere in the complete audio clip—not in every frame or block. MLLM timestamps are review hints; training pools over all vowels from the original TextGrid `phones` tier. Unmarked clips are not negatives. Enable `training.weak_supervision` explicitly; it is off by default.
+- **Self-check after training (creaky or breathy)**: read original batch annotation shards directly—no training manifest is required. Use a checkpoint with the selected task's trained frame head and LSE pooling:
+
+```bash
+uv run python scripts/review_annotation_quality.py \
+  --checkpoint <checkpoint.pt> --annotation-cache <_creaky_cache> \
+  --audio-dir <audio_directory> --batches 0,1 --dataset-id cs_dialogue \
+  --task creaky --device cpu --output-dir <new_report_directory>
+# For breathy: select its _breathy_cache, audio directory and dataset ID; use --task breathy.
+# One batch only: --annotation-shards <manual_creaky_annotations.json.d> instead of --annotation-cache.
+# Legacy CSV input: --manual-manifest <segments_multi.csv>; optional MLLM clips: --weak-manifest <weak_breathy.csv>.
+```
+
+Original batch/shard/interval identities are retained; uncertain, machine-prefilled and automatic-silence annotations stay separate. `review_queues.csv` prioritizes low label agreement and unstable predictions, with random/high-agreement controls. `all_scores.csv` includes scores, audio paths and frame traces. Scores guide human review—not label correctness probabilities. This tool neither runs automatically after training nor changes annotations; predictions on training data may reflect memorization.
+
+See [usage and training configuration](docs/weak_breathy_supervision.md).
+
 ## Monitoring
 
 Visualize training progress, confusion matrices, and audio samples:

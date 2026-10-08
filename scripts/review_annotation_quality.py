@@ -16,6 +16,7 @@ import torchaudio
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from wavfry.data.weak_manifest import manifest_digest, validate_source_stamps
+from wavfry.data.annotation_review import load_raw_annotations
 from wavfry.eval.frame_quality import exposure, interval_mask, merge_frames, pooled_score, review_queues, window_starts
 from wavfry.model.wavlm_classifier import WavFryClassifier
 
@@ -34,7 +35,8 @@ def score_file(model, rows, device, temperature=1.0, block_cfg=None):
     hop_samples = round(float(block_cfg.get('hop_ms', 1000)) * 16)
     starts = window_starts(len(waveform), block=block_samples, hop=hop_samples, stride=stride)
     if len(waveform) < receptive:
-        raise ValueError("Audio is shorter than the backbone receptive field")
+        return [dict(r, frame_score=float('nan'), agreement=float('nan'), context_std=float('nan'),
+                     interval_score=float('nan'), review_reason='audio_too_short') for r in rows]
     outputs, masks, class_scores = {}, [], {r["supervision_id"]: [] for r in rows}
     with torch.inference_mode():
         for start in starts:
@@ -42,6 +44,8 @@ def score_file(model, rows, device, temperature=1.0, block_cfg=None):
             length = len(wave)
             wave = torch.nn.functional.pad(wave, (0, block_samples - length))
             contained = [r for r in rows if r["scope"] == "interval"
+                         and r.get('input_status') != 'out_of_audio_bounds'
+                         and r['end_s'] - r['start_s'] >= stride / 16000
                          and r["start_s"] * 16000 >= start
                          and r["end_s"] * 16000 <= start + length]
             kwargs = {}
@@ -63,9 +67,17 @@ def score_file(model, rows, device, temperature=1.0, block_cfg=None):
     result = []
     for row in rows:
         item = merged[row["task"]]
+        record = dict(row)
+        invalid = row.get('input_status') == 'out_of_audio_bounds'
+        invalid |= row['start_s'] < 0 or row['end_s'] > len(waveform) / 16000
+        too_short = row['scope'] == 'interval' and row['end_s'] - row['start_s'] < stride / 16000
+        if invalid or too_short:
+            record.update(frame_score=float('nan'), agreement=float('nan'), context_std=float('nan'),
+                          interval_score=float('nan'), review_reason='out_of_audio_bounds' if invalid else 'interval_too_short')
+            result.append(record)
+            continue
         bounds = json.loads(row["vowel_intervals"]) if row["scope"] == "utterance" else [[row["start_s"], row["end_s"]]]
         mask = interval_mask(item["times"], bounds)
-        record = dict(row)
         if not mask.any():
             record.update(frame_score=float("nan"), agreement=float("nan"), context_std=float("nan"), review_reason="no_candidate_frames")
             result.append(record)
@@ -76,7 +88,7 @@ def score_file(model, rows, device, temperature=1.0, block_cfg=None):
         record.update(frame_score=p, agreement=(p if label == 1 else 1 - p) if np.isfinite(label) else float("nan"),
                       context_std=float(item["context_std"][mask].mean()), peak_time_s=float(item["times"][peak]),
                       interval_score=float(torch.tensor(class_scores[row["supervision_id"]]).mean().sigmoid()) if class_scores[row["supervision_id"]] else float("nan"),
-                      review_reason="inspect_disagreement")
+                      review_reason="inspect_disagreement" if np.isfinite(label) else row.get('input_status', 'unlabeled_for_task'))
         raw_candidates = row.get("candidate_intervals", "[]")
         candidates = json.loads(raw_candidates) if isinstance(raw_candidates, str) else []
         candidate_bounds = [[c["start"], c["end"]] for c in candidates
@@ -95,7 +107,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--weak-manifest", type=Path)
-    parser.add_argument("--manual-manifest", type=Path)
+    manual_input = parser.add_mutually_exclusive_group()
+    manual_input.add_argument("--annotation-cache", type=Path, help="Original _creaky_cache or _breathy_cache")
+    manual_input.add_argument("--annotation-shards", type=Path, help="One original manual_*_annotations.json.d directory")
+    manual_input.add_argument("--manual-manifest", type=Path, help="Legacy training CSV input")
+    parser.add_argument("--audio-dir", type=Path, nargs='+', help="Audio directories for raw annotations")
+    parser.add_argument("--batches", help="Comma-separated registered batch IDs")
+    parser.add_argument("--sampling-state", type=Path)
+    parser.add_argument("--dataset-id", help="Explicit registry ID; needed to prove held-out speaker identity")
     parser.add_argument("--fold-map", type=Path, help="JSON: dataset_id|speaker_id -> checkpoint path")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
@@ -105,6 +124,17 @@ def main():
     if args.output_dir.exists():
         raise FileExistsError("Use a fresh report directory; no old report is overwritten")
     inputs = []
+    if args.annotation_cache or args.annotation_shards:
+        if not args.audio_dir:
+            parser.error('--audio-dir is required for raw annotations')
+        raw = load_raw_annotations(
+            audio_dirs=args.audio_dir, task=args.task, cache_dir=args.annotation_cache,
+            shard_dir=args.annotation_shards, batches=args.batches.split(',') if args.batches else None,
+            sampling_state=args.sampling_state, dataset_id=args.dataset_id,
+        )
+        inputs.extend(raw.to_dict('records'))
+    elif args.batches or args.sampling_state or args.audio_dir:
+        parser.error('Raw annotation options require --annotation-cache or --annotation-shards')
     if args.weak_manifest:
         weak = pd.read_csv(args.weak_manifest)
         validate_source_stamps(weak)
@@ -133,9 +163,15 @@ def main():
         # Transformers may omit this unused parameter when SpecAugment is disabled.
         if "wavlm.masked_spec_embed" not in model.state_dict():
             weights.pop("wavlm.masked_spec_embed", None)
-        model.load_state_dict(weights, strict=strict)
+        loaded = model.load_state_dict(weights, strict=strict)
+        required_prefixes = (f'frame_heads.{args.task}.', f'scalar_mix_weights.{args.task}')
+        missing = [k for k in loaded.missing_keys if k.startswith(required_prefixes)]
+        if missing:
+            raise ValueError(f'Checkpoint lacks trained {args.task} frame-path weights: {missing}')
         if args.task not in model.tasks or not model.frame_head_enabled:
             raise ValueError(f"Checkpoint has no enabled {args.task} frame head")
+        if checkpoint['config']['training'].get('train_heads', {}).get(args.task, True) is False:
+            raise ValueError(f'Checkpoint declares the {args.task} task disabled during training')
         model.to(args.device).eval()
         frame_cfg = checkpoint["config"]["training"].get("block", {}).get("frame_head", {})
         if frame_cfg.get("mil_mode", "lse") != "lse":
@@ -145,8 +181,9 @@ def main():
             records = score_file(model, file_rows.to_dict("records"), args.device, frame_cfg.get("temperature", 1.0),
                                  checkpoint['config']['training'].get('block', {}))
             for r in records:
+                identity_ok = r.get('identity_verified', True)
                 r.update(checkpoint=path, checkpoint_fingerprint=digest,
-                         exposure=exposure(r, checkpoint.get("training_provenance")))
+                         exposure=exposure(r, checkpoint.get("training_provenance")) if identity_ok else 'unknown')
             results.extend(records)
         del model
     df = pd.DataFrame(results)
