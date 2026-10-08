@@ -129,7 +129,11 @@ def main():
         checkpoint = torch.load(path, map_location="cpu", weights_only=False)
         model = WavFryClassifier(checkpoint["config"])
         strict = checkpoint["config"]["checkpoint"].get("save_mode", "delta") != "delta"
-        model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
+        weights = dict(checkpoint["model_state_dict"])
+        # Transformers may omit this unused parameter when SpecAugment is disabled.
+        if "wavlm.masked_spec_embed" not in model.state_dict():
+            weights.pop("wavlm.masked_spec_embed", None)
+        model.load_state_dict(weights, strict=strict)
         if args.task not in model.tasks or not model.frame_head_enabled:
             raise ValueError(f"Checkpoint has no enabled {args.task} frame head")
         model.to(args.device).eval()
@@ -150,7 +154,7 @@ def main():
     df.to_csv(args.output_dir / "all_scores.csv", index=False)
     queues = review_queues(df, top_k=args.top_k)
     queues.to_csv(args.output_dir / "review_queues.csv", index=False)
-    (args.output_dir / "report.json").write_text(json.dumps({"rows": len(df), "exposure": df.exposure.value_counts().to_dict(),
+    (args.output_dir / "report.json").write_text(json.dumps({"rows": len(df), "exposure": {str(k): int(v) for k, v in df.exposure.value_counts().items()},
         "weak_fingerprint": manifest_digest(weak) if args.weak_manifest else None,
         "notice": "Scores prioritize human review; they do not establish label correctness."}, indent=2), encoding="utf-8")
     (args.output_dir / "README.md").write_text(
