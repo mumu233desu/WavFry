@@ -129,7 +129,8 @@ def validate_sample_acoustics(
         cpps = compute_frame_cpps(chunk, sr)
         spec_info = compute_spectral_tilt_and_voicing(chunk, sr)
 
-        if r["breathy"] == 1.0:
+        is_breathy = (r.get("breathy") == 1.0) or (r.get("label_breathy") == 1.0)
+        if is_breathy:
             if np.isfinite(cpps):
                 breathy_cpps.append(cpps)
             if np.isfinite(spec_info["high_low_ratio_db"]):

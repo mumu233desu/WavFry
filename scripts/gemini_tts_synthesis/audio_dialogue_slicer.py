@@ -125,10 +125,14 @@ def serialize_praat_textgrid(
 def find_macro_pause_window(
     tiers: List[Dict[str, Any]],
     total_duration: float,
+    modal_text: Optional[str] = None,
+    breathy_text: Optional[str] = None,
 ) -> Tuple[float, float]:
     """Find safe inter-phrase pause window between Phrase 1 (Modal) and Phrase 2 (Breathy).
 
-    Uses 'texts' or 'phones' tier to identify the inter-sentence boundary pause.
+    Uses 'phones' or 'texts' tier to identify the inter-sentence boundary pause,
+    strictly protecting geminate stop closures (促音 'cl') and preventing
+    selection of internal Part 1 pauses.
     Returns:
         (T_modal_end, T_breathy_start)
     """
@@ -142,31 +146,53 @@ def find_macro_pause_window(
 
     intervals = target_tier["intervals"]
 
-    # Locate the longest silence/pause interval in the middle 20%~80% of audio
-    best_pause = None
-    max_pause_len = 0.0
+    # Compute expected boundary estimate from text character ratio if available
+    expected_boundary = None
+    if modal_text and breathy_text:
+        m_len = max(1, len(modal_text.strip()))
+        b_len = max(1, len(breathy_text.strip()))
+        ratio = m_len / (m_len + b_len)
+        expected_boundary = ratio * total_duration
 
+    # Collect valid inter-phrase pause candidates
+    # Strictly exclude any interval that contains or resembles sokuon closure ('cl', 'q')
+    candidate_pauses = []
     for itv in intervals:
         txt = itv["text"].strip().lower()
         dur = itv["xmax"] - itv["xmin"]
         mid = (itv["xmin"] + itv["xmax"]) / 2.0
+
+        # Strict exclusion of geminate stop closures (促音 cl)
+        if txt in ("cl", "q") or "cl" in txt:
+            continue
 
         # Silence or interjection pause check
         is_pause = txt in ("", "sp", "sil", "pau")
         # Must be in reasonable middle transition area
         in_middle = (0.15 * total_duration) <= mid <= (0.85 * total_duration)
 
-        if is_pause and in_middle and dur > max_pause_len:
-            max_pause_len = dur
-            best_pause = itv
+        if is_pause and in_middle and dur >= 0.12:
+            candidate_pauses.append(itv)
 
-    if best_pause is not None and max_pause_len >= 0.20:
+    if candidate_pauses:
+        if expected_boundary is not None:
+            # Score candidates: prefer pauses closer to the expected boundary
+            def score_pause(p):
+                dur = p["xmax"] - p["xmin"]
+                mid = (p["xmin"] + p["xmax"]) / 2.0
+                dist_norm = abs(mid - expected_boundary) / total_duration
+                return dur / (1.0 + 4.0 * dist_norm)
+
+            best_pause = max(candidate_pauses, key=score_pause)
+        else:
+            best_pause = max(candidate_pauses, key=lambda p: p["xmax"] - p["xmin"])
+
         return best_pause["xmin"], best_pause["xmax"]
 
-    # Fallback: estimate speech transition around midpoint
-    logger.warning("No obvious pause interval >= 200ms found; using midpoint safety gating.")
-    mid = total_duration / 2.0
-    return max(0.5, mid - 0.25), min(total_duration - 0.5, mid + 0.25)
+    # Fallback: estimate speech transition around midpoint or expected boundary
+    logger.warning("No obvious pause interval found; using safety gating around expected transition.")
+    mid = expected_boundary if expected_boundary is not None else (total_duration / 2.0)
+    return max(0.3, mid - 0.25), min(total_duration - 0.3, mid + 0.25)
 
 
 def locate_zero_crossing_cut(
@@ -261,13 +287,17 @@ def slice_dialogue_pair(
     out_tg_modal: Path,
     out_tg_breathy: Path,
     flac_compression_level: int = 8,
+    modal_text: Optional[str] = None,
+    breathy_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute end-to-end Pop-Free slicing for one dialogue audio + TextGrid.
 
     Returns dict containing cut statistics and verified durations.
     """
     total_xmin, total_xmax, tiers = parse_praat_textgrid_tiers(textgrid_path)
-    t_modal_end, t_breathy_start = find_macro_pause_window(tiers, total_xmax)
+    t_modal_end, t_breathy_start = find_macro_pause_window(
+        tiers, total_xmax, modal_text=modal_text, breathy_text=breathy_text
+    )
 
     t_cut, cut_sample_idx, sr = locate_zero_crossing_cut(
         audio_path=audio_path,
@@ -303,6 +333,13 @@ def slice_dialogue_pair(
                     "xmax": t_cut,
                     "text": txt,
                 })
+        # Ensure initial boundary starts from 0.0 (Praat continuity requirement)
+        if m_intervals and m_intervals[0]["xmin"] > 0.0:
+            m_intervals.insert(0, {
+                "xmin": 0.0,
+                "xmax": m_intervals[0]["xmin"],
+                "text": "",
+            })
         # Ensure final boundary aligns with t_cut
         if m_intervals and m_intervals[-1]["xmax"] < t_cut:
             m_intervals.append({
@@ -343,6 +380,13 @@ def slice_dialogue_pair(
             b_intervals.insert(0, {
                 "xmin": 0.0,
                 "xmax": b_intervals[0]["xmin"],
+                "text": "",
+            })
+        # Ensure final boundary reaches breathy_dur (Praat continuity requirement)
+        if b_intervals and b_intervals[-1]["xmax"] < breathy_dur:
+            b_intervals.append({
+                "xmin": b_intervals[-1]["xmax"],
+                "xmax": breathy_dur,
                 "text": "",
             })
         breathy_tiers.append({

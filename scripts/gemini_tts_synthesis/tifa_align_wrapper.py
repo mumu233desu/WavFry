@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Wrapper around YouTube-Collector's TIFA Japanese forced aligner.
+r"""Wrapper around YouTube-Collector's TIFA Japanese forced aligner.
 
 Executes TIFA in directory mode using E:\Coding\YouTube-Collector\.venv to generate
 TextGrid files ({sample_id}.TextGrid).
@@ -126,3 +126,39 @@ class TIFAAlignmentWrapper:
 
         logger.info(f"TIFA alignment completed: {len(textgrid_map)}/{len(audio_files)} TextGrids produced.")
         return textgrid_map
+
+    def align_single_file(
+        self,
+        audio_path: Path,
+        text_path: Path,
+        output_tg_path: Path,
+    ) -> Path:
+        """Run TIFA forced alignment on a single audio-text pair safely in an isolated staging dir.
+
+        Eliminates repeated O(N^2) directory re-alignment overhead.
+        """
+        import shutil
+        import tempfile
+
+        audio_path = audio_path.resolve()
+        text_path = text_path.resolve()
+        output_tg_path = output_tg_path.resolve()
+        output_tg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory(prefix="tifa_single_") as tmp_dir_str:
+            tmp_dir = Path(tmp_dir_str)
+            staged_wav = tmp_dir / audio_path.name
+            staged_txt = tmp_dir / f"{audio_path.stem}.txt"
+
+            shutil.copy2(audio_path, staged_wav)
+            shutil.copy2(text_path, staged_txt)
+
+            res_map = self.align_directory(input_dir=tmp_dir, output_dir=tmp_dir, batch_size=1)
+            produced_tg = res_map.get(audio_path.stem) or (tmp_dir / f"{audio_path.stem}.TextGrid")
+
+            if not produced_tg.exists():
+                raise RuntimeError(f"TIFA failed to produce TextGrid for single file: {audio_path.name}")
+
+            shutil.copy2(produced_tg, output_tg_path)
+
+        return output_tg_path
