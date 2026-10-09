@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""End-to-end smoke test orchestrator for Gemini Japanese Breathy TTS synthesis.
+"""End-to-end orchestrator for BreathyTTS Japanese synthesis, alignment & slicing.
 
-Runs the full pipeline:
-1. LLM dialogue script generation (Carlos Ishi paralinguistic contexts)
-2. Gemini 3.8 Flash TTS synthesis (multi-voice 24kHz WAVs)
-3. TIFA Japanese forced alignment (openvpi ST model)
-4. TextGrid vowel interval extraction and label projection
-5. Objective acoustic validation (CPPS, voicing, spectral tilt)
+Executes the complete production pipeline:
+1. Script Pool Management (17 ATR sub-categories, screenwriter persona, local LLM with Fail-Fast)
+2. Speaker Registry & Monotonic Indexing (30 mixed voices mapped to U0001~U0030)
+3. Gemini 3.8 Flash TTS multi-voice synthesis (lossless 24kHz archived in raw_dialogues/)
+4. TIFA Japanese forced alignment (openvpi ST model)
+5. Three-Stage Intelligent Pop-Free Slicing (TIFA macro gating + RMS minimum + zero-crossing snap)
+6. FLAC Level 8 Export & TextGrid linear remapping (Part 1 Modal vs Part 2 Breathy)
+7. Sonorant + Vowel direct 'breathy = 1.0' labeling and shard JSON export (Modal unreviewed)
+8. Acoustic CPPS & Voicing validation with full audit trailing in synthesis_metadata.csv
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import logging
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
-
-from typing import Any, Dict, List
-import pandas as pd
+from typing import Any, Dict, List, Optional
+import soundfile as sf
 
 # Ensure repository root is in sys.path
 _repo_root = Path(__file__).resolve().parents[2]
@@ -28,149 +33,286 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 from scripts.gemini_tts_synthesis.script_generator import (
-    generate_smoke_test_scripts,
+    generate_script_pool,
     clean_transcript_for_tifa,
+)
+from scripts.gemini_tts_synthesis.metadata_manager import (
+    MetadataManager,
+    VOICE_REGISTRY,
+    VOICE_BY_NAME,
 )
 from scripts.gemini_tts_synthesis.tts_client import GeminiTTSClient
 from scripts.gemini_tts_synthesis.tifa_align_wrapper import TIFAAlignmentWrapper
-from scripts.gemini_tts_synthesis.textgrid_labeler import extract_labeled_segments
+from scripts.gemini_tts_synthesis.audio_dialogue_slicer import slice_dialogue_pair
+from scripts.gemini_tts_synthesis.textgrid_labeler import (
+    extract_breathy_slice_intervals,
+    write_breathy_shard,
+)
 from scripts.gemini_tts_synthesis.acoustic_validator import (
     validate_sample_acoustics,
     generate_validation_summary,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
-logger = logging.getLogger("smoke_test_orchestrator")
+logger = logging.getLogger("breathy_tts_orchestrator")
+
+DEFAULT_DATASET_ROOT = Path(r"E:\Corpus\Breathy\BreathyTTS")
 
 
 def run_pipeline(
-    output_dir: Path,
-    config_path: Path,
+    dataset_root: Path = DEFAULT_DATASET_ROOT,
+    config_path: Optional[Path] = None,
+    script_cache_dir: Optional[Path] = None,
+    num_dialogues: int = 1,
+    voice_filter: Optional[str] = None,
     skip_llm: bool = False,
     skip_tts: bool = False,
     skip_tifa: bool = False,
 ) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    audio_dir = output_dir / "audio"
-    tg_dir = output_dir / "textgrids"
-    audio_dir.mkdir(parents=True, exist_ok=True)
-    tg_dir.mkdir(parents=True, exist_ok=True)
+    dataset_root = dataset_root.resolve()
+    config_path = config_path or (Path(__file__).parent / "configs" / "ishi_contexts.yaml")
+    script_cache_dir = script_cache_dir or (Path(__file__).parents[2] / "exp_results" / "script_pool_cache")
 
-    scripts_file = output_dir / "smoke_scripts.json"
+    logger.info(f"=== Initializing BreathyTTS Pipeline at {dataset_root} ===")
+    meta_mgr = MetadataManager(dataset_root)
 
-    # ── Stage 1: Script Generation ──
-    if not skip_llm and not scripts_file.exists():
-        logger.info("=== STAGE 1: Generating Dialogue Scripts via LLM ===")
-        scripts = generate_smoke_test_scripts(config_path, scripts_file)
+    # ── Stage 1: Dialogue Script Pool ──
+    logger.info(f"=== STAGE 1: Managing Script Pool ({script_cache_dir}) ===")
+    if not skip_llm:
+        scripts = generate_script_pool(
+            config_path=config_path,
+            cache_dir=script_cache_dir,
+            scenarios_per_context=3,
+        )
     else:
-        logger.info(f"Loading existing scripts from {scripts_file}...")
-        with open(scripts_file, "r", encoding="utf-8") as f:
-            scripts = json.load(f)
+        logger.info(f"Skipping LLM calls; loading existing cached scripts from {script_cache_dir}...")
+        scripts = []
+        for sf_file in sorted(script_cache_dir.glob("*.json")):
+            try:
+                scripts.append(json.loads(sf_file.read_text(encoding="utf-8")))
+            except Exception:
+                pass
 
-    # ── Stage 2: Gemini TTS Synthesis ──
+    if not scripts:
+        logger.error(f"No scripts available in {script_cache_dir}! Please ensure scripts are generated.")
+        return
+
+    # Filter voices if requested
+    if voice_filter:
+        voices_to_run = [v for v in VOICE_REGISTRY if v["voice"].lower() == voice_filter.lower()]
+        if not voices_to_run:
+            raise ValueError(f"Unknown voice filter '{voice_filter}'.")
+    else:
+        voices_to_run = VOICE_REGISTRY
+
+    logger.info(f"Available scripts: {len(scripts)} | Voices to schedule: {len(voices_to_run)}")
+
+    # ── Stage 2: Synthesis, Alignment, Slicing & Annotation ──
     tts_client = GeminiTTSClient()
-    logger.info(f"=== STAGE 2: Synthesizing {len(scripts)} Audio Samples via Gemini TTS ===")
+    aligner = TIFAAlignmentWrapper()
 
-    synthesized_records = []
-    for s_idx, item in enumerate(scripts, 1):
-        sample_id = item["sample_id"]
-        wav_path = audio_dir / f"{sample_id}.wav"
-        txt_path = audio_dir / f"{sample_id}.txt"
+    total_to_process = min(num_dialogues, len(scripts))
+    logger.info(f"Starting batch of {total_to_process} dialogues...")
 
-        # Always ensure clean transcript .txt sidecar exists for TIFA
-        txt_path.write_text(item["clean_full_text"], encoding="utf-8")
+    processed_count = 0
+    all_manifest_records: List[Dict[str, Any]] = []
+    acoustic_results: List[Dict[str, Any]] = []
 
-        if wav_path.exists() and wav_path.stat().st_size > 4000:
-            logger.info(f"[{s_idx}/{len(scripts)}] Audio already exists: {wav_path.name}")
-            synthesized_records.append({"sample_id": sample_id, "wav_path": wav_path, "meta": item})
-            continue
+    for d_idx in range(total_to_process):
+        script_item = scripts[d_idx % len(scripts)]
+        voice_info = voices_to_run[d_idx % len(voices_to_run)]
+        voice_name = voice_info["voice"]
+        speaker_uid = voice_info["uid"]
 
-        if skip_tts:
-            logger.info(f"[{s_idx}/{len(scripts)}] Skipping TTS for {sample_id}")
-            continue
+        dialogue_id = f"dialogue_{d_idx+1:04d}_{voice_name.lower()}_{script_item['sub_id']}"
+        logger.info(f"\n--- Processing [{d_idx+1}/{total_to_process}] {dialogue_id} (Speaker: {speaker_uid} / {voice_name}) ---")
 
-        try:
-            res = tts_client.synthesize(
-                parts=item["tts_parts"],
-                voice=item["voice"],
-                output_wav_path=wav_path,
+        # 1. Allocate next monotonic utterance index pair
+        modal_key, breathy_key, spk_meta = meta_mgr.allocate_next_utterance_pair(voice_name)
+        logger.info(f"Allocated keys: Modal={modal_key} | Breathy={breathy_key}")
+
+        # 2. Raw dialogue paths
+        raw_wav_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.wav"
+        raw_txt_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.txt"
+        raw_tg_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.TextGrid"
+        raw_json_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.json"
+
+        # Prepare clean transcript sidecar for TIFA
+        raw_txt_path.write_text(script_item["clean_full_text"], encoding="utf-8")
+
+        # 3. TTS Synthesis
+        if not (raw_wav_path.exists() and raw_wav_path.stat().st_size > 4000) and not skip_tts:
+            tts_parts = [
+                {
+                    "text": script_item["modal_text"],
+                    "speech_metadata": {
+                        "speaker": voice_name,
+                        "style": script_item["modal_style"],
+                    },
+                },
+                {
+                    "text": script_item["breathy_text_with_tag"],
+                    "speech_metadata": {
+                        "speaker": voice_name,
+                        "style": script_item["breathy_style"],
+                    },
+                },
+            ]
+            logger.info(f"Synthesizing dialogue via Gemini TTS ({voice_name})...")
+            tts_res = tts_client.synthesize(
+                parts=tts_parts,
+                voice=voice_name,
+                output_wav_path=raw_wav_path,
             )
-            synthesized_records.append({"sample_id": sample_id, "wav_path": wav_path, "meta": item})
+            raw_json_path.write_text(
+                json.dumps({"script": script_item, "tts_response": tts_res}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             time.sleep(2.0)
-        except Exception as e:
-            logger.error(f"Failed to synthesize {sample_id}: {e}")
+        else:
+            logger.info(f"Using existing raw audio: {raw_wav_path.name}")
 
-    # ── Stage 3: TIFA Forced Alignment ──
-    if not skip_tifa:
-        logger.info("=== STAGE 3: Running TIFA Japanese Forced Alignment ===")
-        aligner = TIFAAlignmentWrapper()
-        tg_map = aligner.align_directory(input_dir=audio_dir, output_dir=tg_dir)
-    else:
-        logger.info("Skipping TIFA alignment execution, checking existing TextGrids...")
-        tg_map = {f.stem: f for f in tg_dir.glob("*.TextGrid")}
-
-    # ── Stage 4: Labeling and Segment Projection ──
-    logger.info("=== STAGE 4: Projecting Labels to TextGrid Vowel Intervals ===")
-    all_intervals: List[Dict[str, Any]] = []
-    sample_dict = {s["sample_id"]: s for s in scripts}
-
-    for sample_id, tg_path in tg_map.items():
-        if sample_id not in sample_dict:
+        if not raw_wav_path.exists():
+            logger.warning(f"Audio file missing for {dialogue_id}, skipping.")
             continue
-        meta = sample_dict[sample_id]
-        intervals = extract_labeled_segments(tg_path, meta, dataset_id="gemini_tts_smoke")
-        all_intervals.extend(intervals)
 
-    csv_out = output_dir / "smoke_intervals.csv"
-    if all_intervals:
-        df = pd.DataFrame(all_intervals)
-        df.to_csv(csv_out, index=False, encoding="utf-8")
-        logger.info(f"Saved {len(all_intervals)} labeled intervals to {csv_out}")
+        # 4. TIFA Alignment
+        if not raw_tg_path.exists() and not skip_tifa:
+            logger.info(f"Running TIFA forced alignment on {dialogue_id}...")
+            tg_map = aligner.align_directory(input_dir=meta_mgr.raw_dialogues_dir, output_dir=meta_mgr.raw_dialogues_dir)
+            if dialogue_id not in tg_map and not raw_tg_path.exists():
+                logger.error(f"TIFA alignment failed to generate {raw_tg_path.name}, skipping.")
+                continue
+        else:
+            logger.info(f"Using existing raw TextGrid: {raw_tg_path.name}")
 
-    # ── Stage 5: Objective Acoustic Validation ──
-    logger.info("=== STAGE 5: Acoustic Verification (CPPS, Voicing, Spectral Tilt) ===")
-    acoustic_results = []
-    for sample_id, tg_path in tg_map.items():
-        wav_path = audio_dir / f"{sample_id}.wav"
-        if not wav_path.exists():
-            continue
-        item_intervals = [r for r in all_intervals if r["file_id"] == sample_id]
-        if not item_intervals:
-            continue
-        res = validate_sample_acoustics(wav_path, item_intervals)
-        acoustic_results.append(res)
+        # 5. Three-Stage Pop-Free Slicing & FLAC Encoding (Level 8)
+        out_modal_flac = meta_mgr.audio_dir / f"{modal_key}.flac"
+        out_breathy_flac = meta_mgr.audio_dir / f"{breathy_key}.flac"
+        out_modal_tg = meta_mgr.textgrid_dir / f"{modal_key}.TextGrid"
+        out_breathy_tg = meta_mgr.textgrid_dir / f"{breathy_key}.TextGrid"
 
-    report_md = generate_validation_summary(acoustic_results)
-    report_file = output_dir / "acoustic_validation_report.md"
-    report_file.write_text(report_md, encoding="utf-8")
-    logger.info(f"Acoustic report saved to {report_file}")
+        logger.info(f"Executing Three-Stage Zero-Crossing Slicing...")
+        slice_stats = slice_dialogue_pair(
+            audio_path=raw_wav_path,
+            textgrid_path=raw_tg_path,
+            out_audio_modal=out_modal_flac,
+            out_audio_breathy=out_breathy_flac,
+            out_tg_modal=out_modal_tg,
+            out_tg_breathy=out_breathy_tg,
+            flac_compression_level=8,
+        )
+        logger.info(f"Sliced at {slice_stats['cut_time_s']}s (Zero Crossing). Modal={slice_stats['modal_duration_s']}s | Breathy={slice_stats['breathy_duration_s']}s")
 
-    print("\n" + "=" * 60)
-    print(f"SMOKE TEST PIPELINE COMPLETE!")
-    print(f"- Scripts:      {scripts_file}")
-    print(f"- Audio Dir:    {audio_dir}")
-    print(f"- TextGrids:    {tg_dir}")
-    print(f"- Intervals:    {csv_out} ({len(all_intervals)} vowels)")
-    print(f"- Report:       {report_file}")
-    print("=" * 60 + "\n")
+        # 6. Extract Vowel + Sonorant Ground Truth & Write Breathy Shard
+        b_intervals, b_shard = extract_breathy_slice_intervals(
+            breathy_tg_path=out_breathy_tg,
+            file_key=breathy_key,
+            speaker_id=speaker_uid,
+            context_id=script_item["sub_id"],
+        )
+        shard_file = write_breathy_shard(dataset_root, breathy_key, b_shard)
+        logger.info(f"Exported Breathy shard with {len(b_intervals)} labeled intervals to {shard_file.name}")
+        # Note: Modal slice intentionally receives NO shard file (0% false-negative guarantee)
+
+        all_manifest_records.extend(b_intervals)
+
+        # 7. Acoustic CPPS & Voicing Validation
+        val_res = validate_sample_acoustics(out_breathy_flac, b_intervals)
+        acoustic_results.append(val_res)
+
+        # 8. Append full audit record to synthesis_metadata.csv
+        audit_record = {
+            "dialogue_id": dialogue_id,
+            "created_at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(),
+            "voice": voice_name,
+            "speaker_id": speaker_uid,
+            "gender": voice_info["gender"],
+            "macro_id": script_item.get("macro_id", ""),
+            "sub_id": script_item.get("sub_id", ""),
+            "scenario_hint": script_item.get("scenario_hint", ""),
+            "modal_file_key": modal_key,
+            "breathy_file_key": breathy_key,
+            "modal_text": script_item.get("modal_text", ""),
+            "breathy_text_clean": script_item.get("breathy_text_clean", ""),
+            "clean_full_text": script_item.get("clean_full_text", ""),
+            "modal_style": script_item.get("modal_style", ""),
+            "breathy_style": script_item.get("breathy_style", ""),
+            "cut_time_s": slice_stats["cut_time_s"],
+            "pause_duration_s": slice_stats["pause_duration_s"],
+            "modal_duration_s": slice_stats["modal_duration_s"],
+            "breathy_duration_s": slice_stats["breathy_duration_s"],
+            "breathy_voicing": val_res.get("breathy_voicing", float("nan")),
+            "breathy_cpps_db": val_res.get("breathy_mean_cpps", float("nan")),
+            "raw_dialogue_file": raw_wav_path.name,
+        }
+        meta_mgr.append_synthesis_record(audit_record)
+
+        # Manifest slice rows
+        slice_rows = [
+            {
+                "file_key": modal_key,
+                "audio_path": f"audio/{modal_key}.flac",
+                "tg_path": f"textgrid/{modal_key}.TextGrid",
+                "speaker_id": speaker_uid,
+                "gender": voice_info["gender"],
+                "section": "modal",
+                "duration_s": slice_stats["modal_duration_s"],
+                "text": script_item.get("modal_text", ""),
+                "is_annotated": False,
+            },
+            {
+                "file_key": breathy_key,
+                "audio_path": f"audio/{breathy_key}.flac",
+                "tg_path": f"textgrid/{breathy_key}.TextGrid",
+                "speaker_id": speaker_uid,
+                "gender": voice_info["gender"],
+                "section": "breathy",
+                "duration_s": slice_stats["breathy_duration_s"],
+                "text": script_item.get("breathy_text_clean", ""),
+                "is_annotated": True,
+            },
+        ]
+        meta_mgr.append_slices_manifest_rows(slice_rows)
+        processed_count += 1
+
+    # ── Summary Report ──
+    if acoustic_results:
+        report_md = generate_validation_summary(acoustic_results)
+        report_file = dataset_root / "acoustic_validation_report.md"
+        report_file.write_text(report_md, encoding="utf-8")
+        logger.info(f"Validation summary report written to {report_file}")
+
+    print("\n" + "=" * 65)
+    print(f"BREATHYTTS PIPELINE EXECUTION COMPLETED!")
+    print(f"- Processed Dialogues: {processed_count}")
+    print(f"- Dataset Root:        {dataset_root}")
+    print(f"- Sliced FLAC Audio:   {meta_mgr.audio_dir}")
+    print(f"- Sliced TextGrids:    {meta_mgr.textgrid_dir}")
+    print(f"- Shard Annotations:   {dataset_root / '_breathy_cache' / 'batches' / 'batch_1'}")
+    print(f"- Metadata Audit Log:  {meta_mgr.metadata_csv}")
+    print(f"- Speaker Registry:    {meta_mgr.speaker_mapping_tsv}")
+    print("=" * 65 + "\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=Path("exp_results/tts_smoke_test"))
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path(__file__).parent / "configs" / "ishi_contexts.yaml",
-    )
+    parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--script-cache-dir", type=Path, default=None)
+    parser.add_argument("--num-dialogues", type=int, default=1)
+    parser.add_argument("--voice", type=str, default=None)
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--skip-tts", action="store_true")
     parser.add_argument("--skip-tifa", action="store_true")
     args = parser.parse_args()
 
     run_pipeline(
-        output_dir=args.output_dir,
+        dataset_root=args.dataset_root,
         config_path=args.config,
+        script_cache_dir=args.script_cache_dir,
+        num_dialogues=args.num_dialogues,
+        voice_filter=args.voice,
         skip_llm=args.skip_llm,
         skip_tts=args.skip_tts,
         skip_tifa=args.skip_tifa,

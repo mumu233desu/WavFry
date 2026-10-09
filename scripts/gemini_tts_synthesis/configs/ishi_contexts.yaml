@@ -1,55 +1,342 @@
+# Carlos T. Ishi (ATR) Japanese Paralinguistic Breathy Voice Taxonomy
+# Complete 8 Macro Categories & 17 Sub-categories with Canonical ATR Exemplars
+version: "2.0"
+
 contexts:
-  - id: "prominence"
-    name: "注意の喚起・強調 (Emphasis / Prominence)"
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. 強調・注意喚起・真情吐露 (Emphasis, Attention & Real Feelings)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "emphasis_attention"
+    macro_id: "emphasis_real_feelings"
+    macro_name: "強調・注意喚起・真情吐露"
+    sub_id: "emphasis_attention"
+    sub_name: "強調・注意の促し (Emphasis & Attention)"
     description: "聞き手の注意を惹きつける、重要な情報や強い感情の焦点を際立たせる発話。"
     recommended_styles:
       modal_part: "casual, clear speaking tone"
       breathy_part: "voiced breathy tone, continuous vocal cord vibration with audible pitch, sighing airy overtone, strictly NOT whisper"
     tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "その、教えるのも楽しいし、教えてもらうのも、ありがとうっとか言って"
+      - "いや、私も、でも、相当カロリー摂ってると思う"
     seed_scenarios:
       - prompt_hint: "同僚との雑談で、自分が予想外に大量のカロリーを摂取していたことに気づいて熱を込めて語る。"
       - prompt_hint: "趣味の勉強会について、人に教える楽しさと感謝される喜びを強調して説明する。"
+      - prompt_hint: "旅行の計画で、絶対にここだけは外せない名所があると熱弁を振るう。"
 
   - id: "real_feelings"
-    name: "本気の気の表出 (Expression of Real Feelings / Sincerity)"
+    macro_id: "emphasis_real_feelings"
+    macro_name: "強調・注意喚起・真情吐露"
+    sub_id: "real_feelings"
+    sub_name: "真の気持ち・本音 (Expression of Real Feelings)"
     description: "「本当に」「実は」という意味を込めて、心からの本音・率直な感情を吐露する発話。"
     recommended_styles:
       modal_part: "conversational and friendly"
       breathy_part: "voiced breathy phonation, heartfelt sincere tone with clear pitch and vocal fold vibration, airy sigh"
     tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "さっぱりですよね"
+      - "知らなかった（本当に知らなかった）"
+      - "これは、太いよー"
     seed_scenarios:
       - prompt_hint: "相手から意外な事実を聞かされ、本当に全く知らなかったと本音で打ち明ける。"
       - prompt_hint: "長いプロジェクトや試験が終わり、心から肩の荷が下りてさっぱりしたと吐露する。"
+      - prompt_hint: "目の前にある予想外のサイズや迫力に圧倒され、思わず率直な実感を口にする。"
 
-  - id: "polite_backchannel"
-    name: "相槌・配慮・丁寧 (Politeness / Modesty / Empathy)"
-    description: "相手の話に深く共感し、出しゃばらず謙虚に、思いやりを込めて受容する相槌と返答。"
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. 興奮・感情再現引用 (Excitement & Quoting Emotional Speech)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "excited_speech"
+    macro_id: "excitement_quoting"
+    macro_name: "興奮・感情再現引用"
+    sub_id: "excited_speech"
+    sub_name: "興奮気味の発話 (Excited Speech)"
+    description: "出来事の臨場感や興奮が冷めやらず、早まる息遣いとともに熱っぽく語る発話。"
+    recommended_styles:
+      modal_part: "lively conversational narrative"
+      breathy_part: "excited voiced breathy tone, rapid breathy intake, sustained pitch vibration, enthusiastic"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "人が入ってるにも関わらず、ちゃっと取っていって"
+      - "しかも、こう、股を、がーって開いて"
+    seed_scenarios:
+      - prompt_hint: "タイムセールや人混みでの予想外な争奪戦の光景を、興奮気味に身振り手振りを交えて話す。"
+      - prompt_hint: "スポーツ観戦や劇的な逆転劇の決定的瞬間を、その場の熱狂をそのままに再現して伝える。"
+
+  - id: "quoting_excited"
+    macro_id: "excitement_quoting"
+    macro_name: "興奮・感情再現引用"
+    sub_id: "quoting_excited"
+    sub_name: "興奮した発言の再現引用 (Quoting Emotional Speech)"
+    description: "過去に誰か（または自分）が激高・興奮して言ったセリフを、当時の息遣いのまま引用して話す発話。"
+    recommended_styles:
+      modal_part: "casual storytelling setup"
+      breathy_part: "quoted emotional voice, breathless dramatic pitch, mimicking excited tone, clear vocal cords"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "あんた、なんで、そんな時までほっとくの、みたいな事で"
+      - "えーとか言って終わったんねんやんか"
+      - "ハギか、ミコか、どっちかなんか、好きやったやん、とかってゆうとってんけどな"
+    seed_scenarios:
+      - prompt_hint: "家族や友人から「なんで今まで黙ってたの！」と怒られた当時の緊迫感を再現して愚痴る。"
+      - prompt_hint: "学生時代の恋愛話で、周りからからかわれた当時のセリフをそのまま引用して笑い合う。"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. 丁寧・改まった相槌 (Politeness & Backchannels)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "polite_formal_backchannel"
+    macro_id: "polite_backchannel"
+    macro_name: "丁寧・改まった相槌"
+    sub_id: "formal_politeness"
+    sub_name: "改まった丁寧・謙虚 (Formal Politeness / Modesty)"
+    description: "目上の人や改まった場面で、礼儀と慎み、深い敬意を込めて返す丁寧な返答と相槌。"
     recommended_styles:
       modal_part: "polite, attentive tone"
       breathy_part: "voiced, polite compassionate tone with soft breathy leakage, maintain clear pitch"
     tag_recommendation: "<sigh>"
+    few_shot_exemplars:
+      - "はい"
+      - "ええ"
     seed_scenarios:
-      - prompt_hint: "悩みを打ち明けてくれた相手に対し、理解と深い同情を示しながら優しく受け止める。"
-      - prompt_hint: "先輩からのアドバイスを真摯かつ謙虚に聞き、感謝と納得の意を伝える。"
+      - prompt_hint: "取引先や恩師からの大切な助言を、深く心に留めながら静かに「はい、ええ」と受け止める。"
+      - prompt_hint: "面談の場で、これまでの苦労を労われたことに対し、恐縮と感謝を込めて応答する。"
 
-  - id: "gentle_tone"
-    name: "童話の読み聞かせ・優しさ (Gentle Tone / Storytelling)"
+  - id: "polite_casual_backchannel"
+    macro_id: "polite_backchannel"
+    macro_name: "丁寧・改まった相槌"
+    sub_id: "casual_interest"
+    sub_name: "親密な関心・共感相槌 (Casual Interest & Empathy)"
+    description: "親しい間柄で相手の真剣な打ち明け話に全神経を集中し、深く共感しながら打つ相槌。"
+    recommended_styles:
+      modal_part: "attentive listener tone"
+      breathy_part: "warm voiced empathetic tone, soft pitch, continuous breathy leakage"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "うん"
+      - "うーん"
+    seed_scenarios:
+      - prompt_hint: "友人が抱えている葛藤を打ち明けてくれた際、決して否定せず寄り添うように「うん、うん」と促す。"
+      - prompt_hint: "家族の思い出話に耳を傾け、感慨深そうに静かに相槌を打つ。"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. 童話の読み聞かせ・優しさ (Gentle Tone & Storytelling)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "gentle_storytelling"
+    macro_id: "gentle_tone"
+    macro_name: "童話の読み聞かせ・優しさ"
+    sub_id: "gentle_narrative"
+    sub_name: "穏やかな語りかけ・情景描写 (Gentle Narrative)"
     description: "絵本の読み聞かせや、親しい相手・子供を包み込むような温かく柔らかい語りかけ。"
     recommended_styles:
       modal_part: "warm, calm narrative tone"
       breathy_part: "warm voiced breathy tone, clear gentle pitch and vocal vibration, airy storytelling tone, strictly NOT whisper"
     tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "森の奥へ出かけました"
+      - "栗を籠いっぱいに拾ったら、やわらかく茹でてクリームにしようね"
     seed_scenarios:
       - prompt_hint: "秋の森で拾った栗を使って甘いお菓子を作る様子を、優しく穏やかに語りかける。"
       - prompt_hint: "小さな動物が夜の静かな森の奥へ冒険に出かける場面を、静けさを込めて読み聞かせる。"
+      - prompt_hint: "冬の夜、暖炉のそばで温かいミルクを飲みながら昔話を語りかける。"
 
-  - id: "surprise_admiration"
-    name: "感嘆・意外・驚き (Surprise / Admiration)"
-    description: "予期せぬ出来事や素晴らしい成果に触れ、思わず息を呑むような驚きと感心の表出。"
+  # ──────────────────────────────────────────────────────────────────────────
+  # 5. 驚き・意外・感心 (Surprise, Unexpectedness & Admiration)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "surprise_unexpected"
+    macro_id: "surprise_admiration"
+    macro_name: "驚き・意外・感心"
+    sub_id: "unexpectedness"
+    sub_name: "驚き・意外 (Unexpectedness)"
+    description: "想定外の事実を突きつけられ、思わず息を呑みながら発する驚きのリアクション。"
     recommended_styles:
       modal_part: "casual conversational"
-      breathy_part: "voiced breathy phonation, astonished admiring tone with sustained vocal cord pitch and breathless leakage"
+      breathy_part: "astonished voiced breathy tone, sharp breath intake, sudden release with audible vocal cords"
     tag_recommendation: "<gasp>"
+    few_shot_exemplars:
+      - "えー、自衛隊"
+      - "えー"
+      - "あっ"
     seed_scenarios:
-      - prompt_hint: "友人が自作した料理や作品のクオリティがあまりに高くて、思わず息を呑んで感嘆する。"
-      - prompt_hint: "知人が思いがけない経歴や特技を持っていることを知り、心から驚き感心する。"
+      - prompt_hint: "普段物静かな友人が意外すぎる前職や特技を持っていたことを知り、思わず絶句して驚く。"
+      - prompt_hint: "街中で偶然にも数年ぶりの旧友と鉢合わせし、思わず声が漏れ出る。"
+
+  - id: "surprise_admiration"
+    macro_id: "surprise_admiration"
+    macro_name: "驚き・意外・感心"
+    sub_id: "admiration"
+    sub_name: "感心・感嘆 (Admiration)"
+    description: "素晴らしい作品や圧巻の光景を目の当たりにし、心からの敬意と感嘆を吐息とともに漏らす発話。"
+    recommended_styles:
+      modal_part: "casual appreciative tone"
+      breathy_part: "voiced breathy phonation, admiring tone with sustained vocal cord pitch and breathless leakage"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "あー、すごい"
+      - "あー、そうなんですか"
+      - "はー"
+    seed_scenarios:
+      - prompt_hint: "友人が自作した料理や工芸品のあまりの美しさに、息を呑んで見惚れながら称賛する。"
+      - prompt_hint: "旅先で息を呑むような絶景や星空を前にして、言葉を失いながら静かに感嘆する。"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 6. ひそひそ話・戸惑い・独り言 (Confidential, Embarrassment & Self-Talk)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "confidential_talking"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "confidential"
+    sub_name: "内緒話・言えない事 (Confidential Talking)"
+    description: "他人に聞かれては困る秘密や噂話を、声量を落としつつ声帯の音程を保って話す発話。"
+    recommended_styles:
+      modal_part: "quiet discreet voice"
+      breathy_part: "confidential voiced breathy tone, close-mic intimateness, low volume with distinct pitch vibration"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "それは言えないです"
+      - "これ、整形してるんじゃないかなーって"
+    seed_scenarios:
+      - prompt_hint: "カフェで周囲に聞こえないよう身を乗り出し、会社や知人のここだけの内緒話を打ち明ける。"
+      - prompt_hint: "サプライズパーティーの準備について、主役に気づかれないよう耳打ちで打ち合わせる。"
+
+  - id: "embarrassment_hesitation"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "embarrassment"
+    sub_name: "戸惑い・困惑 (Embarrassment & Hesitation)"
+    description: "予期せぬ質問や気まずい局面に直面し、言葉に詰まりながら息混じりに絞り出す発話。"
+    recommended_styles:
+      modal_part: "hesitant conversational"
+      breathy_part: "embarrassed voiced breathy tone, stuttering vocal vibration, shy and hesitant release"
+    tag_recommendation: "<sigh>"
+    few_shot_exemplars:
+      - "いや、その、どう言えばいいのかな..."
+    seed_scenarios:
+      - prompt_hint: "昔の恥ずかしい失敗談を急に掘り返され、照れ隠しと戸惑いで赤面しながら言い淀む。"
+      - prompt_hint: "好意を寄せている相手から急に核心を突かれた質問をされ、動揺しながら答える。"
+
+  - id: "talking_to_oneself"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "talking_to_oneself"
+    sub_name: "自己発話・独り言 (Talking to Oneself)"
+    description: "独りで思考を整理したり、迷ったりしている最中に思わず口から零れ落ちる独り言。"
+    recommended_styles:
+      modal_part: "musing intro"
+      breathy_part: "soliloquy voiced breathy tone, soft introspective pitch, trailing off into breath"
+    tag_recommendation: "<breath>"
+    few_shot_exemplars:
+      - "誰だろう"
+      - "どうかなー"
+      - "うん、どっちかかなー"
+    seed_scenarios:
+      - prompt_hint: "本棚やメニューの前で、どちらを選ぶべきか悩んで一人で呟きを漏らす。"
+      - prompt_hint: "思い出せない人の名前や出来事の鍵を、記憶の底から探り当てようと独り言を呟く。"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 7. ため息混じりの発話 (Sighing: Weariness, Disappointment & Relief)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "sighing_weariness"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "weariness"
+    sub_name: "疲れ・疲労 (Weary / Tired)"
+    description: "一日の終わりや重労働の後に、全身の力が抜け落ちたため息とともに発する脱力発話。"
+    recommended_styles:
+      modal_part: "tired low voice"
+      breathy_part: "exhausted voiced breathy tone, heavy sighing release, clear low pitch with prolonged breath dissipation"
+    tag_recommendation: "<sigh>"
+    few_shot_exemplars:
+      - "誰が、一番高いでしょうかねー"
+      - "あー"
+    seed_scenarios:
+      - prompt_hint: "残業を終えて深夜に帰宅し、ソファーに倒れ込みながら同居人や自分に向けて漏らす。"
+      - prompt_hint: "長時間の立ち仕事や登山を終え、靴を脱いだ瞬間に思わず漏れ出る安らぎの疲労感。"
+
+  - id: "sighing_disappointment"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "disappointment"
+    sub_name: "残念・がっかり (Disappointed)"
+    description: "期待が外れたり、楽しみにしていた予定が中止になった際の、落胆のため息交じりの発話。"
+    recommended_styles:
+      modal_part: "somber conversational"
+      breathy_part: "disappointed voiced breathy tone, deflated pitch contour, gloomy sighing airflow"
+    tag_recommendation: "<sigh>"
+    few_shot_exemplars:
+      - "そうなんですよー"
+    seed_scenarios:
+      - prompt_hint: "楽しみにしていた週末の旅行が悪天候で中止になり、残念そうに溜息混じりに同意する。"
+      - prompt_hint: "贔屓のチームが惜敗した試合直後、悔しさと脱力感で肩を落として呟く。"
+
+  - id: "sighing_relief"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "relief"
+    sub_name: "安心・安堵 (Relief)"
+    description: "危機が去り、あるいは大きな心配事が解消して、胸を撫で下ろす安堵の吐息とともに発する発話。"
+    recommended_styles:
+      modal_part: "recovering calm tone"
+      breathy_part: "relieved voiced breathy tone, softening warm pitch, deep releasing breath of gratitude"
+    tag_recommendation: "<sigh>"
+    few_shot_exemplars:
+      - "あー、ありがとう、うーん、昨日さ"
+    seed_scenarios:
+      - prompt_hint: "紛失したと思っていた大切な財布やパスポートが見つかり、安堵の溜息とともに礼を言う。"
+      - prompt_hint: "病院の検査結果が全く問題ないと分かり、張り詰めていた緊張がほどけてほっと息をつく。"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 8. 笑いが伴う発話 (Laughing: Funny, Bitter & Forced)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "laughing_funny"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "funny"
+    sub_name: "面白い・可笑しさ (Funny Laughing)"
+    description: "話の可笑しさに思わず吹き出しそうになりながら、笑いの息を漏らしつつ語る発話。"
+    recommended_styles:
+      modal_part: "cheerful amused tone"
+      breathy_part: "chuckle-infused voiced breathy tone, laughing breath pulsations, melodic amused pitch"
+    tag_recommendation: "<laugh>"
+    few_shot_exemplars:
+      - "あ、そうなんだ"
+      - "あ、おかしい"
+      - "せや、久しぶりでさ"
+    seed_scenarios:
+      - prompt_hint: "友人のドジな体験談を聞いて思わずツボにはまり、笑いを堪えきれずに相槌を打つ。"
+      - prompt_hint: "昔の懐かしい写真を久しぶりに見返し、当時の格好の可笑しさに吹き出しながら語る。"
+
+  - id: "laughing_bitter"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "bitter"
+    sub_name: "苦笑い・自嘲 (Bitter Laughing)"
+    description: "どうしようもない理不尽や自分のうっかりミスに対し、苦笑いや自嘲の息を漏らしながら語る発話。"
+    recommended_styles:
+      modal_part: "wry storytelling tone"
+      breathy_part: "wry voiced breathy tone, dry bitter laugh aspiration, self-deprecating vocal vibration"
+    tag_recommendation: "<laugh>"
+    few_shot_exemplars:
+      - "まさか、そんな早いとは思わんかってんやん"
+      - "わかんねんな"
+      - "まあね、一応ね"
+    seed_scenarios:
+      - prompt_hint: "念入りに準備したのに初歩的な見落としで失敗し、呆れ笑い混じりに経緯を打ち明ける。"
+      - prompt_hint: "電車の乗り換えを間違えて真逆の方向へ行ってしまった話を、自嘲気味に苦笑しながら話す。"
+
+  - id: "laughing_forced"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "forced"
+    sub_name: "愛想笑い・社交辞令 (Forced / Social Laughing)"
+    description: "ビジネスや初対面の場で、緊張や配慮を隠すために社交的な愛想笑いを含ませて発する発話。"
+    recommended_styles:
+      modal_part: "polite formal tone"
+      breathy_part: "courteous voiced breathy tone, polite social laugh flutter, diplomatic pitch control"
+    tag_recommendation: "<laugh>"
+    few_shot_exemplars:
+      - "まあ、いろいろ、大変な、け、ご経験だったと思うんですが"
+      - "今日はたくさん話して頂きましたが"
+      - "いや、そうですね"
+    seed_scenarios:
+      - prompt_hint: "上司や取引先の微妙な冗談や武勇伝に対し、角を立てないよう愛想笑いを交えて話を合わせる。"
+      - prompt_hint: "初対面の挨拶で場を和ませようと、少しぎこちない笑顔と愛想笑いを浮かべながら労う。"
