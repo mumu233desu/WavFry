@@ -163,7 +163,6 @@ def generate_single_script(
     scenarios = context_info.get("seed_scenarios", [])
     scenario = scenarios[scenario_idx % len(scenarios)] if scenarios else {"prompt_hint": "日常の自然な会話"}
     exemplars = context_info.get("few_shot_exemplars", [])
-
     few_shot_str = "\n".join([f"  - 例: 「{ex}」" for ex in exemplars]) if exemplars else "  - (なし)"
     tag = context_info.get("tag_recommendation", "<breath>")
 
@@ -172,11 +171,16 @@ def generate_single_script(
 【対象の副言語的気声（Breathy Voice）コンテキスト】
 - 大分類: {context_info.get('macro_name', context_info['id'])}
 - 子分類: {context_info.get('sub_name', context_info['id'])}
-- 背景説明: {context_info['description']}
-- 基本シチュエーション: {scenario['prompt_hint']}
-- シーンバリエーション指定（通番 #{scenario_idx+1}）: 毎回異なる状況や人間関係（職場、家庭、友人、恋人、旅先、深夜の会話など）を自由に設定し、多様で新鮮な対話劇を描いてください。
-- 台詞の参考例（実際の会話の空気感・お手本）:
+- 感情・発話意図の背景: {context_info['description']}
+- 台詞の参考例（実際の会話の空気感・発声のお手本）:
 {few_shot_str}
+
+【話題（トピック）の自由選定と独立性に関する重要指示】
+1. 上記の「台詞の参考例」は、あくまで声のトーンや息づかい、口語表現の自然さ（リアリティ）を示すためのお手本です。
+   ※最重要：参考例に含まれる具体的な話題や単語（例: カロリー、特定の食べ物や名詞など）は決して真似・流用しないでください。
+2. 今回の対話（通番 #{scenario_idx+1}）で取り上げる【具体的な話題・出来事・シチュエーション】は、プロの脚本家としてあなた自身が自由にゼロから考案・選定してください。
+   （例: 職場での想定外のミスや成功、趣味のこだわり、家族やペットの珍しい行動、旅行先でのハプニング、日用品の買い物、秘密の告白、天気の急変など、日常のあらゆる多彩なテーマから自由に選んでください）
+3. 同じ子分類であっても、通番ごとに毎回まったく異なる人間関係（同僚、夫婦、親子、幼馴染、初対面の人など）と新鮮な話題を設定してください。
 
 【脚本執筆要件】
 1. 人物Aの短い呼びかけ・導入発話（context_lead_in）と、人物Bの応答発話を作成してください。
@@ -185,11 +189,12 @@ def generate_single_script(
 4. 人物Bの発話は必ず以下の2つのパートに論理的に分割してください：
    - modal_text: 導入部の通常の常態音（Modal Voice）で話す部分（例: 相槌、前置き、状況の受け止めなど、全体の30%〜40%）
    - breathy_text: 感情や意図が強く込められ、息が漏れ出る気声（Breathy Voice）で話す核心部分（全体の60%〜70%）
-     ※重要：気声（Breathy Voice）は声帯の振動（音程・ピッチ）を維持したまま息が漏れる発声です。ささやき声（Whisper）ではありません。styleにwhisperやwhisper-likeという単語は絶対に含めないでください。
+     ※重要：気声（Breathy Voice）は声帯の振動（音程・ピッチ）を維持したまま息が漏れる発声です。ささやき声（Whisper）ではありません。styleにwhisperやwhisper-likeという単语は絶対に含めないでください。
 5. breathy_textの先頭には、息の漏れを表すタグ {tag} を挿入してください。
 6. 出力は以下のJSONフォーマットのみを返してください：
 
 {{
+  "scenario_topic": "あなたが考案した独自の話題・シチュエーション（簡潔に1行）",
   "context_lead_in": "人物Aの台詞",
   "modal_text": "人物Bの前半の台詞（通常の平仮名/漢字、タグなし）",
   "modal_style": "{context_info['recommended_styles']['modal_part']}",
@@ -236,13 +241,15 @@ def generate_single_script(
     clean_full = clean_transcript_for_tifa(f"{modal_text} {breathy_clean}")
     script_id = f"script_{context_info['id']}_{scenario_idx+1:02d}"
 
+    topic_desc = raw_res.get("scenario_topic", "").strip() or scenario.get("prompt_hint", f"独自創作シナリオ #{scenario_idx+1}")
+
     return {
         "script_id": script_id,
         "macro_id": context_info.get("macro_id", context_info["id"]),
         "macro_name": context_info.get("macro_name", ""),
         "sub_id": context_info.get("sub_id", context_info["id"]),
         "sub_name": context_info.get("sub_name", ""),
-        "scenario_hint": scenario["prompt_hint"],
+        "scenario_hint": topic_desc,
         "context_lead_in": raw_res.get("context_lead_in", "").strip(),
         "modal_text": modal_text,
         "modal_style": raw_res.get("modal_style", context_info["recommended_styles"]["modal_part"]),
