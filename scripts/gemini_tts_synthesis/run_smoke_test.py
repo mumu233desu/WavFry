@@ -68,6 +68,7 @@ def run_pipeline(
     skip_llm: bool = False,
     skip_tts: bool = False,
     skip_tifa: bool = False,
+    scripts_only: bool = False,
 ) -> None:
     dataset_root = dataset_root.resolve()
     config_path = config_path or (Path(__file__).parent / "configs" / "ishi_contexts.yaml")
@@ -95,6 +96,15 @@ def run_pipeline(
 
     if not scripts:
         logger.error(f"No scripts available in {script_cache_dir}! Please ensure scripts are generated.")
+        return
+
+    if scripts_only:
+        logger.info(f"=== Scripts-Only Mode: {len(scripts)} scripts ready in {script_cache_dir}. Exiting successfully. ===")
+        print("\n" + "=" * 60)
+        print("SCRIPTS-ONLY GENERATION COMPLETED!")
+        print(f"- Total Scripts:   {len(scripts)}")
+        print(f"- Script Pool Dir: {script_cache_dir}")
+        print("=" * 60 + "\n")
         return
 
     # Filter voices if requested
@@ -305,6 +315,7 @@ def main() -> None:
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--skip-tts", action="store_true")
     parser.add_argument("--skip-tifa", action="store_true")
+    parser.add_argument("--scripts-only", action="store_true", help="Generate/manage script pool only and exit without synthesis.")
     args = parser.parse_args()
 
     run_pipeline(
@@ -316,6 +327,7 @@ def main() -> None:
         skip_llm=args.skip_llm,
         skip_tts=args.skip_tts,
         skip_tifa=args.skip_tifa,
+        scripts_only=args.scripts_only,
     )
 
 

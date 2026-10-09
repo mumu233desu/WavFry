@@ -249,8 +249,61 @@ def generate_script_pool(
     return scripts
 
 
+def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Standalone dialogue script pool generator (Screenwriter Persona).")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(__file__).parent / "configs" / "ishi_contexts.yaml",
+        help="Path to ishi_contexts.yaml",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path(r"E:\Corpus\Breathy\BreathyTTS\script_pool_cache"),
+        help="Directory where script sharded JSON files are saved.",
+    )
+    parser.add_argument(
+        "--count-per-sub",
+        type=int,
+        default=3,
+        help="Number of scenarios to generate per sub-category (17 sub-categories * count).",
+    )
+    parser.add_argument(
+        "--endpoint",
+        type=str,
+        default=LOCAL_LLM_ENDPOINT,
+        help="Local LLM endpoint URL (Fail-Fast, no fallback).",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Clear existing script cache before generating.",
+    )
+    args = parser.parse_args()
+
+    if args.clean and args.cache_dir.exists():
+        logger.info(f"Cleaning existing script cache in {args.cache_dir}...")
+        for old_f in args.cache_dir.glob("*.json"):
+            old_f.unlink()
+
+    pool = generate_script_pool(
+        config_path=args.config,
+        cache_dir=args.cache_dir,
+        scenarios_per_context=args.count_per_sub,
+        endpoint=args.endpoint,
+    )
+    print("\n" + "=" * 60)
+    print(f"SCRIPT GENERATION COMPLETE!")
+    print(f"- Total Scripts:   {len(pool)}")
+    print(f"- Cache Directory: {args.cache_dir}")
+    print("=" * 60 + "\n")
+
+
 if __name__ == "__main__":
-    cfg_file = Path(__file__).parent / "configs" / "ishi_contexts.yaml"
-    out_dir = Path("exp_results/script_pool_cache")
-    pool = generate_script_pool(cfg_file, out_dir, scenarios_per_context=3)
-    print(f"Generated/Loaded {len(pool)} scripts successfully.")
+    main()
