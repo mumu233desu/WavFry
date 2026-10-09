@@ -110,7 +110,7 @@ def call_local_llm_json(
                     f"根据系统设计原则，禁止自动回退到公网接口，程序将直接中止退出。\n"
                     f"{'='*70}\n"
                 )
-                sys.exit(1)
+                os._exit(1)
             elif attempt < max_retries:
                 logger.warning(f"Transient error calling local LLM (attempt {attempt}/{max_retries}): {e}. Retrying in 2s...")
                 time.sleep(2.0)

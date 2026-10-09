@@ -72,7 +72,7 @@ def run_pipeline(
 ) -> None:
     dataset_root = dataset_root.resolve()
     config_path = config_path or (Path(__file__).parent / "configs" / "ishi_contexts.yaml")
-    script_cache_dir = script_cache_dir or (Path(__file__).parents[2] / "exp_results" / "script_pool_cache")
+    script_cache_dir = script_cache_dir or (dataset_root / "script_pool_cache")
 
     logger.info(f"=== Initializing BreathyTTS Pipeline at {dataset_root} ===")
     meta_mgr = MetadataManager(dataset_root)
@@ -186,13 +186,14 @@ def run_pipeline(
             logger.warning(f"Audio file missing for {dialogue_id}, skipping.")
             continue
 
-        # 4. TIFA Alignment
+        # 4. TIFA Alignment (Isolated single-file alignment, O(1) per dialogue)
         if not raw_tg_path.exists() and not skip_tifa:
             logger.info(f"Running TIFA forced alignment on {dialogue_id}...")
-            tg_map = aligner.align_directory(input_dir=meta_mgr.raw_dialogues_dir, output_dir=meta_mgr.raw_dialogues_dir)
-            if dialogue_id not in tg_map and not raw_tg_path.exists():
-                logger.error(f"TIFA alignment failed to generate {raw_tg_path.name}, skipping.")
-                continue
+            aligner.align_single_file(
+                audio_path=raw_wav_path,
+                text_path=raw_txt_path,
+                output_tg_path=raw_tg_path,
+            )
         else:
             logger.info(f"Using existing raw TextGrid: {raw_tg_path.name}")
 
@@ -211,6 +212,8 @@ def run_pipeline(
             out_tg_modal=out_modal_tg,
             out_tg_breathy=out_breathy_tg,
             flac_compression_level=8,
+            modal_text=script_item.get("modal_text"),
+            breathy_text=script_item.get("breathy_text_clean"),
         )
         logger.info(f"Sliced at {slice_stats['cut_time_s']}s (Zero Crossing). Modal={slice_stats['modal_duration_s']}s | Breathy={slice_stats['breathy_duration_s']}s")
 
@@ -252,8 +255,8 @@ def run_pipeline(
             "pause_duration_s": slice_stats["pause_duration_s"],
             "modal_duration_s": slice_stats["modal_duration_s"],
             "breathy_duration_s": slice_stats["breathy_duration_s"],
-            "breathy_voicing": val_res.get("breathy_voicing", float("nan")),
-            "breathy_cpps_db": val_res.get("breathy_mean_cpps", float("nan")),
+            "breathy_voicing": val_res.get("breathy_avg_voicing", float("nan")),
+            "breathy_cpps_db": val_res.get("breathy_avg_cpps", float("nan")),
             "raw_dialogue_file": raw_wav_path.name,
         }
         meta_mgr.append_synthesis_record(audit_record)

@@ -9,6 +9,7 @@ Modal slices are deliberately excluded from shards (0% false-negative protection
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -23,7 +24,6 @@ logger = logging.getLogger("textgrid_labeler")
 JAPANESE_VOWELS: Set[str] = {
     "a", "i", "u", "e", "o",
     "a:", "i:", "u:", "e:", "o:",
-    "A", "I", "U", "E", "O",
     "um",
 }
 
@@ -137,6 +137,7 @@ def extract_breathy_slice_intervals(
         "version": 1,
         "schema": "direct_breathy_annotation",
         "file_key": file_key,
+        "speaker_id": speaker_id,
         "annotations": shard_annotations,
         "reviewed_at": time.time(),
     }
@@ -156,7 +157,8 @@ def write_breathy_shard(
     shard_dir = batch_dir / "manual_breathy_annotations.json.d"
     shard_dir.mkdir(parents=True, exist_ok=True)
 
-    shard_path = shard_dir / f"{file_key}.json"
+    key_hash = hashlib.sha256(file_key.encode("utf-8")).hexdigest()
+    shard_path = shard_dir / f"{key_hash}.json"
 
     # Atomic write via tempfile
     with tempfile.NamedTemporaryFile("w", dir=shard_dir, delete=False, encoding="utf-8") as tf:
