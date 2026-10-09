@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import sys
 import tempfile
@@ -55,6 +56,7 @@ def call_local_llm_json(
     api_key: str = LOCAL_LLM_KEY,
     model: str = LOCAL_LLM_MODEL,
     timeout: int = 45,
+    seed: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Call strictly local LLM endpoint and return parsed JSON object.
 
@@ -65,7 +67,7 @@ def call_local_llm_json(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    body = {
+    body: Dict[str, Any] = {
         "model": model,
         "messages": [
             {
@@ -83,6 +85,8 @@ def call_local_llm_json(
         ],
         "temperature": 0.5,
     }
+    if seed is not None:
+        body["seed"] = seed
 
     max_retries = 3
     content = ""
@@ -204,9 +208,12 @@ def generate_single_script(
 }}
 """
     raw_res = None
+    used_seed = None
     for attempt in range(1, max_attempts + 1):
+        seed_val = random.randint(100000, 999999)
+        prompt_with_seed = f"{prompt.rstrip()}\n\n[seed: {seed_val}]\n"
         try:
-            res = call_local_llm_json(prompt, endpoint=endpoint, api_key=api_key, model=model)
+            res = call_local_llm_json(prompt_with_seed, endpoint=endpoint, api_key=api_key, model=model, seed=seed_val)
             valid, reason = validate_script_data(res)
             if not valid:
                 logger.warning(
@@ -215,6 +222,7 @@ def generate_single_script(
                 time.sleep(1.0)
                 continue
             raw_res = res
+            used_seed = seed_val
             break
         except Exception as e:
             logger.warning(
@@ -245,6 +253,7 @@ def generate_single_script(
 
     return {
         "script_id": script_id,
+        "seed": used_seed,
         "macro_id": context_info.get("macro_id", context_info["id"]),
         "macro_name": context_info.get("macro_name", ""),
         "sub_id": context_info.get("sub_id", context_info["id"]),
