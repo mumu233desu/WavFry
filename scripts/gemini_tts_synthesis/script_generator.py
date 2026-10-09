@@ -10,6 +10,7 @@ and persists generated scripts via atomic sharded caching.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import logging
@@ -17,10 +18,12 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
@@ -78,28 +81,45 @@ def call_local_llm_json(
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.45,
+        "temperature": 0.5,
     }
 
-    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw_data = resp.read().decode("utf-8")
-            res = json.loads(raw_data)
-            content = res["choices"][0]["message"]["content"].strip()
-    except urllib.error.URLError as e:
-        logger.error(
-            f"\n{'='*70}\n"
-            f"[FATAL] 本地文本 LLM 端口无法连接！({endpoint})\n"
-            f"原因: {e}\n"
-            f"请检查本地 LLM 服务（8045端口）是否已成功启动。\n"
-            f"根据系统设计原则，禁止自动回退到公网接口，程序将直接中止退出。\n"
-            f"{'='*70}\n"
-        )
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"[FATAL] 本地 LLM 请求发生未知异常: {e}")
-        sys.exit(1)
+    max_retries = 3
+    content = ""
+    for attempt in range(1, max_retries + 1):
+        req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw_data = resp.read().decode("utf-8")
+                res = json.loads(raw_data)
+                content = res["choices"][0]["message"]["content"].strip()
+                break
+        except urllib.error.URLError as e:
+            # If target machine actively refused connection, fail fast immediately
+            err_str = str(e)
+            if "10061" in err_str or "Connection refused" in err_str:
+                logger.error(
+                    f"\n{'='*70}\n"
+                    f"[FATAL] 本地文本 LLM 端口无法连接！({endpoint})\n"
+                    f"原因: {e}\n"
+                    f"请检查本地 LLM 服务（8045端口）是否已成功启动。\n"
+                    f"根据系统设计原则，禁止自动回退到公网接口，程序将直接中止退出。\n"
+                    f"{'='*70}\n"
+                )
+                sys.exit(1)
+            elif attempt < max_retries:
+                logger.warning(f"Transient error calling local LLM (attempt {attempt}/{max_retries}): {e}. Retrying in 2s...")
+                time.sleep(2.0)
+            else:
+                logger.error(f"Local LLM request failed after {max_retries} attempts: {e}")
+                raise RuntimeError(f"Local LLM request failed after {max_retries} attempts: {e}")
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(f"Unexpected error (attempt {attempt}/{max_retries}): {e}. Retrying in 2s...")
+                time.sleep(2.0)
+            else:
+                logger.error(f"Local LLM request encountered unexpected error: {e}")
+                raise RuntimeError(f"Local LLM error: {e}")
 
     # Clean markdown fences if any
     if "```json" in content:
@@ -114,14 +134,32 @@ def call_local_llm_json(
         raise RuntimeError(f"Invalid JSON from local LLM: {e}") from e
 
 
+def validate_script_data(raw_res: Any) -> Tuple[bool, str]:
+    """Validate JSON schema and content requirements for dialogue script."""
+    if not isinstance(raw_res, dict):
+        return False, "Output is not a JSON object"
+    for field in ["context_lead_in", "modal_text", "breathy_text_clean"]:
+        if field not in raw_res or not isinstance(raw_res[field], str):
+            return False, f"Missing or non-string field: '{field}'"
+        if len(raw_res[field].strip()) == 0:
+            return False, f"Field '{field}' is empty"
+
+    total_len = len(raw_res["modal_text"].strip()) + len(raw_res["breathy_text_clean"].strip())
+    if total_len < 25:
+        return False, f"Script text too short ({total_len} chars), expected >= 25 chars for ~5s+ dialogue"
+
+    return True, ""
+
+
 def generate_single_script(
     context_info: Dict[str, Any],
     scenario_idx: int,
     endpoint: str = LOCAL_LLM_ENDPOINT,
     api_key: str = LOCAL_LLM_KEY,
     model: str = LOCAL_LLM_MODEL,
+    max_attempts: int = 4,
 ) -> Dict[str, Any]:
-    """Generate a single structured dialogue script for a given paralinguistic sub-category."""
+    """Generate a single structured dialogue script for a given paralinguistic sub-category with retry validation."""
     scenarios = context_info.get("seed_scenarios", [])
     scenario = scenarios[scenario_idx % len(scenarios)] if scenarios else {"prompt_hint": "日常の自然な会話"}
     exemplars = context_info.get("few_shot_exemplars", [])
@@ -135,17 +173,18 @@ def generate_single_script(
 - 大分類: {context_info.get('macro_name', context_info['id'])}
 - 子分類: {context_info.get('sub_name', context_info['id'])}
 - 背景説明: {context_info['description']}
-- 情景・シチュエーション: {scenario['prompt_hint']}
-- ATR実測コーパス典範例（この呼吸感・自然さを参考にしてください）:
+- 基本シチュエーション: {scenario['prompt_hint']}
+- シーンバリエーション指定（通番 #{scenario_idx+1}）: 毎回異なる状況や人間関係（職場、家庭、友人、恋人、旅先、深夜の会話など）を自由に設定し、多様で新鮮な対話劇を描いてください。
+- 台詞の参考例（実際の会話の空気感・お手本）:
 {few_shot_str}
 
 【脚本執筆要件】
 1. 人物Aの短い呼びかけ・導入発話（context_lead_in）と、人物Bの応答発話を作成してください。
 2. 音声合成対象は【人物Bの発話のみ】です。
-3. 人物Bの発話は、会話のテンポとして全体で3秒〜7秒程度（平仮名換算で20字〜45字程度）にしてください。
+3. 人物Bの発話は、短すぎず感情と状況を豊かに表現するため、全体で5秒〜15秒程度（最大20秒以内、平仮名換算で35字〜110字程度）にしてください。
 4. 人物Bの発話は必ず以下の2つのパートに論理的に分割してください：
-   - modal_text: 導入部の通常の常態音（Modal Voice）で話す部分（例: 相槌、前置きなど、全体の30%〜50%）
-   - breathy_text: 感情や意図が強く込められ、気声（Breathy Voice）で話す核心部分（全体の50%〜70%）
+   - modal_text: 導入部の通常の常態音（Modal Voice）で話す部分（例: 相槌、前置き、状況の受け止めなど、全体の30%〜40%）
+   - breathy_text: 感情や意図が強く込められ、息が漏れ出る気声（Breathy Voice）で話す核心部分（全体の60%〜70%）
      ※重要：気声（Breathy Voice）は声帯の振動（音程・ピッチ）を維持したまま息が漏れる発声です。ささやき声（Whisper）ではありません。styleにwhisperやwhisper-likeという単語は絶対に含めないでください。
 5. breathy_textの先頭には、息の漏れを表すタグ {tag} を挿入してください。
 6. 出力は以下のJSONフォーマットのみを返してください：
@@ -159,13 +198,42 @@ def generate_single_script(
   "breathy_style": "{context_info['recommended_styles']['breathy_part']}"
 }}
 """
-    raw_res = call_local_llm_json(prompt, endpoint=endpoint, api_key=api_key, model=model)
+    raw_res = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = call_local_llm_json(prompt, endpoint=endpoint, api_key=api_key, model=model)
+            valid, reason = validate_script_data(res)
+            if not valid:
+                logger.warning(
+                    f"Script validation failed for {context_info['id']} (#{scenario_idx+1}, attempt {attempt}/{max_attempts}): {reason}. Retrying..."
+                )
+                time.sleep(1.0)
+                continue
+            raw_res = res
+            break
+        except Exception as e:
+            logger.warning(
+                f"Error calling local LLM for {context_info['id']} (#{scenario_idx+1}, attempt {attempt}/{max_attempts}): {e}. Retrying..."
+            )
+            time.sleep(1.0)
+
+    if raw_res is None:
+        raise RuntimeError(
+            f"Failed to generate valid script for {context_info['id']} (#{scenario_idx+1}) after {max_attempts} attempts."
+        )
 
     modal_text = raw_res["modal_text"].strip()
     breathy_clean = raw_res["breathy_text_clean"].strip()
-    breathy_tagged = raw_res.get("breathy_text_with_tag", f"{tag} {breathy_clean}").strip()
-    clean_full = clean_transcript_for_tifa(f"{modal_text} {breathy_clean}")
 
+    # Sanitize whisper mentions in style if any
+    breathy_style = raw_res.get("breathy_style", context_info["recommended_styles"]["breathy_part"]).strip()
+    breathy_style = re.sub(r"\bwhisper(?:-like|ing)?\b", "voiced breathy", breathy_style, flags=re.IGNORECASE)
+
+    breathy_tagged = raw_res.get("breathy_text_with_tag", "").strip()
+    if not breathy_tagged.startswith(tag):
+        breathy_tagged = f"{tag} {breathy_clean}"
+
+    clean_full = clean_transcript_for_tifa(f"{modal_text} {breathy_clean}")
     script_id = f"script_{context_info['id']}_{scenario_idx+1:02d}"
 
     return {
@@ -175,12 +243,12 @@ def generate_single_script(
         "sub_id": context_info.get("sub_id", context_info["id"]),
         "sub_name": context_info.get("sub_name", ""),
         "scenario_hint": scenario["prompt_hint"],
-        "context_lead_in": raw_res.get("context_lead_in", ""),
+        "context_lead_in": raw_res.get("context_lead_in", "").strip(),
         "modal_text": modal_text,
         "modal_style": raw_res.get("modal_style", context_info["recommended_styles"]["modal_part"]),
         "breathy_text_clean": breathy_clean,
         "breathy_text_with_tag": breathy_tagged,
-        "breathy_style": raw_res.get("breathy_style", context_info["recommended_styles"]["breathy_part"]),
+        "breathy_style": breathy_style,
         "clean_full_text": clean_full,
     }
 
@@ -201,6 +269,7 @@ def generate_script_pool(
     endpoint: str = LOCAL_LLM_ENDPOINT,
     api_key: str = LOCAL_LLM_KEY,
     model: str = LOCAL_LLM_MODEL,
+    workers: int = 4,
 ) -> List[Dict[str, Any]]:
     """Build or load atomic sharded script pool across all 17 ATR sub-categories.
 
@@ -208,16 +277,22 @@ def generate_script_pool(
         config_path: Path to ishi_contexts.yaml
         cache_dir: Directory where script_{id}.json files are stored
         scenarios_per_context: Number of scenarios per sub-category (default 3 -> ~51 scripts total)
+        endpoint: Local LLM endpoint URL
+        api_key: Local LLM API key
+        model: Local LLM model identifier
+        workers: Concurrency level for parallel generation (default: 4)
 
     Returns:
-        List of script dictionary items.
+        List of script dictionary items sorted deterministically.
     """
     contexts = load_contexts(config_path)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    scripts: List[Dict[str, Any]] = []
     total_expected = len(contexts) * scenarios_per_context
-    logger.info(f"Targeting script pool: {len(contexts)} sub-categories x {scenarios_per_context} = {total_expected} scripts.")
+    logger.info(f"Targeting script pool: {len(contexts)} sub-categories x {scenarios_per_context} = {total_expected} scripts (workers={workers}).")
+
+    cached_scripts: List[Dict[str, Any]] = []
+    tasks_to_generate: List[Tuple[Dict[str, Any], int, Path, str]] = []
 
     for ctx in contexts:
         ctx_id = ctx["id"]
@@ -229,24 +304,61 @@ def generate_script_pool(
                 try:
                     with open(shard_file, "r", encoding="utf-8") as f:
                         cached_item = json.load(f)
-                    scripts.append(cached_item)
+                    cached_scripts.append(cached_item)
                     continue
                 except Exception as e:
                     logger.warning(f"Corrupted cache file {shard_file.name}, regenerating: {e}")
 
-            logger.info(f"Generating new script [{len(scripts)+1}/{total_expected}] for {ctx_id} (#{s_idx+1})...")
+            tasks_to_generate.append((ctx, s_idx, shard_file, script_id))
+
+    if cached_scripts:
+        logger.info(f"Loaded {len(cached_scripts)} existing scripts from cache.")
+
+    generated_scripts: List[Dict[str, Any]] = []
+
+    if tasks_to_generate:
+        logger.info(f"Generating {len(tasks_to_generate)} remaining scripts with {workers} worker threads...")
+        completed_count = len(cached_scripts)
+        lock = threading.Lock()
+
+        def _worker_fn(task_info: Tuple[Dict[str, Any], int, Path, str]) -> Dict[str, Any]:
+            c_info, idx, shard_path, s_id = task_info
             item = generate_single_script(
-                context_info=ctx,
-                scenario_idx=s_idx,
+                context_info=c_info,
+                scenario_idx=idx,
                 endpoint=endpoint,
                 api_key=api_key,
                 model=model,
             )
-            save_atomic_script_shard(item, shard_file)
-            scripts.append(item)
+            save_atomic_script_shard(item, shard_path)
+            return item
 
-    logger.info(f"Script pool ready: {len(scripts)} scripts available in {cache_dir}.")
-    return scripts
+        if workers <= 1:
+            for task in tasks_to_generate:
+                item = _worker_fn(task)
+                generated_scripts.append(item)
+                completed_count += 1
+                logger.info(f"[{completed_count}/{total_expected}] Generated and cached: {item['script_id']}")
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                future_to_task = {executor.submit(_worker_fn, t): t for t in tasks_to_generate}
+                for future in concurrent.futures.as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        item = future.result()
+                        generated_scripts.append(item)
+                        with lock:
+                            completed_count += 1
+                            logger.info(f"[{completed_count}/{total_expected}] Generated and cached: {item['script_id']}")
+                    except Exception as e:
+                        logger.error(f"Failed generating script {task[3]}: {e}")
+                        raise
+
+    all_scripts = cached_scripts + generated_scripts
+    all_scripts.sort(key=lambda x: x.get("script_id", ""))
+
+    logger.info(f"Script pool ready: {len(all_scripts)} scripts available in {cache_dir}.")
+    return all_scripts
 
 
 def main() -> None:
@@ -275,6 +387,12 @@ def main() -> None:
         help="Number of scenarios to generate per sub-category (17 sub-categories * count).",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of concurrent worker threads for script generation (default: 4).",
+    )
+    parser.add_argument(
         "--endpoint",
         type=str,
         default=LOCAL_LLM_ENDPOINT,
@@ -297,6 +415,7 @@ def main() -> None:
         cache_dir=args.cache_dir,
         scenarios_per_context=args.count_per_sub,
         endpoint=args.endpoint,
+        workers=args.workers,
     )
     print("\n" + "=" * 60)
     print(f"SCRIPT GENERATION COMPLETE!")
