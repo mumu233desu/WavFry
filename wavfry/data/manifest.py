@@ -777,6 +777,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     min_smr_db = float(params["min_smr_db"]) if ("min_smr_db" in params and params["min_smr_db"] is not None) else None
     exclude_gender_x = bool(params.get("exclude_gender_x", False))
     lenient = bool(params.get("lenient_missing", False))
+    allow_mllm_pseudo_labels = bool(params.get("allow_mllm_pseudo_labels", False))
 
     audio_dir = Path(params.get("audio_dir", ""))
     textgrid_dir = Path(params.get("textgrid_dir", ""))
@@ -791,7 +792,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             with open(manifest_csv, "r", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    s_id = row.get("slice_id") or row.get("\ufeffslice_id")
+                    s_id = row.get("slice_id") or row.get("file_key") or row.get("\ufeffslice_id") or row.get("\ufefffile_key")
                     if not s_id:
                         continue
                     s_id = s_id.strip()
@@ -934,7 +935,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
                 if not has_breathy_schema:
                     l_breathy = float("nan")
-                elif state == "breathy":
+                elif state == "breathy" or (allow_mllm_pseudo_labels and state == "mllm_breathy"):
                     l_breathy = 1.0
                 elif state in ("non_breathy", "modal", "creaky"):
                     l_breathy = 0.0

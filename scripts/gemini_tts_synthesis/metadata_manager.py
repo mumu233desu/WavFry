@@ -13,7 +13,8 @@ import csv
 import datetime
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+import threading
+from typing import Any, Dict, List, Optional, Set, Tuple
 import pandas as pd
 
 logger = logging.getLogger("metadata_manager")
@@ -65,7 +66,7 @@ class MetadataManager:
         self.audio_dir = self.dataset_root / "audio"
         self.textgrid_dir = self.dataset_root / "textgrid"
         self.raw_dialogues_dir = self.dataset_root / "raw_dialogues"
-        self.cache_dir = self.dataset_root / "_breathy_cache"
+        self.cache_dir = self.textgrid_dir / "_breathy_cache"
 
         # Ensure core directories exist
         self.audio_dir.mkdir(parents=True, exist_ok=True)
@@ -76,10 +77,34 @@ class MetadataManager:
         self.speaker_mapping_tsv = self.dataset_root / "speaker_mapping.tsv"
         self.manifest_slices_csv = self.dataset_root / "manifest_slices.csv"
 
+        # Thread safety lock for concurrent allocations and CSV writes
+        self._lock = threading.Lock()
+
         # Scan highest existing utterance index per speaker
         self._utterance_counters: Dict[str, int] = {}
         self._init_utterance_counters()
         self.ensure_speaker_mapping_file()
+
+    def get_completed_dialogues(self) -> Set[str]:
+        """Return set of dialogue_ids that have already been fully sliced and registered."""
+        with self._lock:
+            if not self.metadata_csv.exists() or self.metadata_csv.stat().st_size == 0:
+                return set()
+            try:
+                df = pd.read_csv(self.metadata_csv, usecols=["dialogue_id", "modal_file_key", "breathy_file_key"])
+                completed = set()
+                for _, row in df.iterrows():
+                    d_id = str(row["dialogue_id"])
+                    m_key = str(row["modal_file_key"])
+                    b_key = str(row["breathy_file_key"])
+                    m_flac = self.audio_dir / f"{m_key}.flac"
+                    b_flac = self.audio_dir / f"{b_key}.flac"
+                    if m_flac.exists() and b_flac.exists():
+                        completed.add(d_id)
+                return completed
+            except Exception as e:
+                logger.warning(f"Error reading completed dialogues from {self.metadata_csv}: {e}")
+                return set()
 
     def _init_utterance_counters(self) -> None:
         """Scan audio directory to initialize monotonic counter per speaker."""
@@ -110,11 +135,12 @@ class MetadataManager:
 
         uid = info["uid"]
         gender = info["gender"]
-        cur_count = self._utterance_counters[uid]
 
-        idx_modal = cur_count + 1
-        idx_breathy = cur_count + 2
-        self._utterance_counters[uid] = idx_breathy
+        with self._lock:
+            cur_count = self._utterance_counters[uid]
+            idx_modal = cur_count + 1
+            idx_breathy = cur_count + 2
+            self._utterance_counters[uid] = idx_breathy
 
         modal_key = f"{gender}_00_JP_JA_JA-JP_{uid}_S0_{idx_modal}"
         breathy_key = f"{gender}_00_JP_JA_JA-JP_{uid}_S0_{idx_breathy}"
@@ -140,12 +166,10 @@ class MetadataManager:
         df.to_csv(self.speaker_mapping_tsv, sep="\t", index=False, encoding="utf-8")
 
     def append_synthesis_record(self, record: Dict[str, Any]) -> None:
-        """Append full audit record to synthesis_metadata.csv."""
-        # Ensure timestamp
+        """Upsert full audit record to synthesis_metadata.csv (keyed by dialogue_id)."""
         if "created_at" not in record:
             record["created_at"] = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat()
 
-        file_exists = self.metadata_csv.exists()
         fieldnames = [
             "dialogue_id",
             "created_at",
@@ -169,22 +193,45 @@ class MetadataManager:
             "breathy_voicing",
             "breathy_cpps_db",
             "raw_dialogue_file",
+            "generation_id",
+            "tokens_prompt",
+            "tokens_completion",
+            "cost_usd",
         ]
 
-        with open(self.metadata_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-            if not file_exists or self.metadata_csv.stat().st_size == 0:
+        with self._lock:
+            existing_rows = []
+            if self.metadata_csv.exists() and self.metadata_csv.stat().st_size > 0:
+                with open(self.metadata_csv, "r", newline="", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for r in reader:
+                        if r.get("dialogue_id") != record.get("dialogue_id"):
+                            existing_rows.append(r)
+            existing_rows.append(record)
+
+            with open(self.metadata_csv, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
-            writer.writerow(record)
+                for r in existing_rows:
+                    writer.writerow(r)
 
     def append_slices_manifest_rows(self, rows: List[Dict[str, Any]]) -> None:
-        """Append sliced audio items to manifest_slices.csv."""
-        file_exists = self.manifest_slices_csv.exists()
-        df = pd.DataFrame(rows)
-        if not file_exists or self.manifest_slices_csv.stat().st_size == 0:
+        """Upsert sliced audio items to manifest_slices.csv (keyed by file_key)."""
+        new_keys = {r["file_key"] for r in rows if "file_key" in r}
+        with self._lock:
+            if self.manifest_slices_csv.exists() and self.manifest_slices_csv.stat().st_size > 0:
+                try:
+                    df_existing = pd.read_csv(self.manifest_slices_csv)
+                    if "file_key" in df_existing.columns:
+                        df_existing = df_existing[~df_existing["file_key"].isin(new_keys)]
+                    df_new = pd.DataFrame(rows)
+                    df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+                    df_combined.to_csv(self.manifest_slices_csv, index=False, encoding="utf-8")
+                    return
+                except Exception as e:
+                    logger.warning(f"Error reading existing manifest_slices.csv for upsert: {e}")
+            df = pd.DataFrame(rows)
             df.to_csv(self.manifest_slices_csv, index=False, encoding="utf-8")
-        else:
-            df.to_csv(self.manifest_slices_csv, mode="a", header=False, index=False, encoding="utf-8")
 
 
 if __name__ == "__main__":

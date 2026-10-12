@@ -12,6 +12,7 @@ import pandas as pd
 import soundfile as sf
 import torch
 import torchaudio
+from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -177,7 +178,8 @@ def main():
         if frame_cfg.get("mil_mode", "lse") != "lse":
             raise ValueError("First-version review supports LSE checkpoints only; do not silently change pooling")
         digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-        for _, file_rows in pd.DataFrame(rows).groupby(["dataset_id", "file_key"], sort=True):
+        file_groups = list(pd.DataFrame(rows).groupby(["dataset_id", "file_key"], sort=True))
+        for _, file_rows in tqdm(file_groups, desc="Scoring audio files", unit="file"):
             records = score_file(model, file_rows.to_dict("records"), args.device, frame_cfg.get("temperature", 1.0),
                                  checkpoint['config']['training'].get('block', {}))
             for r in records:

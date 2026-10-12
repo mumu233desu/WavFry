@@ -15,6 +15,7 @@ import torchaudio
 from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
+_WARNED_INTERVALS: set[str] = set()
 
 
 class BlockIndex:
@@ -125,10 +126,12 @@ class BlockIndex:
                     continue
                 interval_duration = float(row["end_s"]) - float(row["start_s"])
                 if interval_duration > self.duration_s + 1e-7:
-                    logger.warning(
-                        f"Interval {primary} duration ({interval_duration:.3f}s) exceeds block capacity ({self.duration_s}s). "
-                        f"Truncating to {self.duration_s}s."
-                    )
+                    if primary not in _WARNED_INTERVALS:
+                        _WARNED_INTERVALS.add(primary)
+                        logger.warning(
+                            f"Interval {primary} duration ({interval_duration:.3f}s) exceeds block capacity ({self.duration_s}s). "
+                            f"Truncating to {self.duration_s}s."
+                        )
                     start = float(row["start_s"])
                     end = start + self.duration_s
                     row_copy = dict(row)
@@ -174,6 +177,7 @@ class ContinuousAudioBlockDataset(Dataset):
     """Load fixed blocks and return interval bounds relative to each block."""
 
     _AUDIO_INFO_CACHE: dict[str, tuple[int, float]] = {}
+    _AUDIO_WAVEFORM_CACHE: dict[str, tuple[torch.Tensor, float]] = {}
 
     def __init__(
         self,
@@ -185,6 +189,8 @@ class ContinuousAudioBlockDataset(Dataset):
         target_sr: int = 16000,
         seed: int = 42,
         fold_index: int = 0,
+        cache_waveforms: bool = True,
+        max_cache_files: int = 1000,
     ) -> None:
         self.target_sr = int(target_sr)
         # Frame-space boundary trimming is performed by the model after WavLM
@@ -196,10 +202,42 @@ class ContinuousAudioBlockDataset(Dataset):
         self.max_intervals = int(max_intervals)
         self.seed = int(seed)
         self.fold_index = int(fold_index)
+        self.cache_waveforms = bool(cache_waveforms)
+        self.max_cache_files = int(max_cache_files)
         self.current_epoch = 1
         self.index = self._make_index(self.current_epoch)
         self.blocks = self.index.blocks
         self.resamplers: dict[int, torchaudio.transforms.Resample] = {}
+
+    @classmethod
+    def clear_waveform_cache(cls):
+        cls._AUDIO_WAVEFORM_CACHE.clear()
+        cls._AUDIO_INFO_CACHE.clear()
+
+    def _get_audio_waveform(self, audio_path: str) -> tuple[torch.Tensor, float]:
+        """Fetch resampled 16kHz mono audio waveform and duration, with RAM caching."""
+        cached = self._AUDIO_WAVEFORM_CACHE.get(audio_path)
+        if cached is not None:
+            return cached
+
+        if audio_path not in self._AUDIO_INFO_CACHE:
+            info = torchaudio.info(audio_path)
+            self._AUDIO_INFO_CACHE[audio_path] = (info.sample_rate, float(info.num_frames) / float(info.sample_rate))
+        orig_sr, total_duration = self._AUDIO_INFO_CACHE[audio_path]
+
+        waveform, sr = torchaudio.load(audio_path)
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        if sr != self.target_sr:
+            if sr not in self.resamplers:
+                self.resamplers[sr] = torchaudio.transforms.Resample(sr, self.target_sr)
+            waveform = self.resamplers[sr](waveform)
+        waveform = waveform.squeeze(0).contiguous()
+
+        if self.cache_waveforms and len(self._AUDIO_WAVEFORM_CACHE) < self.max_cache_files:
+            self._AUDIO_WAVEFORM_CACHE[audio_path] = (waveform, total_duration)
+
+        return waveform, total_duration
 
     def _make_index(self, epoch: int) -> BlockIndex:
         return BlockIndex(
@@ -225,22 +263,15 @@ class ContinuousAudioBlockDataset(Dataset):
     def __getitem__(self, idx: int):
         block = self.blocks[idx]
         audio_path = block["audio_path"]
-        if audio_path not in self._AUDIO_INFO_CACHE:
-            info = torchaudio.info(audio_path)
-            self._AUDIO_INFO_CACHE[audio_path] = (info.sample_rate, float(info.num_frames) / float(info.sample_rate))
-        orig_sr, total_duration = self._AUDIO_INFO_CACHE[audio_path]
+        full_waveform, total_duration = self._get_audio_waveform(audio_path)
         start_s = float(block["start_s"])
         end_s = min(float(block["end_s"]), total_duration)
-        start_frame = max(0, int(round(start_s * orig_sr)))
-        num_frames = max(1, int(round((end_s - start_s) * orig_sr)))
-        waveform, sr = torchaudio.load(audio_path, frame_offset=start_frame, num_frames=num_frames)
-        if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
-        if sr != self.target_sr:
-            if sr not in self.resamplers:
-                self.resamplers[sr] = torchaudio.transforms.Resample(sr, self.target_sr)
-            waveform = self.resamplers[sr](waveform)
-        waveform = waveform.squeeze(0)
+        start_frame = max(0, int(round(start_s * self.target_sr)))
+        end_frame = min(full_waveform.shape[0], int(round(end_s * self.target_sr)))
+        waveform = full_waveform[start_frame:end_frame]
+        if waveform.numel() == 0:
+            target_samples = int(round(self.duration_ms * self.target_sr / 1000.0))
+            waveform = torch.zeros(target_samples, dtype=full_waveform.dtype)
 
         bounds, labels, ids = [], [], []
         for row in block["intervals"]:

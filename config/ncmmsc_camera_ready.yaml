@@ -18,7 +18,7 @@ model:
   use_scalar_mix: true               # 所有层学习加权聚合
   dropout: 0.1
   head_hidden_dim: 256               # 分类头隐层（自动适配 backbone 输出维度）
-  use_positional_encoding: true      # 是否在注意力池化前注入时间位置编码
+  use_positional_encoding: false     # 是否在注意力池化前注入时间位置编码
   pos_embed_dim: 32                  # 位置编码维度
   tasks: [creaky]                    # 激活的任务头列表（多任务可配置如 [creaky, breathy]）
 

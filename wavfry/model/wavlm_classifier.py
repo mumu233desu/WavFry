@@ -79,7 +79,7 @@ class WavFryClassifier(nn.Module):
         # Task-specific attention heads
         if "attn" in self.pooling_mode:
             self.attention_heads = nn.ModuleDict({
-                task: nn.Linear(self.hidden_dim, 1)
+                task: nn.Linear(self.hidden_dim, 1, bias=False)
                 for task in self.tasks
             })
             if self.use_pos_encoding:
@@ -239,6 +239,17 @@ class WavFryClassifier(nn.Module):
                 if new_k not in state_dict:
                     state_dict[new_k] = state_dict[k]
                 state_dict.pop(k, None)
+
+        # 6. Discard legacy attention_heads.*.bias if current model has bias=False
+        for task in self.tasks:
+            bias_k = prefix + f"attention_heads.{task}.bias"
+            if bias_k in state_dict and getattr(self.attention_heads[task], "bias", None) is None:
+                state_dict.pop(bias_k, None)
+
+        # 7. Discard legacy pos_scorer if positional encoding is disabled
+        pos_k = prefix + "pos_scorer.weight"
+        if pos_k in state_dict and not self.use_pos_encoding:
+            state_dict.pop(pos_k, None)
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs

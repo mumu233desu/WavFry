@@ -2,6 +2,10 @@
 # Complete 8 Macro Categories & 17 Sub-categories with Canonical ATR Exemplars
 version: "2.0"
 
+# Global Audio Director Instruction for Gemini TTS (Analogous to System Prompt in Text LLMs)
+global_instructions_template: >-
+  Section 1 ({modal_text}): {modal_style}. Section 2 ({breathy_text}): {breathy_style}. CRITICAL: Maintain distinct pitch contour and periodic vocal fold vibration; strictly do NOT produce unvoiced whisper.
+
 contexts:
   # ──────────────────────────────────────────────────────────────────────────
   # 1. 強調・注意喚起・真情吐露 (Emphasis, Attention & Real Feelings)
@@ -188,8 +192,8 @@ contexts:
     sub_name: "内緒話・言えない事 (Confidential Talking)"
     description: "他人に聞かれては困る秘密や噂話を、声量を落としつつ声帯の音程を保って話す発話。"
     recommended_styles:
-      modal_part: "quiet discreet voice"
-      breathy_part: "confidential voiced breathy tone, close-mic intimateness, low volume with distinct pitch vibration"
+      modal_part: "subdued conversational tone, standard vocal pitch"
+      breathy_part: "confidential voiced breathy tone, continuous vocal cord vibration with distinct pitch contour, sighing breath leakage, strictly NOT unvoiced whisper, avoid ASMR or close-mic"
     tag_recommendation: "<breath>"
     few_shot_exemplars:
       - "それは言えないです"

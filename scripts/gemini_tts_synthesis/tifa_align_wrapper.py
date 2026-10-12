@@ -162,3 +162,45 @@ class TIFAAlignmentWrapper:
             shutil.copy2(produced_tg, output_tg_path)
 
         return output_tg_path
+
+    def align_batch_files(
+        self,
+        audio_paths: List[Path],
+        text_paths: List[Path],
+        output_dir: Path,
+        batch_size: int = 4,
+    ) -> Dict[str, Path]:
+        """Align multiple audio-text pairs in a single TIFA run using an isolated staging directory.
+
+        Loads PyTorch model checkpoint exactly ONCE, utilizing GPU batching across all files.
+        """
+        import shutil
+        import tempfile
+
+        if not audio_paths:
+            return {}
+
+        output_dir = output_dir.resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Staging {len(audio_paths)} audio-text pairs for one-time batch TIFA alignment (batch_size={batch_size})...")
+
+        with tempfile.TemporaryDirectory(prefix="tifa_batch_staging_") as tmp_dir_str:
+            tmp_dir = Path(tmp_dir_str)
+            for wav_p, txt_p in zip(audio_paths, text_paths):
+                wav_p = wav_p.resolve()
+                txt_p = txt_p.resolve()
+                target_wav = tmp_dir / wav_p.name
+                target_txt = tmp_dir / txt_p.name
+                try:
+                    os.link(str(wav_p), str(target_wav))
+                    os.link(str(txt_p), str(target_txt))
+                except Exception:
+                    shutil.copy2(wav_p, target_wav)
+                    shutil.copy2(txt_p, target_txt)
+
+            # Execute batch alignment with single model loading
+            res_map = self.align_directory(input_dir=tmp_dir, output_dir=output_dir, batch_size=batch_size)
+
+        logger.info(f"Batch TIFA alignment completed: {len(res_map)} TextGrids output to {output_dir.name}")
+        return res_map
