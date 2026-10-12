@@ -935,7 +935,9 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
                 if not has_breathy_schema:
                     l_breathy = float("nan")
-                elif state == "breathy" or (allow_mllm_pseudo_labels and state == "mllm_breathy"):
+                elif state == "breathy":
+                    l_breathy = 1.0
+                elif allow_mllm_pseudo_labels and state == "mllm_breathy" and b_split == "train":
                     l_breathy = 1.0
                 elif state in ("non_breathy", "modal", "creaky"):
                     l_breathy = 0.0
@@ -974,7 +976,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     "label_breathy": l_breathy,
                     "label": label_val,
                     "batch_split": b_split,
-                    "annotation_type": "manual_annotation",
+                    "annotation_type": "mllm_pseudo_label" if state == "mllm_breathy" else "manual_annotation",
                     "batch_id": b_id if b_id is not None else float("nan"),
                     "batch_name": b_name,
                     "is_frame_verified": is_frame_verified,

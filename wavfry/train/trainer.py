@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -213,10 +214,18 @@ class Trainer:
     def create_optimizer(self):
         # Issue 4: AdamW weight decay optimization
         weight_decay = self.config['training'].get('weight_decay', 0.01)
-        no_decay = ["bias", "LayerNorm.weight"]
-        
-        is_backbone = lambda n: n.startswith("wavlm.") or n.startswith("backbone.")
+
+        # Collect all normalization parameter IDs (LayerNorm, BatchNorm, GroupNorm)
+        norm_param_ids = {
+            id(p)
+            for m in self.model.modules()
+            if isinstance(m, (nn.LayerNorm, nn.BatchNorm1d, nn.GroupNorm))
+            for p in m.parameters()
+        }
+        no_decay_param = lambda n, p: "bias" in n or id(p) in norm_param_ids
+
         is_scalar_mix = lambda n: "scalar_mix" in n
+        is_backbone = lambda n: (n.startswith("wavlm.") or n.startswith("backbone.")) and not is_scalar_mix(n)
         scalar_mix_lr = float(self.config['training'].get('scalar_mix_lr', 1.0e-3))
 
         optimizer_grouped_parameters = [
@@ -237,14 +246,14 @@ class Trainer:
             # 3. Head (Weights) - Normal weight decay
             {
                 "name": "head",
-                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and not is_scalar_mix(n) and p.requires_grad and not any(nd in n for nd in no_decay)],
+                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and not is_scalar_mix(n) and p.requires_grad and not no_decay_param(n, p)],
                 "weight_decay": weight_decay,
                 "lr": self.config['training']['head_lr']
             },
             # 4. Head (Bias/LayerNorm) - No weight decay
             {
                 "name": "head_no_decay",
-                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and not is_scalar_mix(n) and p.requires_grad and any(nd in n for nd in no_decay)],
+                "params": [p for n, p in self.model.named_parameters() if not is_backbone(n) and not is_scalar_mix(n) and p.requires_grad and no_decay_param(n, p)],
                 "weight_decay": 0.0,
                 "lr": self.config['training']['head_lr']
             },
@@ -871,9 +880,9 @@ class Trainer:
                     for task in tasks:
                         if task in self.model.scalar_mix_weights:
                             w = torch.softmax(self.model.scalar_mix_weights[task].detach().cpu(), dim=0)
-                            w_dict = {f"L{i}": float(v) for i, v in enumerate(w)}
                             if self.writer:
-                                self.writer.add_scalars(f"ScalarMix/{task}", w_dict, epoch)
+                                for i, v in enumerate(w):
+                                    self.writer.add_scalar(f"ScalarMix/{task}/L{i}", float(v), epoch)
                             top3_idx = torch.topk(w, k=min(3, len(w))).indices.tolist()
                             logger.info(f"[{task}] Scalar Mix: " + ", ".join(f"L{i}:{w[i]:.3f}" for i in range(len(w))) + f" (Top3: {[f'L{i}' for i in top3_idx]})")
             
