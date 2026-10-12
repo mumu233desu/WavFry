@@ -96,7 +96,23 @@ def load_raw_annotations(*, audio_dirs, task, cache_dir=None, shard_dir=None,
                     raise ValueError(f"Conflicting sampling assignments for {key}")
                 assignments[key] = entry
     if cache_dir is not None:
-        requested = [str(b) for b in batches] if batches is not None else list(batch_info)
+        name_to_id = {}
+        for bid_key, b in batch_info.items():
+            name_to_id[bid_key] = bid_key
+            bname = str(b.get("name", "")).strip()
+            if bname:
+                name_to_id[bname] = bid_key
+                name_to_id[bname.lower()] = bid_key
+        requested = []
+        if batches is not None:
+            for b in batches:
+                b_str = str(b).strip()
+                resolved = name_to_id.get(b_str) or name_to_id.get(b_str.lower())
+                if resolved is None:
+                    raise ValueError(f"Batch {b} is not registered in {state_path}")
+                requested.append(resolved)
+        else:
+            requested = list(batch_info)
         if not requested:
             raise ValueError("No batches selected or registered")
         for bid in requested:

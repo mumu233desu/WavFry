@@ -114,7 +114,7 @@ def extract_breathy_slice_intervals(
 
         # Format exact interval_id matching YSJ convention: "{start:.4f}|{end:.4f}|{phone}"
         interval_id = f"{start_s:.4f}|{end_s:.4f}|{norm_phone}"
-        shard_annotations[interval_id] = "breathy"
+        shard_annotations[interval_id] = "mllm_breathy"
 
         record = {
             "dataset_id": "breathy_tts",
@@ -146,6 +146,82 @@ def extract_breathy_slice_intervals(
     return manifest_records, shard_data
 
 
+def extract_modal_slice_intervals(
+    modal_tg_path: Path,
+    file_key: str,
+    speaker_id: str,
+    context_id: str = "",
+    min_duration_sec: float = 0.03,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Extract vowels and sonorants from Modal slice TextGrid.
+
+    All extracted valid vowels receive label_breathy = 0.0 and 'non_breathy'.
+
+    Returns:
+        (manifest_interval_records, shard_dict)
+    """
+    tiers = parse_praat_textgrid_intervals(modal_tg_path)
+    phones_tier = tiers.get("phones") or tiers.get("phone") or tiers.get("tokens") or []
+
+    if not phones_tier:
+        logger.warning(f"No phones tier found in {modal_tg_path.name}")
+        return [], {}
+
+    manifest_records: List[Dict[str, Any]] = []
+    shard_annotations: Dict[str, str] = {}
+
+    for p in phones_tier:
+        raw_phone = p["text"].strip().lower()
+        norm_phone = re.sub(r"[0-9_#^]", "", raw_phone)
+
+        # Check vowel or sonorant
+        is_vowel = norm_phone in JAPANESE_VOWELS or norm_phone.startswith(("a", "i", "u", "e", "o"))
+        is_sonorant = norm_phone in JAPANESE_SONORANTS
+
+        if not (is_vowel or is_sonorant):
+            continue
+
+        start_s = round(p["xmin"], 4)
+        end_s = round(p["xmax"], 4)
+        duration_s = round(end_s - start_s, 4)
+
+        if duration_s < min_duration_sec:
+            continue
+
+        # Format exact interval_id matching YSJ convention: "{start:.4f}|{end:.4f}|{phone}"
+        interval_id = f"{start_s:.4f}|{end_s:.4f}|{norm_phone}"
+        shard_annotations[interval_id] = "non_breathy"
+
+        record = {
+            "dataset_id": "modal_tts",
+            "file_key": file_key,
+            "speaker_id": speaker_id,
+            "segment_id": f"{file_key}_{start_s:.3f}_{end_s:.3f}",
+            "start_s": start_s,
+            "end_s": end_s,
+            "duration_s": duration_s,
+            "phone": norm_phone,
+            "phone_type": "vowel" if is_vowel else "sonorant",
+            "label_breathy": 0.0,
+            "label_creaky": float("nan"),
+            "context_id": context_id,
+            "section": "modal",
+        }
+        manifest_records.append(record)
+
+    shard_data = {
+        "version": 1,
+        "schema": "direct_breathy_annotation",
+        "file_key": file_key,
+        "speaker_id": speaker_id,
+        "annotations": shard_annotations,
+        "reviewed_at": time.time(),
+    }
+
+    logger.info(f"Extracted {len(manifest_records)} modal intervals for {file_key}.")
+    return manifest_records, shard_data
+
+
 def write_breathy_shard(
     dataset_root: Path,
     file_key: str,
@@ -153,7 +229,7 @@ def write_breathy_shard(
     batch_name: str = "batch_1",
 ) -> Path:
     """Atomically write shard JSON to _breathy_cache/batches/{batch_name}/manual_breathy_annotations.json.d/."""
-    batch_dir = dataset_root / "_breathy_cache" / "batches" / batch_name
+    batch_dir = dataset_root / "textgrid" / "_breathy_cache" / "batches" / batch_name
     shard_dir = batch_dir / "manual_breathy_annotations.json.d"
     shard_dir.mkdir(parents=True, exist_ok=True)
 

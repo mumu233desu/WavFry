@@ -125,7 +125,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         val_ds = ContinuousAudioBlockDataset(val_df, **common_block)
         collate = collate_block_fn
         train_batch_size = int(block_cfg['batch_size'])
-        val_batch_size = train_batch_size
+        val_batch_size = int(block_cfg.get('val_batch_size', train_batch_size))
     else:
         segment_cfg = config['training']['segment']
         train_ds = dataset_mod.CreakyVowelDataset(
@@ -141,7 +141,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
         )
         collate = dataset_mod.collate_fn
         train_batch_size = int(segment_cfg['batch_size'])
-        val_batch_size = train_batch_size
+        val_batch_size = int(segment_cfg.get('val_batch_size', train_batch_size))
 
     num_workers = dataset_mod.resolve_num_workers(config['data']['num_workers'])
     prefetch_factor = config['data'].get('prefetch_factor', 2) if num_workers > 0 else None

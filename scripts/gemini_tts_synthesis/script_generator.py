@@ -238,15 +238,19 @@ def generate_single_script(
     modal_text = raw_res["modal_text"].strip()
     breathy_clean = raw_res["breathy_text_clean"].strip()
 
-    # Sanitize whisper mentions in style if any
+    # Sanitize whisper mentions in style if any (preserving negative constraints)
     breathy_style = raw_res.get("breathy_style", context_info["recommended_styles"]["breathy_part"]).strip()
-    breathy_style = re.sub(r"\bwhisper(?:-like|ing)?\b", "voiced breathy", breathy_style, flags=re.IGNORECASE)
+    breathy_style = re.sub(r"(?<!not\s)(?<!never\s)\bwhisper(?:-like|ing)?\b", "voiced breathy", breathy_style, flags=re.IGNORECASE)
+    breathy_style = breathy_style.replace("strictly NOT voiced breathy", "strictly NOT unvoiced whisper")
 
     breathy_tagged = raw_res.get("breathy_text_with_tag", "").strip()
     if not breathy_tagged.startswith(tag):
         breathy_tagged = f"{tag} {breathy_clean}"
 
     clean_full = clean_transcript_for_tifa(f"{modal_text} {breathy_clean}")
+    # Assert strict character consistency (ignoring whitespace and tags)
+    if re.sub(r"\s+", "", modal_text + breathy_clean) != re.sub(r"\s+", "", clean_full):
+        raise ValueError(f"Consistency assertion failed: clean_full != modal_text + breathy_clean for {context_info['id']}")
     script_id = f"script_{context_info['id']}_{scenario_idx+1:02d}"
 
     topic_desc = raw_res.get("scenario_topic", "").strip() or scenario.get("prompt_hint", f"独自創作シナリオ #{scenario_idx+1}")
@@ -400,7 +404,7 @@ def main() -> None:
         "--count-per-sub",
         type=int,
         default=3,
-        help="Number of scenarios to generate per sub-category (17 sub-categories * count).",
+        help="Number of scenarios to generate per sub-category (18 sub-categories * count = total).",
     )
     parser.add_argument(
         "--workers",

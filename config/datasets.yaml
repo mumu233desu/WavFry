@@ -44,109 +44,109 @@ datasets:
     #   random       - 随机按比例划分（seed 由全局 training.seed 控制）
 
   # ── UCLA Mazatec（马萨特克语：breathy 学习，creaky 关闭） ──
-  - dataset_id: ucla_mazatec
-    enabled: true
-    display_name: "UCLA Mazatec (Breathy)"
-    domain: phonetic_controlled
-
-    annotation_adapter: breathy_cache
-    adapter_params:
-      audio_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio
-      cache_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio/_breathy_cache
-      textgrid_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_TextGrids
-      language: maj
-      annotation_granularity: segment
-      min_duration_ms: 30
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: random   # 按说话人随机划分 80/10/10
-
-  # ── UCLA Gujarati（古吉拉特语：元音 modal vs breathy 最小对立，由 _breathy_cache 提供） ──
-  - dataset_id: ucla_gujarati
-    enabled: true
-    display_name: "UCLA Gujarati (Breathy/Modal)"
-    domain: phonetic_controlled
-
-    annotation_adapter: breathy_cache
-    adapter_params:
-      audio_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio
-      cache_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio/_breathy_cache
-      textgrid_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_TextGrids
-      language: guj
-      annotation_granularity: segment
-      min_duration_ms: 30
-
-    label_schema:
-      creaky: false   # Gujarati 不提供 creaky 标签，此列填 NaN
-      breathy: true   # 提供 breathy 标签
-
-    split_strategy: random   # 按说话人随机划分 80/10/10
-
-  # ── UCLA Zapotec（萨波特克语：breathy 学习，creaky 关闭） ──
-  - dataset_id: ucla_zapotec
-    enabled: true
-    display_name: "UCLA Zapotec (Breathy)"
-    domain: phonetic_controlled
-
-    annotation_adapter: breathy_cache
-    adapter_params:
-      audio_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio
-      cache_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio/_breathy_cache
-      textgrid_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_TextGrids
-      language: zap
-      annotation_granularity: segment
-      min_duration_ms: 30
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: random   # 按说话人随机划分 80/10/10
-
-  # ── UCLA Hmong（白苗语：breathy 学习，creaky 关闭） ──
-  - dataset_id: ucla_hmong
-    enabled: true
-    display_name: "UCLA Hmong (Breathy)"
-    domain: phonetic_controlled
-
-    annotation_adapter: breathy_cache
-    adapter_params:
-      audio_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio
-      cache_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio/_breathy_cache
-      textgrid_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_TextGrids
-      language: hmn
-      annotation_granularity: segment
-      min_duration_ms: 30
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: random   # 按说话人随机划分 80/10/10
-
-  # ── UCLA Miao（黑苗语/黔东方言：breathy 学习，creaky 关闭） ──
-  - dataset_id: ucla_miao
-    enabled: true
-    display_name: "UCLA Black Miao (Breathy)"
-    domain: phonetic_controlled
-
-    annotation_adapter: breathy_cache
-    adapter_params:
-      audio_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio
-      cache_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio/_breathy_cache
-      textgrid_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Textgrids
-      language: hea
-      annotation_granularity: segment
-      min_duration_ms: 30
-
-    label_schema:
-      creaky: false
-      breathy: true
-
-    split_strategy: random   # 按说话人随机划分 80/10/10
+#  - dataset_id: ucla_mazatec
+#    enabled: true
+#    display_name: "UCLA Mazatec (Breathy)"
+#    domain: phonetic_controlled
+#
+#    annotation_adapter: breathy_cache
+#    adapter_params:
+#      audio_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio
+#      cache_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_Audio/_breathy_cache
+#      textgrid_dir: E:/Corpus/Breathy/UCLA/Mazatec/Mazatec_TextGrids
+#      language: maj
+#      annotation_granularity: segment
+#      min_duration_ms: 30
+#
+#    label_schema:
+#      creaky: false
+#      breathy: true
+#
+#    split_strategy: random   # 按说话人随机划分 80/10/10
+#
+#  # ── UCLA Gujarati（古吉拉特语：元音 modal vs breathy 最小对立，由 _breathy_cache 提供） ──
+#  - dataset_id: ucla_gujarati
+#    enabled: true
+#    display_name: "UCLA Gujarati (Breathy/Modal)"
+#    domain: phonetic_controlled
+#
+#    annotation_adapter: breathy_cache
+#    adapter_params:
+#      audio_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio
+#      cache_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_Audio/_breathy_cache
+#      textgrid_dir: E:/Corpus/Breathy/UCLA/Gujarati/Gujarati_TextGrids
+#      language: guj
+#      annotation_granularity: segment
+#      min_duration_ms: 30
+#
+#    label_schema:
+#      creaky: false   # Gujarati 不提供 creaky 标签，此列填 NaN
+#      breathy: true   # 提供 breathy 标签
+#
+#    split_strategy: random   # 按说话人随机划分 80/10/10
+#
+#  # ── UCLA Zapotec（萨波特克语：breathy 学习，creaky 关闭） ──
+#  - dataset_id: ucla_zapotec
+#    enabled: true
+#    display_name: "UCLA Zapotec (Breathy)"
+#    domain: phonetic_controlled
+#
+#    annotation_adapter: breathy_cache
+#    adapter_params:
+#      audio_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio
+#      cache_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_Audio/_breathy_cache
+#      textgrid_dir: E:/Corpus/Breathy/UCLA/Zapotec/Zapotec_TextGrids
+#      language: zap
+#      annotation_granularity: segment
+#      min_duration_ms: 30
+#
+#    label_schema:
+#      creaky: false
+#      breathy: true
+#
+#    split_strategy: random   # 按说话人随机划分 80/10/10
+#
+#  # ── UCLA Hmong（白苗语：breathy 学习，creaky 关闭） ──
+#  - dataset_id: ucla_hmong
+#    enabled: true
+#    display_name: "UCLA Hmong (Breathy)"
+#    domain: phonetic_controlled
+#
+#    annotation_adapter: breathy_cache
+#    adapter_params:
+#      audio_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio
+#      cache_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_Audio/_breathy_cache
+#      textgrid_dir: E:/Corpus/Breathy/UCLA/Hmong/Hmong_TextGrids
+#      language: hmn
+#      annotation_granularity: segment
+#      min_duration_ms: 30
+#
+#    label_schema:
+#      creaky: false
+#      breathy: true
+#
+#    split_strategy: random   # 按说话人随机划分 80/10/10
+#
+#  # ── UCLA Miao（黑苗语/黔东方言：breathy 学习，creaky 关闭） ──
+#  - dataset_id: ucla_miao
+#    enabled: true
+#    display_name: "UCLA Black Miao (Breathy)"
+#    domain: phonetic_controlled
+#
+#    annotation_adapter: breathy_cache
+#    adapter_params:
+#      audio_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio
+#      cache_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Audio/_breathy_cache
+#      textgrid_dir: E:/Corpus/Breathy/UCLA/Miao/Miao_Textgrids
+#      language: hea
+#      annotation_granularity: segment
+#      min_duration_ms: 30
+#
+#    label_schema:
+#      creaky: false
+#      breathy: true
+#
+#    split_strategy: random   # 按说话人随机划分 80/10/10
 
   # ── YSJ Japanese（日语自发语音语料，TextGrid + _breathy_cache，切片级性别与信杂比） ──
   - dataset_id: ysj_japanese
@@ -157,8 +157,8 @@ datasets:
     annotation_adapter: ysj_textgrid
     adapter_params:
       audio_dir: E:/Corpus/Breathy/YSJ/audio
-      textgrid_dir: E:/Corpus/Breathy/YSJ/textgrid
-      cache_dir: E:/Corpus/Breathy/YSJ/textgrid/_breathy_cache
+      textgrid_dir: E:/Corpus/Breathy/YSJ/textgrid_tifa
+      cache_dir: E:/Corpus/Breathy/YSJ/textgrid_tifa/_breathy_cache
       manifest_csv: E:/Corpus/Breathy/YSJ/manifest_slices.csv
       language: ja
       phone_tier_name: phones
@@ -193,6 +193,29 @@ datasets:
 
     split_strategy: batch_split  # Batch 1 为 test (Kappa)，Batch 2-6 为 train
 
+  # ── BreathyTTS（合成副语言日语语料，分段切片 + TextGrid + _breathy_cache） ──
+  - dataset_id: breathy_tts
+    enabled: true
+    display_name: "BreathyTTS (Synthetic Japanese)"
+    domain: paralinguistic_dialogue
+
+    annotation_adapter: ysj_textgrid
+    adapter_params:
+      audio_dir: E:/Corpus/Breathy/BreathyTTS/audio
+      textgrid_dir: E:/Corpus/Breathy/BreathyTTS/textgrid
+      cache_dir: E:/Corpus/Breathy/BreathyTTS/textgrid/_breathy_cache
+      manifest_csv: E:/Corpus/Breathy/BreathyTTS/manifest_slices.csv
+      language: ja
+      phone_tier_name: phones
+      min_duration_ms: 30
+      exclude_gender_x: false
+
+    label_schema:
+      creaky: false
+      breathy: true
+
+    split_strategy: batch_split
+
 
 # ==============================================================================
 # 全局 Manifest 构建参数
@@ -200,6 +223,7 @@ datasets:
 manifest:
   output_dir: manifests/
   output_filename: segments_multi.csv
+  weak_output_filename: weak_breathy.csv
   save_per_dataset: true   # 每个 dataset_id 单独保存一份，便于调试
 
 # ==============================================================================

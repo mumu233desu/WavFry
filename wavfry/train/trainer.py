@@ -500,8 +500,8 @@ class Trainer:
         store: dict, interval_id, logit: torch.Tensor, label: torch.Tensor
     ) -> None:
         """Accumulate one (block, slot) prediction into the per-interval store."""
-        logit_cpu = logit.detach().cpu()
-        label_cpu = label.detach().cpu()
+        logit_cpu = logit if logit.device.type == "cpu" else logit.detach().cpu()
+        label_cpu = label if label.device.type == "cpu" else label.detach().cpu()
         entry = store.get(interval_id)
         if entry is None:
             store[interval_id] = [logit_cpu, label_cpu, 1]
@@ -691,7 +691,7 @@ class Trainer:
 
         interval_predictions = {task: {} for task in tasks}
         val_iter = self.val_loader if self.quiet else tqdm(self.val_loader, desc=f"Epoch {epoch} [Val]")
-        with torch.no_grad():
+        with torch.inference_mode():
             for i, batch in enumerate(val_iter):
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
@@ -716,8 +716,8 @@ class Trainer:
 
                 if self.paradigm == 'block':
                     for task in tasks:
-                        t_logits = logits_dict[task]
-                        t_labels = labels_dict[task]
+                        t_logits = logits_dict[task].detach().cpu()
+                        t_labels = labels_dict[task].detach().cpu()
                         for logit, label, interval_id in zip(t_logits, t_labels, item_ids):
                             self._merge_interval_prediction(
                                 interval_predictions[task], interval_id, logit, label

@@ -151,7 +151,8 @@ def load_model_from_checkpoint(ckpt_path: Path, device: torch.device) -> tuple[W
     model.eval()
 
     # Backbone is frozen in evaluation
-    model.is_backbone_frozen = True
+    for p in model.wavlm.parameters():
+        p.requires_grad = False
     return model, config
 
 

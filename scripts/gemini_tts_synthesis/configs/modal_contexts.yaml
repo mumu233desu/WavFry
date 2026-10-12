@@ -1,0 +1,212 @@
+# Carlos T. Ishi (ATR) Japanese Dialogue Taxonomy - Counterfactual Modal Styles
+# Canonical Modal Phonation (Full glottal closure, solid periodic vibration, zero breathiness, zero whisper)
+version: "1.0"
+
+# Global Audio Director Instruction for Gemini TTS (Analogous to System Prompt in Text LLMs)
+global_instructions_template: >-
+  Section 1 ({modal_text}): {part1_style}. Section 2 ({part2_text}): {part2_style}. CRITICAL: Maintain solid periodic vocal fold vibration and full glottal closure; strictly do NOT produce unvoiced whisper or breathy voice.
+
+contexts:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. 強調・注意喚起・真情吐露 (Emphasis, Attention & Real Feelings)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "emphasis_attention"
+    macro_id: "emphasis_real_feelings"
+    macro_name: "強調・注意喚起・真情吐露"
+    sub_id: "emphasis_attention"
+    sub_name: "強調・注意の促し (Emphasis & Attention)"
+    description: "聞き手の注意を惹きつける、重要な情報や強い感情の焦点を際立たせる発話。"
+    recommended_styles:
+      part1_style: "casual, clear speaking tone, steady modal voice"
+      part2_modal_style: "firm, resonant modal speech, clear pitch accent, solid vocal fold vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "real_feelings"
+    macro_id: "emphasis_real_feelings"
+    macro_name: "強調・注意喚起・真情吐露"
+    sub_id: "real_feelings"
+    sub_name: "真の気持ち・本音 (Expression of Real Feelings)"
+    description: "「本当に」「実は」という意味を込めて、心からの本音・率直な感情を吐露する発話。"
+    recommended_styles:
+      part1_style: "conversational and friendly, clear modal voice"
+      part2_modal_style: "heartfelt sincere tone, solid resonant modal voice, continuous clear glottal vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. 興奮・感情再現引用 (Excitement & Quoting Emotional Speech)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "excited_speech"
+    macro_id: "excitement_quoting"
+    macro_name: "興奮・感情再現引用"
+    sub_id: "excited_speech"
+    sub_name: "興奮気味の発話 (Excited Speech)"
+    description: "出来事の臨場感や興奮が冷めやらず、早まる息遣いとともに熱っぽく語る発話。"
+    recommended_styles:
+      part1_style: "lively conversational narrative, steady modal voice"
+      part2_modal_style: "energetic and lively modal tone, clear resonant articulation, steady breath support, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "quoting_excited"
+    macro_id: "excitement_quoting"
+    macro_name: "興奮・感情再現引用"
+    sub_id: "quoting_excited"
+    sub_name: "興奮した発言の再現引用 (Quoting Emotional Speech)"
+    description: "過去に誰か（または自分）が激高・興奮して言ったセリフを、当時の息遣いのまま引用して話す発話。"
+    recommended_styles:
+      part1_style: "casual storytelling setup, clear modal delivery"
+      part2_modal_style: "vivid storytelling delivery, resonant modal voice mimicking excitement, clear vocal cords, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. 丁寧・改まった相槌 (Politeness & Backchannels)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "formal_politeness"
+    macro_id: "polite_backchannel"
+    macro_name: "丁寧・改まった相槌"
+    sub_id: "formal_politeness"
+    sub_name: "改まった丁寧・謙虚 (Formal Politeness / Modesty)"
+    description: "目上の人や改まった場面で、礼儀と慎み、深い敬意を込めて返す丁寧な返答と相槌。"
+    recommended_styles:
+      part1_style: "polite, attentive tone, clear modal voice"
+      part2_modal_style: "polite, courteous and formal delivery, steady resonant modal voice, full glottal closure, clear and crisp, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "casual_interest"
+    macro_id: "polite_backchannel"
+    macro_name: "丁寧・改まった相槌"
+    sub_id: "casual_interest"
+    sub_name: "親密な関心・共感相槌 (Casual Interest & Empathy)"
+    description: "親しい間柄で相手の真剣な打ち明け話に全神経を集中し、深く共感しながら打つ相槌。"
+    recommended_styles:
+      part1_style: "attentive listener tone, clear modal delivery"
+      part2_modal_style: "warm, attentive listener tone, gentle yet firm modal voice, solid vocal cord vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. 童話の読み聞かせ・優しさ (Gentle Tone & Storytelling)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "gentle_narrative"
+    macro_id: "gentle_tone"
+    macro_name: "童話の読み聞かせ・優しさ"
+    sub_id: "gentle_narrative"
+    sub_name: "穏やかな語りかけ・情景描写 (Gentle Narrative)"
+    description: "絵本の読み聞かせや、親しい相手・子供を包み込むような温かく柔らかい語りかけ。"
+    recommended_styles:
+      part1_style: "warm, calm narrative tone, clear modal voice"
+      part2_modal_style: "warm and calm narrative tone, soothing gentle modal voice, smooth pitch contour, complete glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 5. 驚き・意外・感心 (Surprise, Unexpectedness & Admiration)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "unexpectedness"
+    macro_id: "surprise_admiration"
+    macro_name: "驚き・意外・感心"
+    sub_id: "unexpectedness"
+    sub_name: "驚き・意外 (Unexpectedness)"
+    description: "想定外の事実を突きつけられ、思わず息を呑みながら発する驚きのリアクション。"
+    recommended_styles:
+      part1_style: "casual conversational, steady modal tone"
+      part2_modal_style: "surprised yet clear modal reaction, firm resonant exclamation, audible solid pitch, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "admiration"
+    macro_id: "surprise_admiration"
+    macro_name: "驚き・意外・感心"
+    sub_id: "admiration"
+    sub_name: "感心・感嘆 (Admiration)"
+    description: "素晴らしい作品や圧巻の光景を目の当たりにし、心からの敬意と感嘆を吐息とともに漏らす発話。"
+    recommended_styles:
+      part1_style: "casual appreciative tone, clear modal phonation"
+      part2_modal_style: "appreciative, admiring tone, rich resonant modal phonation, sustained solid vocal cord vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 6. ひそひそ話・戸惑い・独り言 (Confidential, Embarrassment & Self-Talk)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "confidential"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "confidential"
+    sub_name: "内緒話・言えない事 (Confidential Talking)"
+    description: "他人に聞かれては困る秘密や噂話を、声量を落としつつ声帯の音程を保って話す発話。"
+    recommended_styles:
+      part1_style: "subdued conversational tone, standard vocal pitch, clear modal voice"
+      part2_modal_style: "quiet, discreet conversational tone, clear modal phonation with full glottal closure, low volume but solid periodic pitch, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "embarrassment"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "embarrassment"
+    sub_name: "戸惑い・困惑 (Embarrassment & Hesitation)"
+    description: "予期せぬ質問や気まずい局面に直面し、言葉に詰まりながら息混じりに絞り出す発話。"
+    recommended_styles:
+      part1_style: "hesitant conversational, clear modal delivery"
+      part2_modal_style: "hesitant and sheepish delivery, clear modal voice with audible glottal pulses, shy but resonant, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "talking_to_oneself"
+    macro_id: "confidential_embarrassment"
+    macro_name: "ひそひそ話・戸惑い・独り言"
+    sub_id: "talking_to_oneself"
+    sub_name: "自己発話・独り言 (Talking to Oneself)"
+    description: "独りで思考を整理したり、迷ったりしている最中に思わず口から零れ落ちる独り言。"
+    recommended_styles:
+      part1_style: "musing intro, steady modal phonation"
+      part2_modal_style: "reflective soliloquy, quiet yet firm modal voice, distinct introspective pitch, solid glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 7. ため息混じりの発話 (Sighing: Weariness, Disappointment & Relief)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "weariness"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "weariness"
+    sub_name: "疲れ・疲労 (Weary / Tired)"
+    description: "一日の終わりや重労働の後に、全身の力が抜け落ちたため息とともに発する脱力発話。"
+    recommended_styles:
+      part1_style: "tired low voice, clear modal phonation"
+      part2_modal_style: "tired and relaxed delivery, low resonant modal voice, steady vocal fold vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "disappointment"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "disappointment"
+    sub_name: "残念・がっかり (Disappointed)"
+    description: "期待が外れたり、楽しみにしていた予定が中止になった際の、落胆のため息交じりの発話。"
+    recommended_styles:
+      part1_style: "somber conversational, clear modal voice"
+      part2_modal_style: "somber, downcast delivery, clear deflated modal pitch, solid periodic glottal vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "relief"
+    macro_id: "sighing_emotion"
+    macro_name: "ため息混じりの発話"
+    sub_id: "relief"
+    sub_name: "安心・安堵 (Relief)"
+    description: "危機が去り、あるいは大きな心配事が解消して、胸を撫で下ろす安堵の吐息とともに発する発話。"
+    recommended_styles:
+      part1_style: "recovering calm tone, clear modal phonation"
+      part2_modal_style: "calm, relieved delivery, warm and steady modal voice, firm vocal fold closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 8. 笑いが伴う発話 (Laughing: Funny, Bitter & Forced)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: "funny"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "funny"
+    sub_name: "面白い・可笑しさ (Funny Laughing)"
+    description: "話の可笑しさに思わず吹き出しそうになりながら、笑いの息を漏らしつつ語る発話。"
+    recommended_styles:
+      part1_style: "cheerful amused tone, clear modal voice"
+      part2_modal_style: "cheerful and amused delivery, smiling resonant modal tone, clear rhythmic laughter pulses, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "bitter"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "bitter"
+    sub_name: "苦笑い・自嘲 (Bitter Laughing)"
+    description: "どうしようもない理不尽や自分のうっかりミスに対し、苦笑いや自嘲の息を漏らしながら語る発話。"
+    recommended_styles:
+      part1_style: "wry storytelling tone, steady modal delivery"
+      part2_modal_style: "wry, dry humorous delivery, resonant modal voice, self-deprecating tone with firm periodic vocal vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"
+
+  - id: "forced"
+    macro_id: "laughing_speaking"
+    macro_name: "笑いが伴う発話"
+    sub_id: "forced"
+    sub_name: "愛想笑い・社交辞令 (Forced / Social Laughing)"
+    description: "ビジネスや初対面の場で、緊張や配慮を隠すために社交的な愛想笑いを含ませて発する発話。"
+    recommended_styles:
+      part1_style: "polite formal tone, clear modal phonation"
+      part2_modal_style: "polite, diplomatic delivery, crisp and formal modal tone, steady social pitch control, solid vocal cord vibration, full glottal closure, strictly NO breathiness, NO breathy voice, NO sigh, NO whispery voice"

@@ -2,29 +2,28 @@
 # -*- coding: utf-8 -*-
 """End-to-end orchestrator for BreathyTTS Japanese synthesis, alignment & slicing.
 
-Executes the complete production pipeline:
-1. Script Pool Management (17 ATR sub-categories, screenwriter persona, local LLM with Fail-Fast)
-2. Speaker Registry & Monotonic Indexing (30 mixed voices mapped to U0001~U0030)
-3. Gemini 3.8 Flash TTS multi-voice synthesis (lossless 24kHz archived in raw_dialogues/)
-4. TIFA Japanese forced alignment (openvpi ST model)
-5. Three-Stage Intelligent Pop-Free Slicing (TIFA macro gating + RMS minimum + zero-crossing snap)
-6. FLAC Level 8 Export & TextGrid linear remapping (Part 1 Modal vs Part 2 Breathy)
-7. Sonorant + Vowel direct 'breathy = 1.0' labeling and shard JSON export (Modal unreviewed)
-8. Acoustic CPPS & Voicing validation with full audit trailing in synthesis_metadata.csv
+Executes the decoupled production pipeline:
+1. Script Pool Loading (loads cached 540 Carlos T. Ishi ATR scripts directly)
+2. Concurrent High-Speed TTS Synthesis (Phase 1: multi-threaded, default 8+ workers, OpenRouter-ready)
+3. Batch TIFA Forced Alignment (Phase 2: one-time PyTorch model load, GPU batch alignment)
+4. Local Three-Stage Slicing, Shard Export & Metadata Registration (Phase 3: zero-crossing snap, Level 8 FLAC)
+5. Full Breakpoint Resumption: 100% idempotent by default, skips completed dialogues in 0ms.
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import datetime
 import json
 import logging
 import os
+from pathlib import Path
+import re
 import shutil
 import sys
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import soundfile as sf
 
 # Ensure repository root is in sys.path
@@ -32,16 +31,17 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
-from scripts.gemini_tts_synthesis.script_generator import (
-    generate_script_pool,
-    clean_transcript_for_tifa,
-)
 from scripts.gemini_tts_synthesis.metadata_manager import (
     MetadataManager,
     VOICE_REGISTRY,
     VOICE_BY_NAME,
 )
-from scripts.gemini_tts_synthesis.tts_client import GeminiTTSClient
+from scripts.gemini_tts_synthesis.tts_client import (
+    GeminiTTSClient,
+    DEFAULT_TTS_ENDPOINT,
+    DEFAULT_TTS_KEY,
+    DEFAULT_TTS_MODEL,
+)
 from scripts.gemini_tts_synthesis.tifa_align_wrapper import TIFAAlignmentWrapper
 from scripts.gemini_tts_synthesis.audio_dialogue_slicer import slice_dialogue_pair
 from scripts.gemini_tts_synthesis.textgrid_labeler import (
@@ -61,33 +61,27 @@ DEFAULT_DATASET_ROOT = Path(r"E:\Corpus\Breathy\BreathyTTS")
 
 def run_pipeline(
     dataset_root: Path = DEFAULT_DATASET_ROOT,
-    config_path: Optional[Path] = None,
     script_cache_dir: Optional[Path] = None,
-    num_dialogues: int = 1,
+    num_dialogues: Optional[int] = None,
     voice_filter: Optional[str] = None,
-    skip_llm: bool = False,
+    workers: int = 8,
+    tifa_batch_size: int = 4,
+    tts_endpoint: str = DEFAULT_TTS_ENDPOINT,
+    tts_api_key: str = DEFAULT_TTS_KEY,
+    tts_model: str = DEFAULT_TTS_MODEL,
     skip_tts: bool = False,
     skip_tifa: bool = False,
-    scripts_only: bool = False,
 ) -> None:
     dataset_root = dataset_root.resolve()
-    config_path = config_path or (Path(__file__).parent / "configs" / "ishi_contexts.yaml")
-    script_cache_dir = script_cache_dir or (dataset_root / "script_pool_cache")
+    script_cache_dir = (script_cache_dir or (dataset_root / "script_pool_cache")).resolve()
 
-    logger.info(f"=== Initializing BreathyTTS Pipeline at {dataset_root} ===")
+    logger.info(f"=== Initializing BreathyTTS Production Pipeline at {dataset_root} ===")
     meta_mgr = MetadataManager(dataset_root)
 
-    # ── Stage 1: Dialogue Script Pool ──
-    logger.info(f"=== STAGE 1: Managing Script Pool ({script_cache_dir}) ===")
-    if not skip_llm:
-        scripts = generate_script_pool(
-            config_path=config_path,
-            cache_dir=script_cache_dir,
-            scenarios_per_context=3,
-        )
-    else:
-        logger.info(f"Skipping LLM calls; loading existing cached scripts from {script_cache_dir}...")
-        scripts = []
+    # ── Stage 0: Load Script Pool ──
+    logger.info(f"=== STAGE 0: Loading Script Pool from {script_cache_dir} ===")
+    scripts: List[Dict[str, Any]] = []
+    if script_cache_dir.exists():
         for sf_file in sorted(script_cache_dir.glob("*.json")):
             try:
                 scripts.append(json.loads(sf_file.read_text(encoding="utf-8")))
@@ -95,16 +89,10 @@ def run_pipeline(
                 pass
 
     if not scripts:
-        logger.error(f"No scripts available in {script_cache_dir}! Please ensure scripts are generated.")
-        return
-
-    if scripts_only:
-        logger.info(f"=== Scripts-Only Mode: {len(scripts)} scripts ready in {script_cache_dir}. Exiting successfully. ===")
-        print("\n" + "=" * 60)
-        print("SCRIPTS-ONLY GENERATION COMPLETED!")
-        print(f"- Total Scripts:   {len(scripts)}")
-        print(f"- Script Pool Dir: {script_cache_dir}")
-        print("=" * 60 + "\n")
+        logger.error(
+            f"No scripts available in {script_cache_dir}! "
+            f"Please run `scripts/gemini_tts_synthesis/script_generator.py` to generate the script pool first."
+        )
         return
 
     # Filter voices if requested
@@ -115,98 +103,191 @@ def run_pipeline(
     else:
         voices_to_run = VOICE_REGISTRY
 
-    logger.info(f"Available scripts: {len(scripts)} | Voices to schedule: {len(voices_to_run)}")
+    total_to_process = min(num_dialogues or len(scripts), len(scripts))
+    logger.info(f"Available scripts: {len(scripts)} | Voices to schedule: {len(voices_to_run)} | Target processing: {total_to_process}")
 
-    # ── Stage 2: Synthesis, Alignment, Slicing & Annotation ──
-    tts_client = GeminiTTSClient()
-    aligner = TIFAAlignmentWrapper()
-
-    total_to_process = min(num_dialogues, len(scripts))
-    logger.info(f"Starting batch of {total_to_process} dialogues...")
-
-    processed_count = 0
-    all_manifest_records: List[Dict[str, Any]] = []
-    acoustic_results: List[Dict[str, Any]] = []
-
+    # Build planned dialogue execution list (maintains round-robin pairing)
+    planned_items: List[Dict[str, Any]] = []
     for d_idx in range(total_to_process):
         script_item = scripts[d_idx % len(scripts)]
         voice_info = voices_to_run[d_idx % len(voices_to_run)]
         voice_name = voice_info["voice"]
         speaker_uid = voice_info["uid"]
-
         dialogue_id = f"dialogue_{d_idx+1:04d}_{voice_name.lower()}_{script_item['sub_id']}"
-        logger.info(f"\n--- Processing [{d_idx+1}/{total_to_process}] {dialogue_id} (Speaker: {speaker_uid} / {voice_name}) ---")
 
-        # 1. Allocate next monotonic utterance index pair
-        modal_key, breathy_key, spk_meta = meta_mgr.allocate_next_utterance_pair(voice_name)
-        logger.info(f"Allocated keys: Modal={modal_key} | Breathy={breathy_key}")
+        raw_wav = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.wav"
+        raw_txt = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.txt"
+        raw_tg = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.TextGrid"
+        raw_json = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.json"
 
-        # 2. Raw dialogue paths
-        raw_wav_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.wav"
-        raw_txt_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.txt"
-        raw_tg_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.TextGrid"
-        raw_json_path = meta_mgr.raw_dialogues_dir / f"{dialogue_id}.json"
+        planned_items.append({
+            "d_idx": d_idx + 1,
+            "dialogue_id": dialogue_id,
+            "script": script_item,
+            "voice_info": voice_info,
+            "voice_name": voice_name,
+            "speaker_uid": speaker_uid,
+            "raw_wav_path": raw_wav,
+            "raw_txt_path": raw_txt,
+            "raw_tg_path": raw_tg,
+            "raw_json_path": raw_json,
+        })
 
-        # Prepare clean transcript sidecar for TIFA
-        raw_txt_path.write_text(script_item["clean_full_text"], encoding="utf-8")
+    # Detect already completed dialogues for seamless default breakpoint resume
+    completed_dialogues = meta_mgr.get_completed_dialogues()
+    logger.info(f"Breakpoint scanner: {len(completed_dialogues)} dialogues already fully sliced and recorded.")
 
-        # 3. TTS Synthesis
-        if not (raw_wav_path.exists() and raw_wav_path.stat().st_size > 4000) and not skip_tts:
-            tts_parts = [
+    # ──────────────────────────────────────────────────────────────────────────
+    # ── STAGE 1: Concurrent High-Speed TTS Synthesis (Phase 1: Multi-Threaded)
+    # ──────────────────────────────────────────────────────────────────────────
+    logger.info(f"\n{'='*65}\nSTAGE 1: Concurrent TTS Synthesis (Workers: {workers})\n{'='*65}")
+    tts_client = GeminiTTSClient(
+        endpoint=tts_endpoint,
+        api_key=tts_api_key,
+        model=tts_model,
+    )
+
+    items_to_synthesize = []
+    for item in planned_items:
+        # Strict defensive check: clean_full_text == modal_text + breathy_text_clean
+        script_item = item["script"]
+        full_text = script_item.get("clean_full_text", "")
+        norm_concat = re.sub(r"\s+", "", script_item.get("modal_text", "") + script_item.get("breathy_text_clean", ""))
+        norm_full = re.sub(r"\s+", "", full_text)
+        if norm_concat != norm_full:
+            raise ValueError(
+                f"Transcript consistency error in {script_item.get('script_id')}: "
+                f"modal+breathy ('{norm_concat}') does not match clean_full_text ('{norm_full}')"
+            )
+
+        # Write clean transcript sidecar for TIFA
+        if not item["raw_txt_path"].exists() or item["raw_txt_path"].read_text(encoding="utf-8").strip() != full_text:
+            item["raw_txt_path"].write_text(full_text, encoding="utf-8")
+
+        # Determine if TTS audio is needed
+        if item["raw_wav_path"].exists() and item["raw_wav_path"].stat().st_size > 4000:
+            continue
+        if not skip_tts:
+            items_to_synthesize.append(item)
+
+    session_id = f"session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    session_synthesized_items: List[Dict[str, Any]] = []
+
+    if items_to_synthesize:
+        logger.info(f"[{session_id}] Initiating concurrent TTS generation for {len(items_to_synthesize)} dialogues ({workers} threads)...")
+
+        def _synthesize_task(task_item: Dict[str, Any]) -> Dict[str, Any]:
+            sc = task_item["script"]
+            vn = task_item["voice_name"]
+            out_wav = task_item["raw_wav_path"]
+            out_json = task_item["raw_json_path"]
+
+            parts = [
                 {
-                    "text": script_item["modal_text"],
+                    "text": sc["modal_text"],
                     "speech_metadata": {
-                        "speaker": voice_name,
-                        "style": script_item["modal_style"],
+                        "speaker": vn,
+                        "style": sc["modal_style"],
                     },
                 },
                 {
-                    "text": script_item["breathy_text_with_tag"],
+                    "text": sc["breathy_text_with_tag"],
                     "speech_metadata": {
-                        "speaker": voice_name,
-                        "style": script_item["breathy_style"],
+                        "speaker": vn,
+                        "style": sc["breathy_style"],
                     },
                 },
             ]
-            logger.info(f"Synthesizing dialogue via Gemini TTS ({voice_name})...")
-            tts_res = tts_client.synthesize(
-                parts=tts_parts,
-                voice=voice_name,
-                output_wav_path=raw_wav_path,
-            )
-            raw_json_path.write_text(
-                json.dumps({"script": script_item, "tts_response": tts_res}, ensure_ascii=False, indent=2),
+            resp = tts_client.synthesize(parts=parts, voice=vn, output_wav_path=out_wav)
+            out_json.write_text(
+                json.dumps({"script": sc, "tts_response": resp}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            time.sleep(2.0)
-        else:
-            logger.info(f"Using existing raw audio: {raw_wav_path.name}")
+            return {
+                "dialogue_id": task_item["dialogue_id"],
+                "generation_id": resp.get("generation_id"),
+                "voice": vn,
+            }
 
-        if not raw_wav_path.exists():
-            logger.warning(f"Audio file missing for {dialogue_id}, skipping.")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_item = {executor.submit(_synthesize_task, it): it for it in items_to_synthesize}
+            for fut in concurrent.futures.as_completed(future_to_item):
+                it = future_to_item[fut]
+                try:
+                    res = fut.result()
+                    session_synthesized_items.append(res)
+                    logger.info(f"[TTS Done] {it['dialogue_id']} (GenID: {res.get('generation_id')})")
+                except Exception as exc:
+                    logger.error(f"[TTS Failed] {it['dialogue_id']}: {exc}")
+                    raise exc
+    else:
+        logger.info(f"All {total_to_process} raw audio files already exist on disk. Skipping TTS synthesis.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ── STAGE 2: Batch TIFA Forced Alignment (Phase 2: One-Time Model Loading)
+    # ──────────────────────────────────────────────────────────────────────────
+    logger.info(f"\n{'='*65}\nSTAGE 2: Batch TIFA Forced Alignment (One-Time Model Load)\n{'='*65}")
+    aligner = TIFAAlignmentWrapper()
+
+    # Identify audio files missing TextGrid
+    missing_tifa_items = [
+        it for it in planned_items
+        if not it["raw_tg_path"].exists() and it["raw_wav_path"].exists()
+    ]
+
+    if missing_tifa_items and not skip_tifa:
+        logger.info(f"Found {len(missing_tifa_items)} pending alignments. Launching single-pass batch TIFA (batch_size={tifa_batch_size})...")
+        audio_paths = [it["raw_wav_path"] for it in missing_tifa_items]
+        text_paths = [it["raw_txt_path"] for it in missing_tifa_items]
+
+        aligner.align_batch_files(
+            audio_paths=audio_paths,
+            text_paths=text_paths,
+            output_dir=meta_mgr.raw_dialogues_dir,
+            batch_size=tifa_batch_size,
+        )
+    else:
+        logger.info(f"All {total_to_process} TextGrid alignment files already present. Skipping TIFA alignment.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ── STAGE 3: Local Slicing, Shard Export & Metadata Registration (Phase 3)
+    # ──────────────────────────────────────────────────────────────────────────
+    logger.info(f"\n{'='*65}\nSTAGE 3: Pop-Free Slicing, Shard Export & Metadata Registration\n{'='*65}")
+    processed_count = 0
+    all_manifest_records: List[Dict[str, Any]] = []
+    acoustic_results: List[Dict[str, Any]] = []
+
+    for item in planned_items:
+        d_id = item["dialogue_id"]
+        d_idx = item["d_idx"]
+        script_item = item["script"]
+        voice_info = item["voice_info"]
+        voice_name = item["voice_name"]
+        speaker_uid = item["speaker_uid"]
+
+        # Default breakpoint skip
+        if d_id in completed_dialogues:
+            logger.info(f"[{d_idx}/{total_to_process}] Skipping already completed dialogue: {d_id}")
             continue
 
-        # 4. TIFA Alignment (Isolated single-file alignment, O(1) per dialogue)
-        if not raw_tg_path.exists() and not skip_tifa:
-            logger.info(f"Running TIFA forced alignment on {dialogue_id}...")
-            aligner.align_single_file(
-                audio_path=raw_wav_path,
-                text_path=raw_txt_path,
-                output_tg_path=raw_tg_path,
-            )
-        else:
-            logger.info(f"Using existing raw TextGrid: {raw_tg_path.name}")
+        if not item["raw_wav_path"].exists() or not item["raw_tg_path"].exists():
+            logger.warning(f"Missing WAV or TextGrid for {d_id}, cannot slice. Skipping.")
+            continue
 
-        # 5. Three-Stage Pop-Free Slicing & FLAC Encoding (Level 8)
+        # 1. Monotonic utterance key allocation (thread-safe)
+        modal_key, breathy_key, spk_meta = meta_mgr.allocate_next_utterance_pair(voice_name)
+
         out_modal_flac = meta_mgr.audio_dir / f"{modal_key}.flac"
         out_breathy_flac = meta_mgr.audio_dir / f"{breathy_key}.flac"
         out_modal_tg = meta_mgr.textgrid_dir / f"{modal_key}.TextGrid"
         out_breathy_tg = meta_mgr.textgrid_dir / f"{breathy_key}.TextGrid"
 
-        logger.info(f"Executing Three-Stage Zero-Crossing Slicing...")
+        logger.info(f"[{d_idx}/{total_to_process}] Slicing {d_id} -> Modal={modal_key} | Breathy={breathy_key}")
+
+        # 2. Three-Stage Zero-Crossing Pop-Free Slicing & FLAC Level 8 Export
         slice_stats = slice_dialogue_pair(
-            audio_path=raw_wav_path,
-            textgrid_path=raw_tg_path,
+            audio_path=item["raw_wav_path"],
+            textgrid_path=item["raw_tg_path"],
             out_audio_modal=out_modal_flac,
             out_audio_breathy=out_breathy_flac,
             out_tg_modal=out_modal_tg,
@@ -215,9 +296,8 @@ def run_pipeline(
             modal_text=script_item.get("modal_text"),
             breathy_text=script_item.get("breathy_text_clean"),
         )
-        logger.info(f"Sliced at {slice_stats['cut_time_s']}s (Zero Crossing). Modal={slice_stats['modal_duration_s']}s | Breathy={slice_stats['breathy_duration_s']}s")
 
-        # 6. Extract Vowel + Sonorant Ground Truth & Write Breathy Shard
+        # 3. Extract Vowel + Sonorant Ground Truth & Write Breathy Shard
         b_intervals, b_shard = extract_breathy_slice_intervals(
             breathy_tg_path=out_breathy_tg,
             file_key=breathy_key,
@@ -225,18 +305,34 @@ def run_pipeline(
             context_id=script_item["sub_id"],
         )
         shard_file = write_breathy_shard(dataset_root, breathy_key, b_shard)
-        logger.info(f"Exported Breathy shard with {len(b_intervals)} labeled intervals to {shard_file.name}")
-        # Note: Modal slice intentionally receives NO shard file (0% false-negative guarantee)
-
         all_manifest_records.extend(b_intervals)
 
-        # 7. Acoustic CPPS & Voicing Validation
+        # 4. Acoustic CPPS & Voicing Validation
         val_res = validate_sample_acoustics(out_breathy_flac, b_intervals)
         acoustic_results.append(val_res)
 
-        # 8. Append full audit record to synthesis_metadata.csv
+        # Extract generation ID and OpenRouter token stats
+        gen_id = ""
+        prompt_tokens = 0
+        comp_tokens = 0
+        cost_usd = 0.0
+        if item["raw_json_path"].exists():
+            try:
+                raw_j = json.loads(item["raw_json_path"].read_text(encoding="utf-8"))
+                tts_info = raw_j.get("tts_response", {})
+                gen_id = tts_info.get("generation_id", "")
+            except Exception:
+                pass
+
+        if gen_id and "openrouter.ai" in tts_endpoint.lower():
+            stats = tts_client.fetch_generation_stats(gen_id)
+            prompt_tokens = stats.get("tokens_prompt", 0)
+            comp_tokens = stats.get("tokens_completion", 0)
+            cost_usd = stats.get("total_cost", 0.0)
+
+        # 5. Append Full Audit Record to synthesis_metadata.csv
         audit_record = {
-            "dialogue_id": dialogue_id,
+            "dialogue_id": d_id,
             "created_at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(),
             "voice": voice_name,
             "speaker_id": speaker_uid,
@@ -257,11 +353,15 @@ def run_pipeline(
             "breathy_duration_s": slice_stats["breathy_duration_s"],
             "breathy_voicing": val_res.get("breathy_avg_voicing", float("nan")),
             "breathy_cpps_db": val_res.get("breathy_avg_cpps", float("nan")),
-            "raw_dialogue_file": raw_wav_path.name,
+            "raw_dialogue_file": item["raw_wav_path"].name,
+            "generation_id": gen_id,
+            "tokens_prompt": prompt_tokens,
+            "tokens_completion": comp_tokens,
+            "cost_usd": cost_usd,
         }
         meta_mgr.append_synthesis_record(audit_record)
 
-        # Manifest slice rows
+        # 6. Append Slices to manifest_slices.csv
         slice_rows = [
             {
                 "file_key": modal_key,
@@ -283,54 +383,167 @@ def run_pipeline(
                 "section": "breathy",
                 "duration_s": slice_stats["breathy_duration_s"],
                 "text": script_item.get("breathy_text_clean", ""),
-                "is_annotated": True,
+                "is_annotated": False,
             },
         ]
         meta_mgr.append_slices_manifest_rows(slice_rows)
         processed_count += 1
 
-    # ── Summary Report ──
+    # ── Summary Report & Token Usage Accounting ──
     if acoustic_results:
         report_md = generate_validation_summary(acoustic_results)
         report_file = dataset_root / "acoustic_validation_report.md"
         report_file.write_text(report_md, encoding="utf-8")
         logger.info(f"Validation summary report written to {report_file}")
 
+    # ── Session Token Usage & Cumulative Accounting ──
+    session_prompt_tokens = 0
+    session_comp_tokens = 0
+    session_cost_usd = 0.0
+
+    if session_synthesized_items:
+        logger.info(f"Fetching OpenRouter generation stats for {len(session_synthesized_items)} newly synthesized dialogues...")
+        for it in session_synthesized_items:
+            gid = it.get("generation_id")
+            if gid:
+                st = tts_client.fetch_generation_stats(gid)
+                session_prompt_tokens += st.get("tokens_prompt", 0)
+                session_comp_tokens += st.get("tokens_completion", 0)
+                session_cost_usd += st.get("total_cost", 0.0)
+
+    # 1. Append session record to token_usage_sessions.jsonl
+    sessions_jsonl = dataset_root / "token_usage_sessions.jsonl"
+    session_record = {
+        "session_id": session_id,
+        "timestamp": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(),
+        "newly_synthesized_dialogues": len(session_synthesized_items),
+        "prompt_tokens": session_prompt_tokens,
+        "completion_tokens": session_comp_tokens,
+        "cost_usd": round(session_cost_usd, 6),
+        "dialogues": [it["dialogue_id"] for it in session_synthesized_items],
+    }
+    with open(sessions_jsonl, "a", encoding="utf-8") as f:
+        f.write(json.dumps(session_record, ensure_ascii=False) + "\n")
+
+    # 2. Read all historical sessions to compute all-time spend
+    all_sessions = []
+    if sessions_jsonl.exists():
+        with open(sessions_jsonl, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        all_sessions.append(json.loads(line))
+                    except Exception:
+                        pass
+
+    all_time_requests = sum(s.get("newly_synthesized_dialogues", 0) for s in all_sessions)
+    all_time_prompt = sum(s.get("prompt_tokens", 0) for s in all_sessions)
+    all_time_comp = sum(s.get("completion_tokens", 0) for s in all_sessions)
+    all_time_cost = sum(s.get("cost_usd", 0.0) for s in all_sessions)
+
+    # 3. Compute effective dataset token usage and cost from synthesis_metadata.csv (clean items)
+    effective_prompt_tokens = 0
+    effective_comp_tokens = 0
+    effective_cost_usd = 0.0
+    effective_dialogue_count = 0
+    if meta_mgr.metadata_csv.exists() and meta_mgr.metadata_csv.stat().st_size > 0:
+        try:
+            import pandas as pd
+            df_meta = pd.read_csv(meta_mgr.metadata_csv)
+            effective_dialogue_count = len(df_meta)
+            if "tokens_prompt" in df_meta.columns:
+                effective_prompt_tokens = int(df_meta["tokens_prompt"].fillna(0).sum())
+            if "tokens_completion" in df_meta.columns:
+                effective_comp_tokens = int(df_meta["tokens_completion"].fillna(0).sum())
+            if "cost_usd" in df_meta.columns:
+                effective_cost_usd = float(df_meta["cost_usd"].fillna(0.0).sum())
+        except Exception as e:
+            logger.debug(f"Error computing effective token usage: {e}")
+
+    token_summary = {
+        "updated_at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat(),
+        "effective_dataset_540": {
+            "total_dialogues": effective_dialogue_count,
+            "prompt_tokens": effective_prompt_tokens,
+            "completion_tokens": effective_comp_tokens,
+            "cost_usd": round(effective_cost_usd, 6),
+        },
+        "last_session": {
+            "session_id": session_id,
+            "newly_synthesized_count": len(session_synthesized_items),
+            "prompt_tokens": session_prompt_tokens,
+            "completion_tokens": session_comp_tokens,
+            "cost_usd": round(session_cost_usd, 6),
+        },
+        "all_time_cumulative": {
+            "total_sessions": len(all_sessions),
+            "total_synthesized_requests": all_time_requests,
+            "prompt_tokens": all_time_prompt,
+            "completion_tokens": all_time_comp,
+            "cost_usd": round(all_time_cost, 6),
+        },
+    }
+    summary_json_file = dataset_root / "token_usage_summary.json"
+    summary_json_file.write_text(json.dumps(token_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
     print("\n" + "=" * 65)
-    print(f"BREATHYTTS PIPELINE EXECUTION COMPLETED!")
-    print(f"- Processed Dialogues: {processed_count}")
-    print(f"- Dataset Root:        {dataset_root}")
-    print(f"- Sliced FLAC Audio:   {meta_mgr.audio_dir}")
-    print(f"- Sliced TextGrids:    {meta_mgr.textgrid_dir}")
-    print(f"- Shard Annotations:   {dataset_root / '_breathy_cache' / 'batches' / 'batch_1'}")
-    print(f"- Metadata Audit Log:  {meta_mgr.metadata_csv}")
-    print(f"- Speaker Registry:    {meta_mgr.speaker_mapping_tsv}")
+    print(f"BREATHYTTS BATCH PIPELINE EXECUTION COMPLETED!")
+    print(f"[Session: {session_id}]")
+    print(f"- Newly Synthesized Dialogues: {len(session_synthesized_items)}")
+    print(f"- Session Prompt Tokens:       {session_prompt_tokens}")
+    print(f"- Session Audio Tokens:        {session_comp_tokens}")
+    print(f"- Session Cost ($ USD):        ${session_cost_usd:.4f}")
+    print(f"-" * 65)
+    print(f"[Effective Dataset Asset (540 Dialogues)]")
+    print(f"- Total Clean Dialogues:       {effective_dialogue_count} / {total_to_process}")
+    print(f"- Effective Prompt Tokens:     {effective_prompt_tokens}")
+    print(f"- Effective Audio Tokens:      {effective_comp_tokens}")
+    print(f"- Effective Net Cost ($ USD):  ${effective_cost_usd:.4f}")
+    print(f"-" * 65)
+    print(f"[All-Time Cumulative API Spend]")
+    print(f"- Total API Requests:          {all_time_requests}")
+    print(f"- Total Prompt Tokens:         {all_time_prompt}")
+    print(f"- Total Audio Tokens:          {all_time_comp}")
+    print(f"- Total Historical Spend:      ${all_time_cost:.4f}")
+    print(f"-" * 65)
+    print(f"- Session Log File:            {sessions_jsonl}")
+    print(f"- Token Summary File:          {summary_json_file}")
+    print(f"- Sliced FLAC Audio:           {meta_mgr.audio_dir}")
+    print(f"- Sliced TextGrids:            {meta_mgr.textgrid_dir}")
+    print(f"- Shard Annotations:           {dataset_root / '_breathy_cache' / 'batches' / 'batch_1'}")
+    print(f"- Metadata Audit Log:          {meta_mgr.metadata_csv}")
+    print(f"- Speaker Registry:            {meta_mgr.speaker_mapping_tsv}")
     print("=" * 65 + "\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
-    parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--script-cache-dir", type=Path, default=None)
-    parser.add_argument("--num-dialogues", type=int, default=1)
-    parser.add_argument("--voice", type=str, default=None)
-    parser.add_argument("--skip-llm", action="store_true")
-    parser.add_argument("--skip-tts", action="store_true")
-    parser.add_argument("--skip-tifa", action="store_true")
-    parser.add_argument("--scripts-only", action="store_true", help="Generate/manage script pool only and exit without synthesis.")
+    parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT, help="Dataset output root directory.")
+    parser.add_argument("--script-cache-dir", type=Path, default=None, help="Directory containing generated script JSON shards.")
+    parser.add_argument("--num-dialogues", type=int, default=None, help="Total number of dialogues to process (default: all available scripts).")
+    parser.add_argument("--voice", type=str, default=None, help="Optional single voice filter (e.g. Aoede).")
+    parser.add_argument("--workers", type=int, default=3, help="Number of concurrent worker threads for TTS API requests (default: 3 for smooth 20 RPM compliance).")
+    parser.add_argument("--tifa-batch-size", type=int, default=4, help="Batch size for TIFA GPU forced alignment (default: 4).")
+    parser.add_argument("--tts-endpoint", type=str, default=DEFAULT_TTS_ENDPOINT, help="TTS endpoint URL (supports Google AI Studio or OpenRouter).")
+    parser.add_argument("--tts-api-key", type=str, default=DEFAULT_TTS_KEY, help="API key for TTS endpoint.")
+    parser.add_argument("--tts-model", type=str, default=DEFAULT_TTS_MODEL, help="Model name for TTS synthesis.")
+    parser.add_argument("--skip-tts", action="store_true", help="Skip TTS synthesis, using existing raw audio files.")
+    parser.add_argument("--skip-tifa", action="store_true", help="Skip TIFA alignment, using existing raw TextGrids.")
     args = parser.parse_args()
 
     run_pipeline(
         dataset_root=args.dataset_root,
-        config_path=args.config,
         script_cache_dir=args.script_cache_dir,
         num_dialogues=args.num_dialogues,
         voice_filter=args.voice,
-        skip_llm=args.skip_llm,
+        workers=args.workers,
+        tifa_batch_size=args.tifa_batch_size,
+        tts_endpoint=args.tts_endpoint,
+        tts_api_key=args.tts_api_key,
+        tts_model=args.tts_model,
         skip_tts=args.skip_tts,
         skip_tifa=args.skip_tifa,
-        scripts_only=args.scripts_only,
     )
 
 
