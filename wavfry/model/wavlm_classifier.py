@@ -43,6 +43,7 @@ class WavFryClassifier(nn.Module):
         self.tasks = [t for t in canonical_order if t in tasks] + [t for t in tasks if t not in canonical_order]
 
         self.use_scalar_mix = config["model"].get("use_scalar_mix", True)
+        self.extract_layer = config["model"].get("extract_layer", None)
         if self.use_scalar_mix:
             # Independent scalar mix weights per task
             self.scalar_mix_weights = nn.ParameterDict({
@@ -327,13 +328,23 @@ class WavFryClassifier(nn.Module):
             for idx, task in enumerate(self.tasks):
                 hidden_by_task[task] = mixed[idx]
         else:
-            last_hidden = (
-                outputs.last_hidden_state.detach()
+            if self.extract_layer is not None and hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+                target_idx = int(self.extract_layer)
+                selected_hidden = (
+                    outputs.hidden_states[target_idx]
+                    if target_idx < len(outputs.hidden_states)
+                    else outputs.hidden_states[-1]
+                )
+            else:
+                selected_hidden = outputs.last_hidden_state
+
+            selected_hidden = (
+                selected_hidden.detach()
                 if getattr(self, "is_backbone_frozen", False)
-                else outputs.last_hidden_state
+                else selected_hidden
             )
             for task in self.tasks:
-                hidden_by_task[task] = last_hidden
+                hidden_by_task[task] = selected_hidden
 
         if not torch.is_autocast_enabled():
             head_dtype = next(self.heads.parameters()).dtype

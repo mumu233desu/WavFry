@@ -21,6 +21,7 @@ model:
   # 推荐中偏下层 4-8（音素/发音方式特征区间）
   fine_tune_layers: "4-8"
   use_scalar_mix: true               # 所有层学习加权聚合
+  extract_layer: null                # 当 use_scalar_mix 为 false 时指定抽取的单一层（0 为 CNN，1~12 为 Transformer 层；null 默认最后一层）
   dropout: 0.1
   head_hidden_dim: 256               # 分类头隐层（自动适配 backbone 输出维度）
   use_positional_encoding: false     # 是否在注意力池化前注入时间位置编码（默认关闭）
@@ -35,7 +36,8 @@ training:
   gradient_accumulation_steps: 2     # 有效 batch = batch_size × accumulation
                                      # 显存不足时设 2/4，等效扩大 batch
   backbone_lr: 1.0e-5                # 微调层 LR（远小于 head）
-  head_lr: 1.0e-4                    # 分类头 + scalar mix LR
+  head_lr: 1.0e-4                    # 分类头 LR
+  scalar_mix_lr: 1.0e-3              # 标量混合专属 LR（适度高于 head_lr 且脱离 weight decay，默认 1.0e-3）
   warmup_steps: 200
   weight_decay: 0.01                 # 仅应用于分类头权重层
   grad_clip: 1.0
