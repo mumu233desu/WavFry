@@ -6,6 +6,7 @@ import math
 import random
 import hashlib
 import logging
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -204,10 +205,15 @@ class ContinuousAudioBlockDataset(Dataset):
         self.fold_index = int(fold_index)
         self.cache_waveforms = bool(cache_waveforms)
         self.max_cache_files = int(max_cache_files)
+        self.waveform_cache: OrderedDict[str, tuple[torch.Tensor, float]] = OrderedDict()
         self.current_epoch = 1
         self.index = self._make_index(self.current_epoch)
         self.blocks = self.index.blocks
         self.resamplers: dict[int, torchaudio.transforms.Resample] = {}
+
+    def clear_cache(self) -> None:
+        """Clear instance waveform cache."""
+        self.waveform_cache.clear()
 
     @classmethod
     def clear_waveform_cache(cls):
@@ -215,10 +221,11 @@ class ContinuousAudioBlockDataset(Dataset):
         cls._AUDIO_INFO_CACHE.clear()
 
     def _get_audio_waveform(self, audio_path: str) -> tuple[torch.Tensor, float]:
-        """Fetch resampled 16kHz mono audio waveform and duration, with RAM caching."""
-        cached = self._AUDIO_WAVEFORM_CACHE.get(audio_path)
-        if cached is not None:
-            return cached
+        """Fetch resampled 16kHz mono audio waveform and duration, with RAM LRU caching."""
+        if self.cache_waveforms and audio_path in self.waveform_cache:
+            waveform, duration = self.waveform_cache[audio_path]
+            self.waveform_cache.move_to_end(audio_path)
+            return waveform, duration
 
         if audio_path not in self._AUDIO_INFO_CACHE:
             info = torchaudio.info(audio_path)
@@ -234,8 +241,10 @@ class ContinuousAudioBlockDataset(Dataset):
             waveform = self.resamplers[sr](waveform)
         waveform = waveform.squeeze(0).contiguous()
 
-        if self.cache_waveforms and len(self._AUDIO_WAVEFORM_CACHE) < self.max_cache_files:
-            self._AUDIO_WAVEFORM_CACHE[audio_path] = (waveform, total_duration)
+        if self.cache_waveforms and self.max_cache_files > 0:
+            if len(self.waveform_cache) >= self.max_cache_files:
+                self.waveform_cache.popitem(last=False)
+            self.waveform_cache[audio_path] = (waveform, total_duration)
 
         return waveform, total_duration
 
@@ -264,19 +273,28 @@ class ContinuousAudioBlockDataset(Dataset):
         block = self.blocks[idx]
         audio_path = block["audio_path"]
         full_waveform, total_duration = self._get_audio_waveform(audio_path)
-        start_s = float(block["start_s"])
-        end_s = min(float(block["end_s"]), total_duration)
+        start_s = max(0.0, min(float(block["start_s"]), total_duration))
+        end_s = max(start_s, min(float(block["end_s"]), total_duration))
         start_frame = max(0, int(round(start_s * self.target_sr)))
         end_frame = min(full_waveform.shape[0], int(round(end_s * self.target_sr)))
-        waveform = full_waveform[start_frame:end_frame]
+        # Clone waveform slice to prevent in-place modifications from polluting the RAM cache
+        waveform = full_waveform[start_frame:end_frame].clone()
         if waveform.numel() == 0:
             target_samples = int(round(self.duration_ms * self.target_sr / 1000.0))
             waveform = torch.zeros(target_samples, dtype=full_waveform.dtype)
 
         bounds, labels, ids = [], [], []
+        block_dur = max(0.0, end_s - start_s)
         for row in block["intervals"]:
-            rel_start = max(0.0, float(row["start_s"]) - start_s)
-            rel_end = min(end_s - start_s, float(row["end_s"]) - start_s)
+            raw_s = float(row["start_s"])
+            raw_e = float(row["end_s"])
+            # Skip intervals with zero duration or outside the block
+            if raw_e <= start_s or raw_s >= end_s:
+                continue
+            rel_start = max(0.0, min(raw_s - start_s, block_dur))
+            rel_end = max(rel_start, min(raw_e - start_s, block_dur))
+            if rel_end <= rel_start:
+                continue
             bounds.append([int(round(rel_start * self.target_sr)), int(round(rel_end * self.target_sr))])
             
             # Multi-label support: [label_creaky, label_breathy]
@@ -284,10 +302,13 @@ class ContinuousAudioBlockDataset(Dataset):
             l_breathy = float(row.get("label_breathy", float("nan")))
             labels.append([l_creaky, l_breathy])
             ids.append(row["interval_id"])
+
+        bounds_tensor = torch.tensor(bounds, dtype=torch.long).reshape(-1, 2)
+        labels_tensor = torch.tensor(labels, dtype=torch.float32).reshape(-1, 2)
         return (
             waveform,
-            torch.tensor(bounds, dtype=torch.long),
-            torch.tensor(labels, dtype=torch.float32),
+            bounds_tensor,
+            labels_tensor,
             block["speaker_id"],
             block["block_id"],
             ids,

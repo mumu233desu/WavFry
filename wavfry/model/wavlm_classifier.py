@@ -20,7 +20,7 @@ class WavFryClassifier(nn.Module):
     def __init__(self, config: dict[str, Any], wavlm_instance=None):
         super().__init__()
         self.config = config
-        self.backbone_name = config["model"]["backbone"]
+        self.backbone_name = config["model"].get("backbone", config["model"].get("wavlm_model", "microsoft/wavlm-base-plus"))
         if wavlm_instance is not None:
             self.wavlm = wavlm_instance
         else:
@@ -44,6 +44,11 @@ class WavFryClassifier(nn.Module):
 
         self.use_scalar_mix = config["model"].get("use_scalar_mix", True)
         self.extract_layer = config["model"].get("extract_layer", None)
+        if self.use_scalar_mix and self.extract_layer is not None:
+            logger.warning(
+                f"model.extract_layer={self.extract_layer} is configured, but use_scalar_mix=True. "
+                f"Scalar mix will take precedence. Set use_scalar_mix=False to use single-layer extraction."
+            )
         if self.use_scalar_mix:
             # Independent scalar mix weights per task
             self.scalar_mix_weights = nn.ParameterDict({
@@ -205,6 +210,12 @@ class WavFryClassifier(nn.Module):
                 state_dict[new_k] = state_dict[legacy_smw]
             state_dict.pop(legacy_smw, None)
 
+        # 1b. If current model disables scalar mix, discard all scalar_mix_weights keys
+        if not self.use_scalar_mix:
+            for k in list(state_dict.keys()):
+                if k.startswith(prefix + "scalar_mix_weights"):
+                    state_dict.pop(k, None)
+
         # 2. attention_head.* -> attention_heads.creaky.*
         legacy_attn_prefix = prefix + "attention_head."
         for k in list(state_dict.keys()):
@@ -241,16 +252,19 @@ class WavFryClassifier(nn.Module):
                     state_dict[new_k] = state_dict[k]
                 state_dict.pop(k, None)
 
-        # 6. Discard legacy attention_heads.*.bias if current model has bias=False
+        # 6. Discard legacy attention_heads.*.bias if current model has no attention heads or bias=False
+        has_attn = hasattr(self, "attention_heads")
         for task in self.tasks:
             bias_k = prefix + f"attention_heads.{task}.bias"
-            if bias_k in state_dict and getattr(self.attention_heads[task], "bias", None) is None:
-                state_dict.pop(bias_k, None)
+            if bias_k in state_dict:
+                if not has_attn or (task in self.attention_heads and getattr(self.attention_heads[task], "bias", None) is None):
+                    state_dict.pop(bias_k, None)
 
         # 7. Discard legacy pos_scorer if positional encoding is disabled
-        pos_k = prefix + "pos_scorer.weight"
-        if pos_k in state_dict and not self.use_pos_encoding:
-            state_dict.pop(pos_k, None)
+        if not self.use_pos_encoding:
+            for k in list(state_dict.keys()):
+                if k.startswith(prefix + "pos_scorer."):
+                    state_dict.pop(k, None)
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
@@ -312,6 +326,12 @@ class WavFryClassifier(nn.Module):
             task_weight_list = []
             for task in self.tasks:
                 if layer_mask is not None:
+                    if layer_mask.shape[0] != self.num_layers + 1:
+                        raise ValueError(
+                            f"layer_mask length ({layer_mask.shape[0]}) must equal num_layers + 1 ({self.num_layers + 1})"
+                        )
+                    if not layer_mask.any():
+                        raise ValueError("layer_mask cannot be all-False; at least one active layer is required.")
                     # Dynamic Softmax re-normalization for Leave-One-Layer-Out (LOLO) ablation
                     masked_logits = self.scalar_mix_weights[task].clone()
                     masked_logits[~layer_mask.to(masked_logits.device)] = -float("inf")
@@ -328,13 +348,27 @@ class WavFryClassifier(nn.Module):
             for idx, task in enumerate(self.tasks):
                 hidden_by_task[task] = mixed[idx]
         else:
+            if layer_mask is not None:
+                logger.warning("layer_mask is provided but use_scalar_mix=False; layer_mask will be ignored.")
+
             if self.extract_layer is not None and hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
-                target_idx = int(self.extract_layer)
-                selected_hidden = (
-                    outputs.hidden_states[target_idx]
-                    if target_idx < len(outputs.hidden_states)
-                    else outputs.hidden_states[-1]
-                )
+                total_h = len(outputs.hidden_states)
+                if isinstance(self.extract_layer, str) and self.extract_layer.lower() in ("last", "-1"):
+                    target_idx = -1
+                elif isinstance(self.extract_layer, str) and self.extract_layer.lower() in ("cnn", "feat", "0"):
+                    target_idx = 0
+                else:
+                    try:
+                        target_idx = int(self.extract_layer)
+                    except (ValueError, TypeError):
+                        target_idx = -1
+
+                if target_idx < 0:
+                    target_idx = max(0, total_h + target_idx)
+                else:
+                    target_idx = min(target_idx, total_h - 1)
+
+                selected_hidden = outputs.hidden_states[target_idx]
             else:
                 selected_hidden = outputs.last_hidden_state
 
