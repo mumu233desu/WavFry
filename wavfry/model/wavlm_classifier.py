@@ -148,6 +148,22 @@ class WavFryClassifier(nn.Module):
                     task: nn.Linear(2, 1) for task in self.tasks
                 })
 
+        vsdc_cfg = training_cfg.get("vsdc", {})
+        self.vsdc_enabled = bool(vsdc_cfg.get("enabled", False))
+        if self.vsdc_enabled and "breathy" in self.tasks:
+            from .vsdc import VowelBreathySuppressor
+            bas_cfg = vsdc_cfg.get("bas_net", {})
+            supp_hidden = int(bas_cfg.get("hidden_dim", 256))
+            proj_dim = int(vsdc_cfg.get("speaker_contrast", {}).get("proj_dim", 128))
+            self.breathy_suppressor = VowelBreathySuppressor(
+                in_features=self.hidden_dim,
+                hidden_dim=supp_hidden,
+                proj_dim=proj_dim,
+                pooling_mode=vsdc_cfg.get("mil_pooling", "linear_softmax"),
+            )
+        else:
+            self.breathy_suppressor = None
+
         self.freeze_layers(config)
         if self.is_backbone_frozen:
             self.wavlm.eval()
@@ -658,6 +674,7 @@ class WavFryClassifier(nn.Module):
             frames = {
                 "frame_logits": {task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
                                  for task in self.tasks},
+                "frame_hidden": {task: hidden_by_task[task] for task in self.tasks},
                 "frame_valid": valid_mask,
                 "frame_stride_samples": stride,
                 "frame_receptive_samples": receptive,

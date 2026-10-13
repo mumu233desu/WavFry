@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -61,6 +62,35 @@ class Trainer:
         if self.weak_loader is not None:
             self.total_steps = sum(epoch_update_counts(train_loader, self.weak_loader, self.epochs,
                                                       int(self.weak_cfg.get('start_epoch', 2)), grad_acc))
+
+        vsdc_cfg = config.get('training', {}).get('vsdc', {})
+        self.vsdc_enabled = bool(vsdc_cfg.get('enabled', False))
+        self.vsdc_cfg = vsdc_cfg
+        if self.vsdc_enabled and getattr(self.model, 'breathy_suppressor', None) is not None:
+            mt_cfg = vsdc_cfg.get('mean_teacher', {})
+            if mt_cfg.get('enabled', True):
+                from ..model.vsdc import MeanTeacherEngine
+                self.mean_teacher = MeanTeacherEngine(
+                    student_module=self.model.breathy_suppressor,
+                    ema_decay=float(mt_cfg.get('ema_decay', 0.999)),
+                    median_window=int(mt_cfg.get('median_window', 3)),
+                    temp_sharp=float(mt_cfg.get('temp_sharp', 0.5)),
+                    conf_margin=float(mt_cfg.get('conf_margin', 0.35)),
+                )
+            else:
+                self.mean_teacher = None
+            contrast_cfg = vsdc_cfg.get('speaker_contrast', {})
+            if contrast_cfg.get('enabled', True):
+                from ..model.vsdc import SpeakerAnchoredInfoNCELoss
+                self.speaker_contrast_loss = SpeakerAnchoredInfoNCELoss(
+                    temperature=float(contrast_cfg.get('temperature', 0.07)),
+                    topk=int(contrast_cfg.get('topk_anchors', 2)),
+                )
+            else:
+                self.speaker_contrast_loss = None
+        else:
+            self.mean_teacher = None
+            self.speaker_contrast_loss = None
         
         # Optimizer with differential learning rate
         self.optimizer = self.create_optimizer()
@@ -535,13 +565,120 @@ class Trainer:
         if torch.isnan(entry[1]) and not torch.isnan(label_cpu):
             entry[1] = label_cpu
 
-    def _forward_weak_batch(self, batch):
-        from ..data.utterance_bag import utterance_logits
-        tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-        outputs = self.model(tensors['waveforms'], tensors['lengths'], return_frames=True)
-        logits = utterance_logits(outputs, tensors, temperature=float(self.frame_cfg.get('temperature', 1.0)))
-        loss = torch.nn.functional.binary_cross_entropy_with_logits(logits.float(), torch.ones_like(logits).float())
-        return float(self.weak_cfg.get('loss_weight', .05)) * loss, len(logits)
+    def _forward_weak_batch(self, batch, epoch: int = 1):
+        if not self.vsdc_enabled:
+            from ..data.utterance_bag import utterance_logits
+            tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+            outputs = self.model(tensors['waveforms'], tensors['lengths'], return_frames=True)
+            logits = utterance_logits(outputs, tensors, temperature=float(self.frame_cfg.get('temperature', 1.0)))
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(logits.float(), torch.ones_like(logits).float())
+            return float(self.weak_cfg.get('loss_weight', .05)) * loss, len(logits)
+
+        stage_epochs = self.vsdc_cfg.get("curriculum", {}).get("stage_epochs", [3, 10])
+        # Stage 1: Cold start (Epoch 1..stage_epochs[0]) -> Zero weak loss, pure strong supervision
+        if epoch <= stage_epochs[0]:
+            return torch.tensor(0.0, device=self.device, requires_grad=True), 0
+
+        from ..data.utterance_bag import merge_frame_features, extract_vowel_instances
+        pos_batch = batch["pos"] if "pos" in batch else batch
+        neg_batch = batch.get("neg")
+        has_same_speaker_neg = batch.get("has_same_speaker_neg")
+        pos_to_neg_idx = batch.get("pos_to_neg_idx")
+
+        pos_tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in pos_batch.items()}
+        pos_outputs = self.model(pos_tensors['waveforms'], pos_tensors['lengths'], return_frames=True)
+        stride = pos_outputs["frame_stride_samples"]
+        receptive = pos_outputs["frame_receptive_samples"]
+        pos_merged = merge_frame_features(
+            pos_outputs["frame_hidden"]["breathy"],
+            pos_outputs["frame_valid"],
+            pos_tensors["starts"],
+            pos_tensors["bag_index"],
+            stride,
+            receptive,
+        )
+        pos_h, pos_mask = extract_vowel_instances(pos_merged, pos_batch["vowels"])
+        pos_supp_out = self.model.breathy_suppressor(pos_h, pos_mask)
+
+        bas_cfg = self.vsdc_cfg.get("bas_net", {})
+        w_base = float(bas_cfg.get("loss_weight_base", 0.1))
+        w_supp = float(bas_cfg.get("loss_weight_supp", 0.1))
+        w_zero = float(bas_cfg.get("loss_weight_supp_zero", 0.1))
+        w_sparse = float(bas_cfg.get("loss_weight_sparse", 0.005))
+
+        def _safe_bce(p: torch.Tensor, target: float) -> torch.Tensor:
+            p_c = p.float().clamp(1e-7, 1.0 - 1e-7)
+            if target == 1.0:
+                return -torch.log(p_c).mean()
+            elif target == 0.0:
+                return -torch.log(1.0 - p_c).mean()
+            t = float(target)
+            return -(t * torch.log(p_c) + (1.0 - t) * torch.log(1.0 - p_c)).mean()
+
+        loss_base = _safe_bce(pos_supp_out["bag_prob_base"], 1.0)
+        loss_supp = _safe_bce(pos_supp_out["bag_prob_supp"], 1.0)
+        loss_supp_zero = _safe_bce(pos_supp_out["bag_prob_bg"], 0.0)
+        loss_sparse = (pos_supp_out["weights"] * pos_mask.float()).sum() / pos_mask.float().sum().clamp_min(1.0)
+        loss_weak = w_base * loss_base + w_supp * loss_supp + w_zero * loss_supp_zero + w_sparse * loss_sparse
+
+        # Bridge: Connect weak supervision to primary evaluation frame head
+        w_head_align = float(bas_cfg.get("loss_weight_head_align", 0.1))
+        if w_head_align > 0 and hasattr(self.model, "frame_heads") and "breathy" in self.model.frame_heads:
+            frame_head_logits = self.model.frame_heads["breathy"](pos_h).squeeze(-1)
+            frame_head_probs = torch.sigmoid(frame_head_logits)
+            bag_prob_head = self.model.breathy_suppressor.pooling(frame_head_probs, pos_mask)
+            loss_head_bag = _safe_bce(bag_prob_head, 1.0)
+            loss_head_align = F.mse_loss(
+                frame_head_probs[pos_mask].float(),
+                pos_supp_out["probs_supp"][pos_mask].detach().float(),
+            )
+            loss_weak = loss_weak + w_head_align * (loss_head_bag + loss_head_align)
+
+        # Same-speaker contrastive learning
+        contrast_cfg = self.vsdc_cfg.get("speaker_contrast", {})
+        w_contrast = float(contrast_cfg.get("loss_weight", 0.2))
+        if contrast_cfg.get("enabled", True) and neg_batch is not None and self.speaker_contrast_loss is not None:
+            neg_tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in neg_batch.items()}
+            neg_outputs = self.model(neg_tensors['waveforms'], neg_tensors['lengths'], return_frames=True)
+            neg_merged = merge_frame_features(
+                neg_outputs["frame_hidden"]["breathy"],
+                neg_outputs["frame_valid"],
+                neg_tensors["starts"],
+                neg_tensors["bag_index"],
+                neg_outputs["frame_stride_samples"],
+                neg_outputs["frame_receptive_samples"],
+            )
+            neg_h, neg_mask = extract_vowel_instances(neg_merged, neg_batch["vowels"])
+            neg_supp_out = self.model.breathy_suppressor(neg_h, neg_mask)
+            neg_z = neg_supp_out["z_proj"]
+
+            loss_contrast = torch.tensor(0.0, device=self.device)
+            contrast_count = 0
+            for b_idx in range(len(pos_batch["metadata"])):
+                if has_same_speaker_neg is not None and has_same_speaker_neg[b_idx]:
+                    n_idx = pos_to_neg_idx[b_idx].item()
+                    c_loss = self.speaker_contrast_loss(
+                        pos_supp_out["z_proj"][b_idx],
+                        pos_supp_out["weights"][b_idx],
+                        neg_z[n_idx],
+                        neg_mask[n_idx],
+                        pos_mask=pos_mask[b_idx],
+                    )
+                    loss_contrast = loss_contrast + c_loss
+                    contrast_count += 1
+            if contrast_count > 0:
+                loss_weak = loss_weak + w_contrast * (loss_contrast / contrast_count)
+
+        # Stage 3: EMA Mean Teacher Consistency Distillation
+        mt_cfg = self.vsdc_cfg.get("mean_teacher", {})
+        w_cons = float(mt_cfg.get("loss_weight", 1.0))
+        if epoch > stage_epochs[1] and mt_cfg.get("enabled", True) and self.mean_teacher is not None:
+            pseudo_labels = self.mean_teacher.generate_refined_pseudolabels(pos_h, pos_mask)
+            loss_cons = self.mean_teacher.consistency_loss(pos_supp_out["probs_supp"], pseudo_labels, pos_mask)
+            loss_weak = loss_weak + w_cons * loss_cons
+
+        loss = float(self.weak_cfg.get("loss_weight", 0.3)) * loss_weak
+        return loss, len(pos_batch["metadata"])
 
     def train_epoch(self, epoch):
         if hasattr(self.train_loader.dataset, 'set_epoch'):
@@ -554,6 +691,11 @@ class Trainer:
             sampler.set_epoch(epoch)
 
         self.model.train()
+        if getattr(self, "mean_teacher", None) is not None:
+            stage_epochs = self.vsdc_cfg.get("curriculum", {}).get("stage_epochs", [3, 10])
+            if epoch == stage_epochs[0] + 1 and not getattr(self, "_teacher_synced", False):
+                self.mean_teacher.teacher.load_state_dict(self.model.breathy_suppressor.state_dict())
+                self._teacher_synced = True
         total_loss = 0
         tasks = getattr(self.model, "tasks", ["creaky"])
         task_loss_sums = {task: 0.0 for task in tasks}
@@ -581,7 +723,7 @@ class Trainer:
             device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                 if source == 'weak':
-                    loss, examples = self._forward_weak_batch(batch)
+                    loss, examples = self._forward_weak_batch(batch, epoch=epoch)
                     weak_loss_sum += loss.detach().item() * examples
                     loss = loss * (examples * weak_count / weak_population)
                     weak_examples += examples
@@ -619,6 +761,11 @@ class Trainer:
                 self.optimizer.zero_grad()
                 if not skip_lr_sched:
                     self.scheduler.step()
+
+                if getattr(self, "mean_teacher", None) is not None:
+                    stage_epochs = self.vsdc_cfg.get("curriculum", {}).get("stage_epochs", [3, 10])
+                    if epoch > stage_epochs[0]:
+                        self.mean_teacher.update_teacher()
 
             total_loss += loss.item() * group_size
             if hasattr(self, "_current_losses") and self._current_losses:
@@ -1193,6 +1340,9 @@ class Trainer:
         if self.scaler is not None:
             checkpoint['scaler_state_dict'] = self.scaler.state_dict()
         
+        if getattr(self, "mean_teacher", None) is not None:
+            checkpoint['mean_teacher_state_dict'] = self.mean_teacher.teacher.state_dict()
+        
         # For non-delta mode, we always want the optimizer to allow resuming from any checkpoint
         if save_mode != 'delta':
             checkpoint['optimizer_state_dict'] = self.optimizer.state_dict()
@@ -1299,6 +1449,8 @@ class Trainer:
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'scheduler_state_dict' in checkpoint:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        if getattr(self, "mean_teacher", None) is not None and 'mean_teacher_state_dict' in checkpoint:
+            self.mean_teacher.teacher.load_state_dict(checkpoint['mean_teacher_state_dict'])
 
         rng_state = checkpoint.get('rng_state')
         if rng_state:
