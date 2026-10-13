@@ -91,3 +91,8 @@ def get_loss_fn(config, pos_weight=None):
         return nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     else:
         return nn.BCEWithLogitsLoss()
+
+
+from .vsdc import LinearSoftmaxPooling, SpeakerAnchoredInfoNCELoss
+
+

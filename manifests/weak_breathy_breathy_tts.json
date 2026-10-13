@@ -1,0 +1,19 @@
+{
+  "fingerprint": "37f5c97f89c4fa7c2d1f391fc3a8b8b2440ca655d5f45f55ff647528b9699f74",
+  "rows": 1080,
+  "status": {
+    "unknown": 491,
+    "eligible": 486,
+    "redundant": 103
+  },
+  "partition_status": {
+    "test/eligible": 108,
+    "test/unknown": 108,
+    "train/eligible": 297,
+    "train/redundant": 51,
+    "train/unknown": 300,
+    "val/eligible": 81,
+    "val/redundant": 52,
+    "val/unknown": 83
+  }
+}

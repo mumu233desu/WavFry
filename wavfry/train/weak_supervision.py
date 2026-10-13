@@ -62,8 +62,10 @@ def create_weak_loader(config, model, manual_train, manual_val):
         raise ValueError("Weak supervision requires a trainable breathy frame head")
     if config["training"].get("paradigm", "segment") != "block":
         raise ValueError("Weak supervision currently requires the block paradigm")
+    vsdc_cfg = config["training"].get("vsdc", {})
+    vsdc_enabled = bool(vsdc_cfg.get("enabled", False))
     frame_cfg = config["training"].get("block", {}).get("frame_head", {})
-    if frame_cfg.get("mil_mode", "lse") != "lse" or cfg.get("candidate_scope", "vowels") != "vowels":
+    if not vsdc_enabled and (frame_cfg.get("mil_mode", "lse") != "lse" or cfg.get("candidate_scope", "vowels") != "vowels"):
         raise ValueError("First-version weak supervision uses LSE over all vowel candidates")
     weight = float(cfg.get("loss_weight", .05))
     if not math.isfinite(weight) or weight <= 0:
@@ -83,18 +85,38 @@ def create_weak_loader(config, model, manual_train, manual_val):
     validate_source_stamps(train)
     if train.empty:
         raise ValueError("No non-redundant eligible weak training positives")
+
+    if vsdc_enabled:
+        # Also include modal negative clips from the same training partition
+        modal_rows = weak[(weak.batch_split == "train") & (weak.reason == "no_positive_evidence")].copy()
+        if not modal_rows.empty:
+            train_combined = pd.concat([train, modal_rows], ignore_index=True)
+        else:
+            train_combined = train
+    else:
+        train_combined = train
+
     stride, receptive = 1, 1
     for kernel, step in zip(model.wavlm.config.conv_kernel, model.wavlm.config.conv_stride):
         receptive += (int(kernel) - 1) * stride
         stride *= int(step)
     block_cfg = config["training"]["block"]
-    dataset = UtteranceBagDataset(train, block_ms=block_cfg.get("duration_ms", 2000),
+    dataset = UtteranceBagDataset(train_combined, block_ms=block_cfg.get("duration_ms", 2000),
                                  hop_ms=block_cfg.get("hop_ms", 1000), frame_stride=stride,
-                                 receptive=receptive, max_windows=int(cfg.get("max_windows", 16)))
-    sampler = BagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 16)),
-                              samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),
-                              seed=config["training"].get("seed", 42))
-    loader = DataLoader(dataset, batch_sampler=sampler, num_workers=0, collate_fn=collate_utterance_bags)
+                                 receptive=receptive, max_windows=int(cfg.get("max_windows", 64)),
+                                 allow_modal=vsdc_enabled)
+    if vsdc_enabled:
+        from wavfry.data.utterance_bag import PairedBagBatchSampler, collate_paired_utterance_bags
+        sampler = PairedBagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 64)),
+                                      samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),
+                                      seed=config["training"].get("seed", 42))
+        collate_fn = collate_paired_utterance_bags
+    else:
+        sampler = BagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 16)),
+                                  samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),
+                                  seed=config["training"].get("seed", 42))
+        collate_fn = collate_utterance_bags
+    loader = DataLoader(dataset, batch_sampler=sampler, num_workers=0, collate_fn=collate_fn)
     return loader, manifest_digest(weak)
 
 
