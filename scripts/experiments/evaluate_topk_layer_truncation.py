@@ -1,24 +1,21 @@
 #!/usr/bin/env python
 """
 WavFry Functional Auditing: Top-k Layer Truncation & Depth Sensitivity Evaluator.
-Evaluates the acoustic impact of progressively truncating the upper k Transformer
+Evaluates the acoustic and task impact of progressively truncating the upper k Transformer
 layers (k = 1, 2, ..., 12) from frozen WavLM Base+ during inference via dynamic
-Softmax re-normalization.
+Softmax re-normalization across phonation tasks (Creaky Voice, Breathy Voice).
 
-Mathematical Formulation:
-    h_{kept} = sum_{l in kept} exp(w_l) * h_l / sum_{l in kept} exp(w_l)
-Implemented via single-pass forward caching:
-    WavLM backbone executes ONCE per audio block, while all truncation conditions
-    (k=0 to 12 + architectural anchors) evaluate simultaneously in GPU memory.
+Functional Boundary & Purpose:
+    - Distinct from evaluate_lolo_ablation.py (which audits micro-level single-layer sensitivity):
+      This script exclusively audits macro-level sequential upper-layer pruning to answer:
+      "What is the effective computational depth for each voice quality task?
+       How many upper layers can be safely truncated for edge deployment/distillation?"
 
 Outputs saved to:
     data/experiments/topk_layer_truncation_evaluation/
         - topk_layer_truncation_report.csv
         - topk_layer_truncation_report.md
         - topk_layer_truncation_summary.json
-
-Author: WavFry ML Infrastructure
-Date: October 2026
 """
 
 from __future__ import annotations
@@ -39,8 +36,7 @@ warnings.filterwarnings("ignore", message=".*No positive class found in y_true.*
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
-from sklearn.metrics import average_precision_score, f1_score, precision_recall_fscore_support, roc_auc_score
+from sklearn.metrics import average_precision_score, precision_recall_fscore_support, roc_auc_score
 from torch.utils.data import DataLoader
 
 # Add project root to sys.path
@@ -55,7 +51,7 @@ from wavfry.model.wavlm_classifier import WavFryClassifier
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="WavFry Top-k Layer Truncation Evaluator")
+    parser = argparse.ArgumentParser(description="WavFry Top-k Multi-Task Layer Truncation Evaluator")
     parser.add_argument(
         "--checkpoint",
         type=str,
@@ -67,6 +63,13 @@ def parse_args():
         type=str,
         default=None,
         help="Path to manifest CSV. Defaults to manifests/segments_multi.csv.",
+    )
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="all",
+        choices=["all", "creaky", "breathy"],
+        help="Target task to evaluate ('creaky', 'breathy', or 'all'). Default: 'all'.",
     )
     parser.add_argument(
         "--output-dir",
@@ -85,18 +88,24 @@ def parse_args():
         "--device",
         type=str,
         default=None,
-        help="Device to use ('cuda' or 'cpu'). Defaults to cuda if available.",
+        help="Device to use ('cuda' or 'cpu'). Defaults to cuda if >= 2GB VRAM free, else cpu.",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=64,
+        default=32,
         help="Batch size for evaluation.",
     )
     parser.add_argument(
         "--smoketest",
         action="store_true",
-        help="Run fast smoke test with a small sample slice (64 samples).",
+        help="Run fast smoke test with a small sample slice (32 pos + 32 neg).",
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=None,
+        help="Optional upper bound on batches to process (useful for rapid profiling).",
     )
     return parser.parse_args()
 
@@ -109,9 +118,12 @@ def resolve_checkpoint(ckpt_path: Optional[str]) -> Path:
         raise FileNotFoundError(f"Specified checkpoint not found: {ckpt_path}")
 
     candidates = [
+        Path("R:/checkpoints/ablation_weak_on_vsdc_real_noise/best_model.pt"),
+        Path("R:/checkpoints/ablation_weak_on_vsdc_full/best_model.pt"),
+        Path("R:/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt"),
+        PROJECT_ROOT / "exp_results/checkpoints/ablation_weak_on_vsdc_real_noise/best_model.pt",
+        PROJECT_ROOT / "exp_results/checkpoints/ablation_weak_on_vsdc_full/best_model.pt",
         PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt",
-        PROJECT_ROOT / "exp_results/checkpoints/ncmmsc_camera_ready/best_model.pt",
-        PROJECT_ROOT / "exp_results/checkpoints/camera_ready_ablation/single_attn/best_model.pt",
     ]
     for c in candidates:
         if c.exists():
@@ -119,6 +131,32 @@ def resolve_checkpoint(ckpt_path: Optional[str]) -> Path:
             return c
 
     raise FileNotFoundError("No default checkpoint found. Please provide --checkpoint path.")
+
+
+def resolve_device(requested_device: Optional[str]) -> torch.device:
+    if requested_device:
+        dev = torch.device(requested_device)
+        print(f"[Device] Using explicitly requested device: {dev}")
+        return dev
+
+    if torch.cuda.is_available():
+        try:
+            free_mem_bytes, total_mem_bytes = torch.cuda.mem_get_info()
+            free_mem_mb = free_mem_bytes / (1024 * 1024)
+            if free_mem_mb < 2048:
+                print(
+                    f"[Device Warning] GPU 0 has only {free_mem_mb:.1f} MiB free VRAM "
+                    f"(likely training running concurrently). "
+                    f"Auto-falling back to CPU to prevent CUDA OOM crash!"
+                )
+                return torch.device("cpu")
+            print(f"[Device] Using CUDA (Free VRAM: {free_mem_mb:.1f} MiB)")
+            return torch.device("cuda")
+        except Exception:
+            return torch.device("cuda")
+
+    print("[Device] CUDA unavailable, using CPU.")
+    return torch.device("cpu")
 
 
 def load_model_from_checkpoint(ckpt_path: Path, device: torch.device) -> tuple[WavFryClassifier, Dict[str, Any]]:
@@ -152,6 +190,7 @@ def prepare_dataloader(
     split_target: str,
     batch_size: int,
     is_smoketest: bool = False,
+    task_filter: str = "all",
 ) -> tuple[DataLoader, str]:
     df = pd.read_csv(manifest_path, dtype={"speaker_id": str, "phone": str, "file_key": str})
 
@@ -166,8 +205,17 @@ def prepare_dataloader(
         eval_df = df
 
     if is_smoketest:
-        pos = eval_df[eval_df["label"] == 1]
-        neg = eval_df[eval_df["label"] == 0]
+        target_col = "label"
+        if task_filter == "breathy" and "label_breathy" in eval_df.columns:
+            target_col = "label_breathy"
+        elif task_filter == "creaky" and "label_creaky" in eval_df.columns:
+            target_col = "label_creaky"
+        elif "label_creaky" in eval_df.columns:
+            target_col = "label_creaky"
+
+        sub_labeled = eval_df[eval_df[target_col].notna()].copy()
+        pos = sub_labeled[sub_labeled[target_col] == 1]
+        neg = sub_labeled[sub_labeled[target_col] == 0]
         n_pos = min(len(pos), 32)
         n_neg = min(len(neg), 32)
         eval_df = (
@@ -175,7 +223,7 @@ def prepare_dataloader(
             .sample(frac=1.0, random_state=42)
             .reset_index(drop=True)
         )
-        print(f"[Smoketest] Sliced evaluation dataset to {len(eval_df)} segments.")
+        print(f"[Smoketest] Sliced evaluation dataset to {len(eval_df)} segments using label column '{target_col}'.")
 
     paradigm = config.get("training", {}).get("paradigm", "block")
     if paradigm == "block":
@@ -210,11 +258,11 @@ def prepare_dataloader(
     return loader, paradigm
 
 
-def build_truncation_conditions(num_layers: int, learned_weights: List[float]) -> List[Dict[str, Any]]:
-    """Build systematic truncation conditions:
+def build_truncation_conditions(num_layers: int) -> List[Dict[str, Any]]:
+    """Build systematic sequential upper-layer truncation conditions:
     - Baseline: all 13 layers (k=0)
     - Sequential drop top-k: k = 1 to 12
-    - Diagnostic controls: CNN only, Bottom 4 (CNN+L1-L3), Middle (L4-L7), Top (L8-L12)
+    - Negative Control: Drop Bottom 0~5 (Keep Upper 6~12 Only)
     """
     conditions: List[Dict[str, Any]] = []
 
@@ -238,7 +286,11 @@ def build_truncation_conditions(num_layers: int, learned_weights: List[float]) -
         elif k == 3:
             desc = f"Drop Top 3 (L10~L12 removed, keeping CNN + L1~L9)"
         elif k == 6:
-            desc = f"Drop Top 6 (L7~L12 removed, keeping CNN + L1~L6 [Half-depth 6L])"
+            desc = f"Drop Top 6 (L7~L12 removed, keeping CNN + L1~L6)"
+        elif k == 7:
+            desc = f"Drop Top 7 (L6~L12 removed, keeping CNN + L1~L5 [Half-depth 5L])"
+        elif k == 8:
+            desc = f"Drop Top 8 (L5~L12 removed, keeping CNN + L1~L4)"
         elif k == 9:
             desc = f"Drop Top 9 (L4~L12 removed, keeping CNN + L1~L3 [Quarter-depth 3L])"
         elif k == 12:
@@ -256,53 +308,33 @@ def build_truncation_conditions(num_layers: int, learned_weights: List[float]) -
             "category": "Sequential Truncation",
         })
 
-    # 3. Informative Diagnostic Sub-tiers
+    # 3. Informative Negative Control
     conditions.append({
-        "id": "diagnostic_bottom_acoustic_0_3",
-        "name": "Anchor: Bottom Acoustic Only (CNN + L1~L3)",
-        "drop_k": 9,
-        "kept_indices": [0, 1, 2, 3],
-        "dropped_indices": list(range(4, num_layers)),
-        "description": "LOLO Top-3 Most Critical Acoustic Layers (4 layers)",
-        "category": "Diagnostic Anchor",
-    })
-    conditions.append({
-        "id": "diagnostic_middle_phonetic_4_7",
-        "name": "Anchor: Middle Phonetic Only (L4~L7)",
-        "drop_k": 9,
-        "kept_indices": [4, 5, 6, 7],
-        "dropped_indices": [0, 1, 2, 3, 8, 9, 10, 11, 12],
-        "description": "Vowel Formant / Phonetic Representation Tier (4 layers)",
-        "category": "Diagnostic Anchor",
-    })
-    conditions.append({
-        "id": "diagnostic_top_semantic_8_12",
-        "name": "Anchor: Top Semantic Only (L8~L12)",
-        "drop_k": 8,
-        "kept_indices": [8, 9, 10, 11, 12],
-        "dropped_indices": list(range(8)),
-        "description": "High-level Linguistic / Semantic Abstraction (5 layers)",
-        "category": "Diagnostic Anchor",
+        "id": "negative_control_upper_only",
+        "name": "Negative Control: Upper Layers Only (L6~L12)",
+        "drop_k": 6,
+        "kept_indices": list(range(6, num_layers)),
+        "dropped_indices": list(range(6)),
+        "description": "Drop Bottom CNN + L1~L5 (Keep L6~L12 only to test high-level sufficiency)",
+        "category": "Negative Control",
     })
 
-    # Attach layer mask and retained weight mass
+    # Attach layer mask
     for cond in conditions:
         mask = torch.zeros(num_layers, dtype=torch.bool)
         for idx in cond["kept_indices"]:
             mask[idx] = True
         cond["mask"] = mask if len(cond["kept_indices"]) < num_layers else None
-        cond["retained_weight_mass"] = sum(learned_weights[i] for i in cond["kept_indices"])
 
     return conditions
 
 
 def compute_binary_metrics(y_logits: np.ndarray, y_true: np.ndarray) -> Dict[str, float]:
-    probs = 1.0 / (1.0 + np.exp(-y_logits))
     valid_mask = ~np.isnan(y_true)
-    probs = probs[valid_mask]
+    y_logits = y_logits[valid_mask]
     y_true = y_true[valid_mask].astype(int)
 
-    if len(np.unique(y_true)) < 2:
+    if len(y_true) == 0 or len(np.unique(y_true)) < 2:
         return {
             "auc_pr": 0.0,
             "f1": 0.0,
@@ -311,18 +343,20 @@ def compute_binary_metrics(y_logits: np.ndarray, y_true: np.ndarray) -> Dict[str
             "precision": 0.0,
             "recall": 0.0,
             "best_threshold": 0.5,
+            "n_samples": int(len(y_true)),
+            "n_pos": int(y_true.sum()) if len(y_true) > 0 else 0,
         }
 
+    probs = 1.0 / (1.0 + np.exp(-y_logits))
     auc_pr = float(average_precision_score(y_true, probs))
-    auc_roc = float(roc_auc_score(y_true, probs))
+    try:
+        auc_roc = float(roc_auc_score(y_true, probs))
+    except Exception:
+        auc_roc = 0.0
 
-    # Grid search for optimal F1 threshold
+    # Grid search for optimal F1
     thresholds = np.linspace(0.1, 0.9, 81)
-    best_f1 = -1.0
-    best_tau = 0.5
-    best_p = 0.0
-    best_r = 0.0
-    best_acc = 0.0
+    best_f1, best_tau, best_p, best_r, best_acc = 0.0, 0.5, 0.0, 0.0, 0.0
 
     for tau in thresholds:
         preds = (probs >= tau).astype(int)
@@ -342,51 +376,75 @@ def compute_binary_metrics(y_logits: np.ndarray, y_true: np.ndarray) -> Dict[str
         "precision": best_p,
         "recall": best_r,
         "best_threshold": best_tau,
+        "n_samples": int(len(y_true)),
+        "n_pos": int(y_true.sum()),
     }
 
 
-def run_evaluation(
+def evaluate_truncation_single_pass(
     model: WavFryClassifier,
     loader: DataLoader,
     device: torch.device,
     paradigm: str,
     conditions: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    eval_tasks: List[str],
+    max_batches: Optional[int] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Execute single-pass forward caching top-k truncation evaluation across conditions and tasks."""
     model.eval()
     num_layers = model.num_layers + 1
-    raw_sm_weights = model.scalar_mix_weights["creaky"].detach().clone().to(device)
+    num_conditions = len(conditions)
     head_dtype = next(model.heads.parameters()).dtype
 
-    # Precompute normalized softmax weights for each condition
-    cond_weights = []
-    for cond in conditions:
-        if cond["mask"] is None:
-            w = torch.softmax(raw_sm_weights, dim=0)
+    # Extract learned scalar mix weights for each task
+    learned_weights: Dict[str, List[float]] = {}
+    stacked_cond_weights: Dict[str, torch.Tensor] = {}
+
+    for task_name in model.tasks:
+        if model.use_scalar_mix and task_name in model.scalar_mix_weights:
+            raw_logits = model.scalar_mix_weights[task_name].detach().to(device)
+            base_w = torch.softmax(raw_logits, dim=0).cpu().numpy().tolist()
+            learned_weights[task_name] = base_w
+
+            cond_w_list = []
+            for cond in conditions:
+                if cond["mask"] is None:
+                    w = torch.softmax(raw_logits, dim=0)
+                else:
+                    m_logits = raw_logits.clone()
+                    m_logits[~cond["mask"].to(device)] = -float("inf")
+                    w = torch.softmax(m_logits, dim=0)
+                cond_w_list.append(w)
+            stacked_cond_weights[task_name] = torch.stack(cond_w_list, dim=0)  # [num_conditions, 13]
         else:
-            m_logits = raw_sm_weights.clone()
-            m_logits[~cond["mask"].to(device)] = -float("inf")
-            w = torch.softmax(m_logits, dim=0)
-        cond_weights.append(w)  # [num_layers]
+            uniform = torch.full((num_layers,), 1.0 / num_layers, device=device)
+            learned_weights[task_name] = [1.0 / num_layers] * num_layers
+            stacked_cond_weights[task_name] = uniform.unsqueeze(0).expand(num_conditions, -1)
 
-    # Stack into [num_conditions, num_layers]
-    stacked_cond_weights = torch.stack(cond_weights, dim=0)  # [C, 13]
-    num_conditions = len(conditions)
+    cond_interval_preds: Dict[str, List[Dict[str, list]]] = {
+        task: [{} for _ in range(num_conditions)] for task in eval_tasks
+    }
+    cond_segment_preds: Dict[str, List[list]] = {
+        task: [[] for _ in range(num_conditions)] for task in eval_tasks
+    }
+    cond_segment_labels: Dict[str, List[list]] = {
+        task: [[] for _ in range(num_conditions)] for task in eval_tasks
+    }
 
-    # Prediction accumulators
-    cond_interval_preds: List[Dict[str, list]] = [{} for _ in range(num_conditions)]
-    cond_all_logits: List[list] = [[] for _ in range(num_conditions)]
-    cond_all_labels: List[list] = [[] for _ in range(num_conditions)]
-
-    print(f"\n[Evaluating] Running single-pass evaluation across {num_conditions} conditions...")
     start_time = time.time()
     batch_count = 0
+    total_batches = min(len(loader), max_batches) if max_batches else len(loader)
+
+    print(f"\n[Evaluating] Processing {total_batches} batches across {num_conditions} conditions for tasks {eval_tasks}...")
 
     with torch.no_grad():
-        for batch in loader:
+        for batch_idx, batch in enumerate(loader):
+            if max_batches and batch_idx >= max_batches:
+                break
             batch_count += 1
-            if batch_count % 50 == 0 or batch_count == len(loader):
+            if batch_count % 50 == 0 or batch_count == total_batches:
                 elapsed = time.time() - start_time
-                print(f"  Processed {batch_count}/{len(loader)} batches ({elapsed:.1f}s)...", flush=True)
+                print(f"  Processed {batch_count}/{total_batches} batches ({elapsed:.1f}s)...", flush=True)
 
             if paradigm == "block":
                 waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
@@ -396,7 +454,7 @@ def run_evaluation(
                 valid = valid.to(device)
                 lengths = lengths.to(device)
 
-                # 1. Backbone forward pass ONCE
+                # 1. Forward WavLM backbone ONCE
                 wavlm_dtype = next(model.wavlm.parameters()).dtype
                 x_in = waveforms.to(wavlm_dtype) if waveforms.dtype != wavlm_dtype else waveforms
                 max_len = waveforms.shape[1]
@@ -409,53 +467,54 @@ def run_evaluation(
                 L, B, T, D = H.shape
                 flat_H = H.view(L, -1)  # [13, B * T * D]
 
-                # Precompute sequence mask
                 out_lengths = model.wavlm._get_feat_extract_output_lengths(lengths).to(device).clamp(min=1, max=T)
                 seq_mask = torch.arange(T, device=device).unsqueeze(0) < out_lengths.unsqueeze(1)
 
-                # 2. Vectorized evaluation for all conditions
-                # Compute all mixed representations: [C, 13] @ [13, B*T*D] -> [C, B, T, D]
-                all_mixed = (stacked_cond_weights.to(flat_H.dtype) @ flat_H).view(num_conditions, B, T, D).to(head_dtype)
+                # 2. Vectorized mixture for each task
+                mixed_by_task: Dict[str, torch.Tensor] = {}
+                for task_name in model.tasks:
+                    mixed_by_task[task_name] = (
+                        stacked_cond_weights[task_name].to(flat_H.dtype) @ flat_H
+                    ).view(num_conditions, B, T, D).to(head_dtype)
 
-                t_labels = labels[..., 0] if (labels.ndim > 2 and labels.shape[-1] >= 1) else labels
-
+                # 3. Forward head for each condition
                 for c_idx in range(num_conditions):
-                    hidden_by_task = {"creaky": all_mixed[c_idx]}
+                    hidden_cond = {task_name: mixed_by_task[task_name][c_idx] for task_name in model.tasks}
                     block_out = model._forward_block(
-                        hidden_by_task=hidden_by_task,
+                        hidden_by_task=hidden_cond,
                         seq_mask=seq_mask,
                         lengths=lengths,
                         interval_bounds=bounds,
                         slot_valid=valid,
                     )
-                    t_logits = block_out["interval_logits"]["creaky"]
 
-                    c_dict = cond_interval_preds[c_idx]
-                    for logit, label, val_row, item_row in zip(t_logits, t_labels, valid, interval_ids):
-                        for l_val, lab_val, v_val, i_id in zip(logit, label, val_row, item_row):
-                            if v_val and i_id is not None:
-                                i_key = str(i_id.item() if isinstance(i_id, torch.Tensor) else i_id)
-                                if i_key not in c_dict:
-                                    c_dict[i_key] = [l_val.item(), lab_val.item(), 1]
-                                else:
-                                    c_dict[i_key][0] += l_val.item()
-                                    c_dict[i_key][2] += 1
+                    for task_name in eval_tasks:
+                        t_logits = block_out["interval_logits"][task_name]
+                        task_idx = model.tasks.index(task_name) if task_name in model.tasks else 0
+                        t_labels = labels[..., task_idx] if (labels.ndim > 2 and labels.shape[-1] > task_idx) else labels
+
+                        for logit_row, label_row, val_row, item_row in zip(t_logits, t_labels, valid, interval_ids):
+                            for l_val, lab_val, v_val, i_id in zip(logit_row, label_row, val_row, item_row):
+                                if v_val and i_id is not None:
+                                    lab_float = lab_val.item()
+                                    if not np.isnan(lab_float):
+                                        i_key = str(i_id.item() if isinstance(i_id, torch.Tensor) else i_id)
+                                        rec = cond_interval_preds[task_name][c_idx]
+                                        if i_key not in rec:
+                                            rec[i_key] = [l_val.item(), lab_float, 1]
+                                        else:
+                                            rec[i_key][0] += l_val.item()
+                                            rec[i_key][2] += 1
             else:
-                # Segment mode
+                # Segment Mode
                 waveforms, labels, lengths, speakers, meta = batch
                 waveforms = waveforms.to(device)
                 labels = labels.to(device)
-                if labels.ndim > 1 and labels.shape[-1] >= 1:
-                    labels = labels[..., 0]
                 lengths = lengths.to(device)
 
                 wavlm_dtype = next(model.wavlm.parameters()).dtype
                 x_in = waveforms.to(wavlm_dtype) if waveforms.dtype != wavlm_dtype else waveforms
-                max_len = waveforms.shape[1]
-                lengths_clamped = lengths.clamp(min=1, max=max_len)
-                attention_mask = (torch.arange(max_len, device=device).unsqueeze(0) < lengths_clamped.unsqueeze(1)).long()
-
-                outputs = model.wavlm(x_in, attention_mask=attention_mask, output_hidden_states=True)
+                outputs = model.wavlm(x_in, output_hidden_states=True)
                 raw_hidden_states = [h.detach() for h in outputs.hidden_states]
                 H = torch.stack(raw_hidden_states, dim=0)
                 L, B, T, D = H.shape
@@ -464,231 +523,242 @@ def run_evaluation(
                 out_lengths = model.wavlm._get_feat_extract_output_lengths(lengths).to(device).clamp(min=1, max=T)
                 seq_mask = torch.arange(T, device=device).unsqueeze(0) < out_lengths.unsqueeze(1)
 
-                all_mixed = (stacked_cond_weights.to(flat_H.dtype) @ flat_H).view(num_conditions, B, T, D).to(head_dtype)
+                mixed_by_task = {}
+                for task_name in model.tasks:
+                    mixed_by_task[task_name] = (
+                        stacked_cond_weights[task_name].to(flat_H.dtype) @ flat_H
+                    ).view(num_conditions, B, T, D).to(head_dtype)
 
                 for c_idx in range(num_conditions):
-                    pooled = model._pool_batch(all_mixed[c_idx], seq_mask, lengths, task="creaky")
-                    logits = model.heads["creaky"](pooled).squeeze(-1)
-                    cond_all_logits[c_idx].extend(logits.cpu().numpy().tolist())
-                    if c_idx == 0:
-                        cond_all_labels[c_idx].extend(labels.cpu().numpy().tolist())
+                    for task_name in eval_tasks:
+                        task_idx = model.tasks.index(task_name) if task_name in model.tasks else 0
+                        t_labels = labels[..., task_idx] if (labels.ndim > 1 and labels.shape[-1] > task_idx) else labels
+                        pooled = model._pool_batch(
+                            mixed_by_task[task_name][c_idx],
+                            valid_mask=seq_mask,
+                            lengths=out_lengths,
+                            task=task_name,
+                        )
+                        c_logits = model.heads[task_name](pooled).squeeze(-1)
+                        cond_segment_preds[task_name][c_idx].extend(c_logits.cpu().numpy().tolist())
+                        cond_segment_labels[task_name][c_idx].extend(t_labels.cpu().numpy().tolist())
 
-    total_time = time.time() - start_time
-    print(f"[Done] Single-pass evaluation finished in {total_time:.2f}s!")
+    task_results: Dict[str, List[Dict[str, Any]]] = {}
 
-    # 3. Calculate metrics for each condition
-    results: List[Dict[str, Any]] = []
+    for task_name in eval_tasks:
+        results: List[Dict[str, Any]] = []
+        base_auc_pr = 0.0
 
-    # Get labels
-    if paradigm == "block":
-        base_dict = cond_interval_preds[0]
-        y_true = np.array([item[1] for item in base_dict.values()])
-    else:
-        y_true = np.array(cond_all_labels[0])
+        for c_idx, cond in enumerate(conditions):
+            if paradigm == "block":
+                rec = cond_interval_preds[task_name][c_idx]
+                y_logits = np.array([item[0] / item[2] for item in rec.values()], dtype=np.float32)
+                y_labels = np.array([item[1] for item in rec.values()], dtype=np.float32)
+            else:
+                y_logits = np.array(cond_segment_preds[task_name][c_idx], dtype=np.float32)
+                y_labels = np.array(cond_segment_labels[task_name][c_idx], dtype=np.float32)
 
-    # First compute baseline metrics
-    if paradigm == "block":
-        base_logits = np.array([item[0] / item[2] for item in cond_interval_preds[0].values()])
-    else:
-        base_logits = np.array(cond_all_logits[0])
+            metrics = compute_binary_metrics(y_logits, y_labels)
+            auc_pr = metrics["auc_pr"]
+            f1 = metrics["f1"]
 
-    base_metrics = compute_binary_metrics(base_logits, y_true)
-    base_pr = base_metrics["auc_pr"]
-    base_f1 = base_metrics["f1"]
+            retained_mass = sum(learned_weights[task_name][i] for i in cond["kept_indices"])
 
-    print("\n" + "=" * 90)
-    print("                 WavFry Top-k Layer Truncation Evaluation Summary")
-    print("=" * 90)
-    print(f"Baseline PR-AUC: {base_pr:.4f} | Best F1: {base_f1:.4f} (at tau*={base_metrics['best_threshold']:.2f})")
-    print("-" * 90)
+            if cond["id"] == "full_model_baseline":
+                base_auc_pr = auc_pr
+                delta_pr = 0.0
+                drop_pct = 0.0
+            else:
+                delta_pr = auc_pr - base_auc_pr  # Positive means improvement, negative means degradation
+                drop_pct = ((base_auc_pr - auc_pr) / base_auc_pr * 100.0) if base_auc_pr > 0 else 0.0
 
-    for c_idx, cond in enumerate(conditions):
-        if paradigm == "block":
-            c_dict = cond_interval_preds[c_idx]
-            logits = np.array([item[0] / item[2] for item in c_dict.values()])
-        else:
-            logits = np.array(cond_all_logits[c_idx])
+            results.append({
+                "task": task_name,
+                "condition_id": cond["id"],
+                "name": cond["name"],
+                "category": cond["category"],
+                "drop_k": cond["drop_k"],
+                "kept_layers_count": len(cond["kept_indices"]),
+                "kept_indices": cond["kept_indices"],
+                "retained_weight_mass": round(retained_mass, 5),
+                "auc_pr": round(auc_pr, 4),
+                "f1": round(f1, 4),
+                "auc_roc": round(metrics["auc_roc"], 4),
+                "delta_auc_pr": round(delta_pr, 4),
+                "drop_pct": round(drop_pct, 2),
+                "best_threshold": round(metrics["best_threshold"], 2),
+                "n_samples": metrics["n_samples"],
+                "n_pos": metrics["n_pos"],
+            })
 
-        m = compute_binary_metrics(logits, y_true)
-        c_pr = m["auc_pr"]
-        c_f1 = m["f1"]
-        delta_pr = base_pr - c_pr
-        delta_f1 = base_f1 - c_f1
-        drop_pct = (delta_pr / base_pr * 100.0) if base_pr > 0 else 0.0
+        task_results[task_name] = results
 
-        kept_count = len(cond["kept_indices"])
-        kept_str = f"0..{cond['kept_indices'][-1]}" if cond["kept_indices"] == list(range(kept_count)) else str(cond["kept_indices"])
-
-        print(
-            f"  [{cond['name']:<24}] Kept: {kept_count:02d} layers ({kept_str:<7}) | "
-            f"PR-AUC: {c_pr:.4f} (Δ {delta_pr:+.4f}, -{drop_pct:4.1f}%) | "
-            f"F1: {c_f1:.4f} | Mass: {cond['retained_weight_mass']*100:5.1f}%"
-        )
-
-        results.append({
-            "condition_id": cond["id"],
-            "condition_name": cond["name"],
-            "category": cond["category"],
-            "drop_k": cond["drop_k"],
-            "kept_layers_count": kept_count,
-            "kept_layer_indices": str(cond["kept_indices"]),
-            "dropped_layer_indices": str(cond["dropped_indices"]),
-            "retained_mix_weight_mass": round(cond["retained_weight_mass"], 4),
-            "auc_pr": round(c_pr, 4),
-            "f1": round(c_f1, 4),
-            "auc_roc": round(m["auc_roc"], 4),
-            "accuracy": round(m["accuracy"], 4),
-            "precision": round(m["precision"], 4),
-            "recall": round(m["recall"], 4),
-            "best_threshold": round(m["best_threshold"], 2),
-            "delta_auc_pr": round(delta_pr, 4),
-            "delta_f1": round(delta_f1, 4),
-            "drop_pct": round(drop_pct, 2),
-            "description": cond["description"],
-        })
-
-    return results
+    return task_results
 
 
-def export_reports(results: List[Dict[str, Any]], output_dir: Path, ckpt_name: str, split: str, paradigm: str):
+def generate_reports(
+    output_dir: Path,
+    ckpt_name: str,
+    split_name: str,
+    paradigm_name: str,
+    task_results: Dict[str, List[Dict[str, Any]]],
+):
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "topk_layer_truncation_report.csv"
     md_path = output_dir / "topk_layer_truncation_report.md"
     json_path = output_dir / "topk_layer_truncation_summary.json"
 
-    # 1. Save CSV
-    df = pd.DataFrame(results)
-    df.to_csv(csv_path, index=False)
-    print(f"\n[Saved] CSV report: {csv_path}")
+    # 1. Flatten CSV
+    all_rows = []
+    for t_name, rows in task_results.items():
+        all_rows.extend(rows)
+    pd.DataFrame(all_rows).to_csv(csv_path, index=False)
+    print(f"\n[Saved] Top-k Truncation CSV report saved to: {csv_path}")
 
-    # 2. Save JSON
+    # 2. JSON summary
+    summary_data = {
+        "checkpoint": ckpt_name,
+        "split": split_name,
+        "paradigm": paradigm_name,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "tasks": task_results,
+    }
     with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "checkpoint": ckpt_name,
-                "split": split,
-                "paradigm": paradigm,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "results": results,
-            },
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
-    print(f"[Saved] JSON report: {json_path}")
+        json.dump(summary_data, f, indent=2, ensure_ascii=False)
+    print(f"[Saved] Top-k Truncation JSON summary saved to: {json_path}")
 
-    # 3. Save Markdown
-    base_res = results[0]
-    base_pr = base_res["auc_pr"]
-    base_f1 = base_res["f1"]
-
+    # 3. Markdown Report
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("# WavFry Top-k Layer Truncation & Depth Sensitivity Audit Report\n\n")
         f.write(f"- **Evaluated Checkpoint**: `{ckpt_name}`\n")
-        f.write(f"- **Dataset Split**: `{split.upper()}` | **Training Paradigm**: `{paradigm.upper()}`\n")
-        f.write(f"- **Full Model Baseline PR-AUC**: `{base_pr:.4f}` | **Optimal F1**: `{base_f1:.4f}`\n")
+        f.write(f"- **Dataset Split**: `{split_name.upper()}` | **Training Paradigm**: `{paradigm_name.upper()}`\n")
         f.write(f"- **Generated At**: `{time.strftime('%Y-%m-%d %H:%M:%S')}`\n\n")
 
-        f.write("## 1. 核心发现与架构洞见（Executive Summary）\n\n")
-        
-        # Analyze critical truncation points (k=3, k=6, k=9)
-        k3 = next((r for r in results if r["condition_id"] == "drop_top_3"), None)
-        k6 = next((r for r in results if r["condition_id"] == "drop_top_6"), None)
-        k9 = next((r for r in results if r["condition_id"] == "drop_top_9"), None)
-        k12 = next((r for r in results if r["condition_id"] == "drop_top_12"), None)
-        bottom_ac = next((r for r in results if r["condition_id"] == "diagnostic_bottom_acoustic_0_3"), None)
-        top_sem = next((r for r in results if r["condition_id"] == "diagnostic_top_semantic_8_12"), None)
+        for task_name, rows in task_results.items():
+            base_row = next(r for r in rows if r["condition_id"] == "full_model_baseline")
+            f.write(f"## Task: `{task_name.upper()}`\n\n")
+            f.write(f"- **Full Model Baseline PR-AUC**: `{base_row['auc_pr']:.4f}` | **Optimal F1**: `{base_row['f1']:.4f}` | **ROC-AUC**: `{base_row['auc_roc']:.4f}`\n")
+            f.write(f"- **Evaluated Labeled Samples**: `{base_row['n_samples']}` (Positives: `{base_row['n_pos']}`)\n\n")
 
-        if k3:
-            f.write(f"- **截断后 3 层 (Drop Top 3, k=3, 保留前 10 层)**: PR-AUC 为 `{k3['auc_pr']:.4f}` (变化 `{k3['delta_auc_pr']:+.4f}`，跌幅 `{k3['drop_pct']:.1f}%`)。\n")
-        if k6:
-            f.write(f"- **截断后 6 层 (Drop Top 6, k=6, 保留前 7 层 [WavLM-6L 半深模型])**: PR-AUC 为 `{k6['auc_pr']:.4f}` (变化 `{k6['delta_auc_pr']:+.4f}`，跌幅 `{k6['drop_pct']:.1f}%`)。\n")
-        if k9:
-            f.write(f"- **截断后 9 层 (Drop Top 9, k=9, 仅保留 CNN + L1~L3)**: PR-AUC 为 `{k9['auc_pr']:.4f}` (变化 `{k9['delta_auc_pr']:+.4f}`，跌幅 `{k9['drop_pct']:.1f}%`)。\n")
-        if k12:
-            f.write(f"- **完全去除 Transformer (仅保留 CNN 特征)**: PR-AUC 为 `{k12['auc_pr']:.4f}` (变化 `{k12['delta_auc_pr']:+.4f}`，跌幅 `{k12['drop_pct']:.1f}%`)。\n")
-        if top_sem and bottom_ac:
-            f.write(f"- **反向对照（仅高阶语义 vs 仅底层声学）**: 仅高阶语义层(L8-L12) PR-AUC 为 `{top_sem['auc_pr']:.4f}`，而仅底层声学(CNN+L1-L3) PR-AUC 为 `{bottom_ac['auc_pr']:.4f}`。\n")
+            f.write("### 逐层累积截断实验详细数据表 (Sequential Cumulative Truncation)\n\n")
+            f.write("| 截断条件 | 丢弃层数 $k$ | 保留层数 | 保留权重质量 | PR-AUC | $\\Delta$PR-AUC | 跌幅 (%) | F1 | ROC-AUC | 最佳阈值 $\\tau^*$ | 状态评定 |\n")
+            f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|\n")
 
-        f.write("\n---\n\n")
-        f.write("## 2. 逐层累积截断实验详细数据表 (Sequential Cumulative Truncation)\n\n")
-        f.write("| 截断条件 | 丢弃层数 $k$ | 保留层数 | 保留权重质量 | PR-AUC | $\\Delta$PR-AUC | 跌幅 (%) | F1 | ROC-AUC | 最佳阈值 $\\tau^*$ | 状态评定 |\n")
-        f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|\n")
+            seq_rows = [r for r in rows if r["category"] in ("Baseline", "Sequential Truncation")]
+            for r in seq_rows:
+                drop_pct = r["drop_pct"]
+                if r["condition_id"] == "full_model_baseline":
+                    status = "🎯 Full Baseline"
+                elif drop_pct <= 0.0:
+                    status = "🔥 逆势提升 / 零损"
+                elif drop_pct <= 0.5:
+                    status = "🟢 极微损 (<0.5%)"
+                elif drop_pct <= 2.0:
+                    status = "🟡 轻微下降 (<=2%)"
+                elif drop_pct <= 5.0:
+                    status = "🟠 中度受损 (<=5%)"
+                else:
+                    status = "🔴 严重受损 (>5%)"
 
-        seq_rows = [r for r in results if r["category"] in ("Baseline", "Sequential Truncation")]
-        for r in seq_rows:
-            drop_k = r["drop_k"]
-            if drop_k == 0:
-                status = "🎯 Full Baseline"
-            elif r["drop_pct"] <= 0.5:
-                status = "🟢 无损/极微损 (<0.5%)"
-            elif r["drop_pct"] <= 2.0:
-                status = "🟡 轻微下降 (<=2%)"
-            elif r["drop_pct"] <= 5.0:
-                status = "🟠 中度受损 (<=5%)"
-            else:
-                status = "🔴 严重受损 (>5%)"
+                delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
+                f.write(
+                    f"| **{r['name']}** | {r['drop_k']} | {r['kept_layers_count']} | "
+                    f"{r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
+                    f"{delta_str} | {drop_pct:.1f}% | {r['f1']:.4f} | {r['auc_roc']:.4f} | "
+                    f"{r['best_threshold']:.2f} | {status} |\n"
+                )
 
-            f.write(
-                f"| **{r['condition_name']}** | {r['drop_k']} | {r['kept_layers_count']} | "
-                f"{r['retained_mix_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
-                f"{r['delta_auc_pr']:+.4f} | {r['drop_pct']:.1f}% | {r['f1']:.4f} | "
-                f"{r['auc_roc']:.4f} | {r['best_threshold']:.2f} | {status} |\n"
-            )
+            # Negative controls
+            neg_rows = [r for r in rows if r["category"] == "Negative Control"]
+            if neg_rows:
+                f.write("\n### 阴性反向对照分析 (Negative Control Anchor)\n\n")
+                f.write("| 对照条件 | 保留权重 | PR-AUC | $\\Delta$PR-AUC | F1 | ROC-AUC | 科学推论 |\n")
+                f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---|\n")
+                for r in neg_rows:
+                    delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
+                    f.write(
+                        f"| **{r['name']}** | {r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
+                        f"{delta_str} | {r['f1']:.4f} | {r['auc_roc']:.4f} | 仅凭高层语义无法独立支撑发声态判别 |\n"
+                    )
 
-        f.write("\n---\n\n")
-        f.write("## 3. 架构代表性锚点与反向对照分析 (Diagnostic Architectural Anchors)\n\n")
-        f.write("| 架构锚点 | 激活层描述 | 保留权重 | PR-AUC | $\\Delta$PR-AUC | F1 | 科学结论 |\n")
-        f.write("|:---|:---|:---:|:---:|:---:|:---:|:---|\n")
+            f.write("\n---\n\n")
 
-        anchor_rows = [r for r in results if r["category"] == "Diagnostic Anchor"]
-        for r in anchor_rows:
-            f.write(
-                f"| **{r['condition_name']}** | {r['description']} | "
-                f"{r['retained_mix_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
-                f"{r['delta_auc_pr']:+.4f} | {r['f1']:.4f} | "
-                f"{'声学底层决定论验证' if 'acoustic' in r['condition_id'] else ('语义高层无法独立支撑发声态' if 'semantic' in r['condition_id'] else '音素共振峰辅助')} |\n"
-            )
+        f.write("*说明：本评测采用 Single-Pass Forward Caching 单次前向缓存机制，后验测试各个深度截断下的性能临界点（Cliff）。*\n")
 
-        f.write("\n\n> [!NOTE]\n")
-        f.write("> **实验方法学说明**：\n")
-        f.write("> 1. 本实验基于已收敛最优 checkpoint，采用单次前向缓存机制（Single-Pass Forward Caching），对 WavLM 隐层应用动态 Softmax 掩码重归一化。\n")
-        f.write("> 2. 权重保留质量（Retained Weight Mass）表示原模型自适应学习到的标量注意力中，分配给保留层的百分比。\n")
-        f.write("> 3. 本测试为**后验截断测试**（分类头是在完整 13 层输入下训练的）。若进一步在训练期物理截断（方案 2），浅层专属调优后的分类头上限预期会高于此表中的后验截断表现。\n")
-
-    print(f"[Saved] Markdown report: {md_path}")
+    print(f"[Saved] Top-k Truncation Markdown report saved to: {md_path}")
 
 
 def main():
     args = parse_args()
-    device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
-    print(f"[Device] Using device: {device}")
+    device = resolve_device(args.device)
 
     ckpt_path = resolve_checkpoint(args.checkpoint)
     model, config = load_model_from_checkpoint(ckpt_path, device)
 
+    # Determine tasks
+    model_tasks = getattr(model, "tasks", ["creaky"])
+    if args.task == "all":
+        eval_tasks = [t for t in ["creaky", "breathy"] if t in model_tasks]
+    else:
+        if args.task not in model_tasks:
+            raise ValueError(f"Requested task '{args.task}' not supported by model tasks: {model_tasks}")
+        eval_tasks = [args.task]
+
+    # Manifest resolution
     manifest_path = Path(args.manifest) if args.manifest else (PROJECT_ROOT / "manifests" / "segments_multi.csv")
     if not manifest_path.exists():
         manifest_path = PROJECT_ROOT / "manifests" / "segments_all.csv"
     if not manifest_path.exists():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
 
-    loader, paradigm = prepare_dataloader(config, manifest_path, args.split, args.batch_size, args.smoketest)
+    loader, paradigm = prepare_dataloader(
+        config=config,
+        manifest_path=manifest_path,
+        split_target=args.split,
+        batch_size=args.batch_size,
+        is_smoketest=args.smoketest,
+        task_filter=args.task,
+    )
 
-    # Extract learned scalar mix weights
     num_layers = model.num_layers + 1
-    if model.use_scalar_mix and "creaky" in model.scalar_mix_weights:
-        raw_logits = model.scalar_mix_weights["creaky"].detach().cpu()
-        sm_weights = torch.softmax(raw_logits, dim=0).numpy().tolist()
-    else:
-        sm_weights = [1.0 / num_layers] * num_layers
+    conditions = build_truncation_conditions(num_layers)
 
-    conditions = build_truncation_conditions(num_layers, sm_weights)
+    print("\n" + "=" * 80)
+    print("      WavFry Top-k Layer Truncation & Depth Sensitivity Audit")
+    print(f"  Checkpoint: {ckpt_path.name}")
+    print(f"  Tasks: {eval_tasks} | Split: {args.split.upper()} | Paradigm: {paradigm.upper()}")
+    print(f"  Conditions: {len(conditions)} | Device: {device} | Single-Pass Caching: ENABLED")
+    print("=" * 80)
 
-    out_dir = Path(args.output_dir) if Path(args.output_dir).is_absolute() else (PROJECT_ROOT / args.output_dir)
+    task_results = evaluate_truncation_single_pass(
+        model=model,
+        loader=loader,
+        device=device,
+        paradigm=paradigm,
+        conditions=conditions,
+        eval_tasks=eval_tasks,
+        max_batches=args.max_batches,
+    )
 
-    results = run_evaluation(model, loader, device, paradigm, conditions)
-    export_reports(results, out_dir, ckpt_path.name, args.split, paradigm)
+    output_dir = Path(args.output_dir) if Path(args.output_dir).is_absolute() else (PROJECT_ROOT / args.output_dir)
+    generate_reports(
+        output_dir=output_dir,
+        ckpt_name=ckpt_path.name,
+        split_name=args.split,
+        paradigm_name=paradigm,
+        task_results=task_results,
+    )
+
+    # Console summary printout
+    print("\n" + "=" * 80)
+    print("                 TOP-K TRUNCATION EXECUTIVE SUMMARY")
+    print("=" * 80)
+    for t_name, rows in task_results.items():
+        base_r = next(r for r in rows if r["condition_id"] == "full_model_baseline")
+        print(f"\n>>> Task: {t_name.upper()} (Baseline PR-AUC: {base_r['auc_pr']:.4f}, F1: {base_r['f1']:.4f})")
+        for r in rows:
+            delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
+            print(f"  [{r['name']:<44}] PR-AUC: {r['auc_pr']:.4f} (Δ {delta_str}, {r['drop_pct']:>5.1f}%) | Weight: {r['retained_weight_mass']*100:>5.1f}%")
 
 
 if __name__ == "__main__":

@@ -109,3 +109,37 @@ def test_layer_mask_forward_block_mode():
     logits = out["interval_logits"]["creaky"]
     assert logits.shape == (2, 4)
     assert not torch.isnan(logits[interval_valid]).any()
+
+
+def test_layer_mask_multitask_creaky_and_breathy():
+    """Test WavFryClassifier forward with layer_mask in multi-task mode (creaky + breathy)."""
+    config = make_dummy_config()
+    config["model"]["tasks"] = ["creaky", "breathy"]
+    model = WavFryClassifier(config)
+    model.eval()
+
+    x = torch.randn(2, 32000)
+    lengths = torch.tensor([32000, 28000])
+    interval_bounds = torch.tensor([
+        [[1000, 5000], [6000, 12000], [0, 0], [0, 0]],
+        [[2000, 8000], [10000, 20000], [22000, 26000], [0, 0]],
+    ])
+    interval_valid = torch.tensor([
+        [True, True, False, False],
+        [True, True, True, False],
+    ])
+
+    mask = torch.ones(13, dtype=torch.bool)
+    mask[0] = False  # Ablate L0 (CNN)
+
+    with torch.no_grad():
+        out = model(x, lengths=lengths, interval_bounds=interval_bounds, interval_valid=interval_valid, layer_mask=mask)
+
+    assert "interval_logits" in out
+    assert "creaky" in out["interval_logits"]
+    assert "breathy" in out["interval_logits"]
+    assert out["interval_logits"]["creaky"].shape == (2, 4)
+    assert out["interval_logits"]["breathy"].shape == (2, 4)
+    assert not torch.isnan(out["interval_logits"]["creaky"][interval_valid]).any()
+    assert not torch.isnan(out["interval_logits"]["breathy"][interval_valid]).any()
+
