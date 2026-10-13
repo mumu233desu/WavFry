@@ -191,7 +191,7 @@ class ContinuousAudioBlockDataset(Dataset):
         seed: int = 42,
         fold_index: int = 0,
         cache_waveforms: bool = True,
-        max_cache_files: int = 1000,
+        max_cache_files: int = 2000,
         reverb_augmentor: Optional[Any] = None,
     ) -> None:
         self.target_sr = int(target_sr)
