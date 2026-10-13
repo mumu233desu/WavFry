@@ -279,3 +279,28 @@ def test_generator_isolation_and_reproducibility():
     assert not torch.isnan(noisy1).any()
     assert torch.isfinite(noisy1).all()
 
+
+def test_audio_augmentor_denoise_vectorized():
+    """Verify that AudioAugmentor.denoise operates correctly in batched mode with deterministic output."""
+    cfg = {
+        "enabled": True,
+        "max_epochs": 10,
+        "denoise": {
+            "enabled": True,
+            "prob": 1.0,
+            "atten_lim_db_start": 10.0,
+            "atten_lim_db_end": 10.0,
+        },
+    }
+    augmentor = AudioAugmentor(cfg, max_epochs=10, seed=42)
+    B, T = 4, 16000
+    clean = torch.randn(B, T).float()
+
+    denoised = augmentor.denoise(clean, epoch=5, prob=1.0, device=torch.device("cpu"), step=1)
+    assert denoised.shape == (B, T)
+    assert not torch.isnan(denoised).any()
+    assert torch.isfinite(denoised).all()
+
+    denoised2 = augmentor.denoise(clean, epoch=5, prob=1.0, device=torch.device("cpu"), step=1)
+    assert torch.equal(denoised, denoised2)
+
