@@ -151,11 +151,24 @@ augmentation:
     atten_lim_db_start: 0.0   # epoch 1 时的强度（不降噪）
     atten_lim_db_end: 15.0    # 最终 epoch 时的强度（适中）
 
+  # ── 1. 真实空间声学混响 (Utterance-level RIR Convolution) ──
+  reverb:
+    enabled: false            # 默认关闭，按需激活
+    prob: 0.3                 # 触发概率
+    rir_dir: E:/Corpus/Noise/QUT-NOISE_processed/impulses
+    scenarios: [car, reverb]
+
+  # ── 2. 多源加性环境噪声 (Block-level Noise Mixture) ──
   noise:
     enabled: true             # 加噪增强开关
     prob: 0.5                 # 每个样本应用加噪的概率
-    type: pink                # noise type: white | pink
+    sources:
+      pink: 0.3               # 30% 合成平稳粉红噪声
+      real_world: 0.7         # 70% QUT 真实非平稳环境噪声
+    real_world_dir: E:/Corpus/Noise/QUT-NOISE_processed/noise
+    scenarios: [cafe, car, home, reverb, street]
+    type: pink                # legacy fallback: white | pink
     pink_low_cutoff_hz: 10.0  # pink noise low cutoff frequency to prevent DC / sub-bass drift
     # SNR 随 epoch 按幂次曲线下降（SNR 越低 = 噪声越多）
-    snr_db_start: 40.0        # epoch 1 时（几乎听不出噪声）
-    snr_db_end: 20.0          # 最终 epoch 时（明显但不严重）
+    snr_db_start: 35.0        # epoch 1 时（几乎听不出噪声）
+    snr_db_end: 12.0          # 最终 epoch 时（明显但不严重）

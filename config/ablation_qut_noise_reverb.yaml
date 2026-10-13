@@ -1,0 +1,175 @@
+# ==============================================================================
+# WavFry Experiment Configuration:
+# Frozen WavLM-Base+ Backbone | Multi-Task [Creaky, Breathy] | Block Paradigm
+# VSDC-Net Weak Supervision + QUT-NOISE Real-World Noise & RIR Spatial Acoustics
+# ==============================================================================
+
+# ── 数据 ──────────────────────────────────────────────
+data:
+  isolate_split_speakers: true       # 默认开启 (true)，从 val/test 中剔除与 train 重叠的发音人，保留完整训练集
+  num_workers: auto
+  pin_memory: true                   # GPU 训练时加速 Host→Device 传输
+  prefetch_factor: 2                 # num_workers>0 时生效
+
+# ── 模型 ──────────────────────────────────────────────
+model:
+  backbone: microsoft/wavlm-base-plus
+  fine_tune_layers: "none"           # 彻底冻结整个预训练骨干网络
+  use_scalar_mix: true               # 保持 13 层标量加权参数可学习
+  dropout: 0.1
+  head_hidden_dim: 256
+  use_positional_encoding: false
+  pos_embed_dim: 32
+  tasks: [creaky, breathy]           # 激活 creaky 与 breathy 双任务头
+
+# ── 训练 ──────────────────────────────────────────────
+training:
+  quiet: true
+  optimizer: adamw_fp32
+  epochs: 20
+  gradient_accumulation_steps: 1
+  backbone_lr: 0.0
+  head_lr: 1.0e-4
+  warmup_steps: 200
+  weight_decay: 0.01
+  grad_clip: 1.0
+  loss: focal
+  focal_gamma: 2.0
+  focal_alpha: 0.75
+  seed: 42
+  mixed_precision: bf16
+  gradient_checkpointing: false
+  lr_schedule: cosine
+  min_lr_ratio: 0.05
+  paradigm: block
+
+  segment:
+    batch_size: 32
+    context_padding_ms: 30
+    continuous_non_creaky_sampling:
+      enabled: false
+
+  block:
+    duration_ms: 2000
+    hop_ms: 1000
+    max_intervals: 8
+    boundary_trim_frames: 0
+    batch_size: 16
+    val_batch_size: 16
+    eval_overlap_reduction: average
+    interval_from_frame:
+      mode: linear_softmax
+
+  frame_mil:
+    enabled: true
+    loss_weight: 0.5
+    fusions:
+      creaky: lse
+      breathy: lse
+    lse_r: 1.0
+    creaky:
+      topk_ratio: 0.3
+      temperature: 1.0
+    breathy:
+      topk_ratio: 0.3
+      temperature: 1.0
+
+  train_heads:
+    creaky: true
+    breathy: true
+
+  weak_supervision:
+    enabled: true
+    manifest_path: "manifests/weak_breathy.json"
+    start_epoch: 2
+    loss_weight: 0.3
+    batch_size: 2
+    max_windows: 64
+
+  # ── VSDC-Net 全阶架构 ──────────────────────────────
+  vsdc:
+    enabled: true
+    hidden_dim: 256
+    conv_layers: 2
+    kernel_size: 3
+    dropout: 0.1
+
+    bas_net:
+      loss_weight_base: 0.1
+      loss_weight_supp: 0.1
+      loss_weight_supp_zero: 0.1
+      loss_weight_sparse: 0.005
+      loss_weight_head_align: 0.1
+
+    speaker_contrast:
+      enabled: true
+      loss_weight: 0.2
+      temperature: 0.07
+
+    mean_teacher:
+      enabled: true
+      ema_decay: 0.999
+      loss_weight: 1.0
+      sharpen_temp: 0.5
+      filter_window: 3
+      conf_threshold: 0.35
+
+    curriculum:
+      stage_epochs: [3, 10]
+
+  pooling_mode: attn
+  topk_ratio: 0.2
+  topk_min_frames: 3
+
+# ── 评估 ──────────────────────────────────────────────
+eval:
+  primary_task: creaky
+  primary_metric: auc_pr
+  early_stopping_patience: 3
+
+# ── TensorBoard ───────────────────────────────────────
+tensorboard:
+  log_dir: R:/runs/ablation_qut_noise_reverb
+  log_audio_samples: true
+  audio_sample_count: 4
+  log_confusion_matrix: true
+  log_pr_curve: true
+
+# ── Checkpoint ────────────────────────────────────────
+checkpoint:
+  dir: R:/checkpoints/ablation_qut_noise_reverb
+  save_mode: delta
+  keep_best_count: 3
+
+# ── 数据增强 (QUT-NOISE + RIR + DFN3) ──────────────────
+augmentation:
+  enabled: true
+  aug_order: noise_first
+  schedule_power: 2.0
+
+  # ── 1. 真实空间声学混响 (Utterance-level RIR Convolution) ──
+  reverb:
+    enabled: true             # 启用 RIR 空间反射增强
+    prob: 0.3                 # 30% 样本触发真实 RIR 混响
+    rir_dir: E:/Corpus/Noise/QUT-NOISE_processed/impulses
+    scenarios: [car, reverb]
+
+  # ── 2. 多源加性环境噪声 (Block-level Noise Mixture) ──
+  noise:
+    enabled: true
+    prob: 0.5                 # 50% 样本触发加噪
+    sources:
+      pink: 0.3               # 30% 平稳粉红噪声
+      real_world: 0.7         # 70% QUT 真实场景噪声
+    real_world_dir: E:/Corpus/Noise/QUT-NOISE_processed/noise
+    scenarios: [cafe, car, home, reverb, street]
+    pink_low_cutoff_hz: 10.0
+    snr_db_start: 30.0        # Epoch 1: 30 dB (轻度扰动)
+    snr_db_end: 12.0          # Epoch 20: 12 dB (重度非平稳干扰)
+
+  # ── 3. 课程深度降噪 (DeepFilterNet3) ─────────────────
+  denoising:
+    enabled: true
+    prob: 0.5
+    atten_lim_db_start: 0.0   # Epoch 1: 0 dB (关闭)
+    atten_lim_db_end: 15.0    # Epoch 20: 15 dB (强力降噪)

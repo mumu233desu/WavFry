@@ -478,7 +478,7 @@ class Trainer:
         self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task
 
-    def _forward_batch(self, batch, epoch, training):
+    def _forward_batch(self, batch, epoch, training, step=None):
         if self.paradigm == 'block':
             waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
             waveforms = waveforms.to(self.device, non_blocking=True)
@@ -487,7 +487,7 @@ class Trainer:
             valid = valid.to(self.device, non_blocking=True)
             lengths = lengths.to(self.device, non_blocking=True)
             if training and self.augmentor is not None:
-                waveforms = self.augmentor.apply(waveforms, epoch, self.device)
+                waveforms = self.augmentor.apply(waveforms, epoch, self.device, step=step)
             outputs = self.model(waveforms, lengths, interval_bounds=bounds, interval_valid=valid)
             effective_valid = outputs.get('interval_valid', valid)
             if not effective_valid.any():
@@ -513,7 +513,7 @@ class Trainer:
         labels = labels.to(self.device, non_blocking=True)
         lengths = lengths.to(self.device, non_blocking=True)
         if training and self.augmentor is not None:
-            waveforms = self.augmentor.apply(waveforms, epoch, self.device)
+            waveforms = self.augmentor.apply(waveforms, epoch, self.device, step=step)
         logits_dict = self.model(waveforms, lengths)
         if not isinstance(logits_dict, dict):
             tasks = getattr(self.model, "tasks", ["creaky"])
@@ -731,7 +731,7 @@ class Trainer:
                     logits_dict, labels_dict = {}, {}
                     self._current_losses = {}
                 else:
-                    loss, logits_dict, labels_dict, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True)
+                    loss, logits_dict, labels_dict, speaker_ids, _meta, _waveforms = self._forward_batch(batch, epoch, training=True, step=i)
 
             accumulation = self.config['training']['gradient_accumulation_steps']
             group_size = accumulation
