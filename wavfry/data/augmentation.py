@@ -20,6 +20,7 @@ def generate_pink_noise(
     dtype: torch.dtype,
     low_cutoff_hz: float = 10.0,
     sample_rate: int = 16000,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """
     Generates pink noise in the frequency domain with 1/f amplitude scaling,
@@ -28,9 +29,9 @@ def generate_pink_noise(
     """
     num_freqs = T // 2 + 1
 
-    # Generate complex Gaussian noise in frequency domain
-    real = torch.randn(B, num_freqs, device=device, dtype=dtype)
-    imag = torch.randn(B, num_freqs, device=device, dtype=dtype)
+    # Generate complex Gaussian noise in frequency domain with isolated generator
+    real = torch.randn(B, num_freqs, device=device, dtype=dtype, generator=generator)
+    imag = torch.randn(B, num_freqs, device=device, dtype=dtype, generator=generator)
     spectrum = torch.complex(real, imag)
 
     # Frequency scaling: power spectrum S(f) ~ 1/f -> amplitude A(f) ~ 1/sqrt(f)
@@ -67,6 +68,7 @@ class ReverbAugmentor:
       convolving the entire infinite utterance and then slicing, preserving natural
       room tails from preceding speech without boundary truncation artifacts.
     - Whole-utterance convolution for full audio signals.
+    - Staged curriculum scheduling (optional dry/wet fade-in across epochs).
     - Deterministic per-sample seeding for 100% reproducible training.
     """
 
@@ -79,6 +81,9 @@ class ReverbAugmentor:
         self.enabled = bool(config.get("enabled", False))
         self.prob = float(config.get("prob", 0.3))
         self.seed = int(seed)
+        self.curriculum = bool(config.get("curriculum", False))
+        self.max_epochs = int(config.get("max_epochs", 20))
+        self.schedule_power = float(config.get("schedule_power", 2.0))
 
         rir_dir_str = config.get("rir_dir", "E:/Corpus/Noise/QUT-NOISE_processed/impulses")
         self.rir_dir = Path(rir_dir_str)
@@ -130,6 +135,7 @@ class ReverbAugmentor:
         full_waveform: torch.Tensor,
         start_frame: int,
         end_frame: int,
+        epoch: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> torch.Tensor:
         """
@@ -140,8 +146,19 @@ class ReverbAugmentor:
         if not self.enabled or len(self.rirs) == 0 or self.prob <= 0.0:
             return slice_clean
 
+        # Curriculum effective probability
+        if self.curriculum and epoch is not None and self.max_epochs > 1:
+            progress = min(max((epoch - 1) / (self.max_epochs - 1), 0.0), 1.0)
+            curriculum_factor = progress ** self.schedule_power
+            effective_prob = self.prob * curriculum_factor
+        else:
+            effective_prob = self.prob
+
+        if effective_prob <= 0.0:
+            return slice_clean
+
         rng = random.Random(seed if seed is not None else self.seed)
-        if rng.random() >= self.prob:
+        if rng.random() >= effective_prob:
             return slice_clean
 
         # Pick random RIR
@@ -172,14 +189,24 @@ class ReverbAugmentor:
     def apply_waveform(
         self,
         waveform: torch.Tensor,
+        epoch: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> torch.Tensor:
         """Convolve whole 1D waveform [T] with a randomly chosen RIR."""
         if not self.enabled or len(self.rirs) == 0 or self.prob <= 0.0:
             return waveform.clone()
 
+        if self.curriculum and epoch is not None and self.max_epochs > 1:
+            progress = min(max((epoch - 1) / (self.max_epochs - 1), 0.0), 1.0)
+            effective_prob = self.prob * (progress ** self.schedule_power)
+        else:
+            effective_prob = self.prob
+
+        if effective_prob <= 0.0:
+            return waveform.clone()
+
         rng = random.Random(seed if seed is not None else self.seed)
-        if rng.random() >= self.prob:
+        if rng.random() >= effective_prob:
             return waveform.clone()
 
         rir_idx = rng.randint(0, len(self.rirs) - 1)
@@ -226,6 +253,8 @@ class RealWorldNoisePool:
                         logger.warning(f"Sample rate mismatch for {flac_path}: {sr} != 16000")
                         continue
                     tensor = torch.from_numpy(data)  # int16 CPU tensor
+                    if len(tensor) == 0:
+                        continue
                     self.buffers.append(tensor)
                     self.buffer_names.append(f"{scenario}/{flac_path.name}")
                     total_samples += len(tensor)
@@ -249,10 +278,9 @@ class RealWorldNoisePool:
     ) -> torch.Tensor:
         """
         Sample `num_slices` random slices of length `length`.
-        Returns tensor of shape [num_slices, length] on `device` with specified `dtype`.
+        Transfers int16 to GPU directly to halve PCIe bandwidth, then scales on GPU.
         """
         if len(self.buffers) == 0:
-            # Fallback to white noise if pool is empty
             return torch.randn(num_slices, length, device=device, dtype=dtype)
 
         rng = random.Random(seed)
@@ -261,17 +289,21 @@ class RealWorldNoisePool:
             buf_idx = rng.randint(0, len(self.buffers) - 1)
             buf = self.buffers[buf_idx]
             L = len(buf)
+            if L == 0:
+                slices.append(torch.zeros(length, dtype=torch.int16))
+                continue
             if L <= length:
                 reps = int(math.ceil(length / L))
                 sliced = buf.repeat(reps)[:length]
             else:
                 start = rng.randint(0, L - length)
                 sliced = buf[start : start + length]
-            # Convert int16 to float in [-1.0, 1.0]
-            slices.append(sliced.float() / 32768.0)
+            slices.append(sliced)
 
-        batch_tensor = torch.stack(slices, dim=0).to(device=device, dtype=dtype)
-        return batch_tensor
+        batch_int16 = torch.stack(slices, dim=0).to(device=device, non_blocking=True)
+        # Scaled on GPU directly: int16 -> target float dtype
+        batch_float = batch_int16.to(dtype=dtype).mul_(1.0 / 32768.0)
+        return batch_float
 
 
 class AudioAugmentor:
@@ -280,6 +312,7 @@ class AudioAugmentor:
     Features:
     - Multi-source additive noise (Pink noise + QUT Real-world noise dynamic mixture)
     - Real-time local RMS SNR scaling per 2.0s block
+    - Isolated PRNG stream eliminating global RNG / Dropout side effects
     - DeepFilterNet3 denoising curriculum
     - Power-curve intensity scheduling
     """
@@ -366,24 +399,32 @@ class AudioAugmentor:
             waveforms = waveforms.float()
             if self.aug_order == "noise_first":
                 waveforms = self.add_noise(waveforms, epoch, noise_prob, device, step=step)
-                waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                waveforms = self.denoise(waveforms, epoch, denoise_prob, device, step=step)
             elif self.aug_order == "denoise_first":
-                waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                waveforms = self.denoise(waveforms, epoch, denoise_prob, device, step=step)
                 waveforms = self.add_noise(waveforms, epoch, noise_prob, device, step=step)
             else:
-                rng_val = torch.rand(1).item()
-                if rng_val > 0.5:
+                base_seed = self.seed + epoch * 100003 + (step or 0) * 1009
+                rng = random.Random(base_seed)
+                if rng.random() > 0.5:
                     waveforms = self.add_noise(waveforms, epoch, noise_prob, device, step=step)
-                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device, step=step)
                 else:
-                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device)
+                    waveforms = self.denoise(waveforms, epoch, denoise_prob, device, step=step)
                     waveforms = self.add_noise(waveforms, epoch, noise_prob, device, step=step)
 
         return waveforms
 
-    def denoise(self, waveforms: torch.Tensor, epoch: int, prob: float, device: torch.device) -> torch.Tensor:
-        """Apply DFN denoising to batch."""
-        if not self.denoise_cfg.get("enabled", False):
+    def denoise(
+        self,
+        waveforms: torch.Tensor,
+        epoch: int,
+        prob: float,
+        device: torch.device,
+        step: Optional[int] = None,
+    ) -> torch.Tensor:
+        """Apply DFN denoising to batch with isolated deterministic RNG."""
+        if not self.denoise_cfg.get("enabled", False) or prob <= 0.0:
             return waveforms
 
         atten_db = self._get_intensity(
@@ -407,8 +448,12 @@ class AudioAugmentor:
         resample_to_48 = self._get_resampler(16000, 48000, device)
         resample_to_16 = self._get_resampler(48000, 16000, device)
 
+        # Isolated deterministic RNG avoiding global torch.rand
+        base_seed = self.seed + epoch * 100003 + (step or 0) * 1009 + 42
+        rng = random.Random(base_seed)
+
         for i in range(B):
-            if torch.rand(1).item() < prob:
+            if rng.random() < prob:
                 wav = waveforms[i : i + 1]
                 wav_48 = resample_to_48(wav)
                 if hasattr(self.dfn_df_state, "reset"):
@@ -438,7 +483,7 @@ class AudioAugmentor:
     ) -> torch.Tensor:
         """
         Add synthetic (Pink) or real-world (QUT-NOISE) noise to batch.
-        Calculates local RMS SNR dynamically on each 2.0s block slice.
+        Calculates local RMS SNR dynamically on each 2.0s block slice with isolated PRNG.
         """
         if not self.noise_cfg.get("enabled", False) or prob <= 0.0:
             return waveforms
@@ -453,6 +498,10 @@ class AudioAugmentor:
         # Seeded deterministic RNG for reproducible sampling
         base_seed = self.seed + epoch * 100003 + (step or 0) * 1009
         rng = random.Random(base_seed)
+        # Dedicated PyTorch Generator avoiding global state mutation
+        generator_seed = (base_seed ^ 0x5DEECE66D) & 0xFFFFFFFF
+        gen = torch.Generator(device=device)
+        gen.manual_seed(generator_seed)
 
         # Decide mask per sample
         mask_list = [1.0 if rng.random() < prob else 0.0 for _ in range(B)]
@@ -498,7 +547,7 @@ class AudioAugmentor:
                 else:
                     white_indices.append(i)
 
-        # Generate pink noise for designated slots
+        # Generate pink noise for designated slots using isolated generator
         if pink_indices:
             k_pink = len(pink_indices)
             low_cutoff = float(self.noise_cfg.get("pink_low_cutoff_hz", 10.0))
@@ -509,6 +558,7 @@ class AudioAugmentor:
                 waveforms.dtype,
                 low_cutoff_hz=low_cutoff,
                 sample_rate=16000,
+                generator=gen,
             )
             noise_tensors[pink_indices] = pink_noise
 
@@ -524,10 +574,10 @@ class AudioAugmentor:
             )
             noise_tensors[real_indices] = real_noise
 
-        # Generate white noise for designated slots
+        # Generate white noise for designated slots using isolated generator
         if white_indices:
             k_white = len(white_indices)
-            white_noise = torch.randn(k_white, T, device=device, dtype=waveforms.dtype)
+            white_noise = torch.randn(k_white, T, device=device, dtype=waveforms.dtype, generator=gen)
             noise_tensors[white_indices] = white_noise
 
         # Local RMS calculation for target SNR:
@@ -535,6 +585,5 @@ class AudioAugmentor:
         signal_pwr = torch.mean(waveforms**2, dim=1, keepdim=True)
         noise_pwr = torch.mean(noise_tensors**2, dim=1, keepdim=True)
         scale = torch.sqrt(signal_pwr / (noise_pwr * (10.0 ** (snr_db / 10.0)) + 1e-9))
-
         noisy_waveforms = waveforms + noise_tensors * scale * mask
         return noisy_waveforms
