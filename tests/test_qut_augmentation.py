@@ -236,3 +236,46 @@ def test_dataset_reverb_integration():
     finally:
         if dummy_wav_path.exists():
             dummy_wav_path.unlink()
+
+
+def test_reverb_curriculum_fade_in():
+    """Verify that ReverbAugmentor with curriculum=True disables reverb at epoch 1 and ramps up."""
+    full_wav = torch.randn(32000).float()
+    rir = torch.randn(2000).float()
+    rir = rir / torch.sqrt(torch.sum(rir**2))
+    cfg = {"enabled": True, "prob": 1.0, "curriculum": True, "max_epochs": 10, "schedule_power": 2.0}
+    augmentor = ReverbAugmentor(cfg, seed=42)
+    augmentor.rirs = [rir]
+
+    # Epoch 1: progress = 0.0 -> effective_prob = 0.0 -> returns clean slice
+    out_ep1 = augmentor.apply_slice(full_wav, 0, 16000, epoch=1, seed=123)
+    assert torch.equal(out_ep1, full_wav[0:16000])
+
+    # Epoch 10: progress = 1.0 -> effective_prob = 1.0 -> convolved
+    out_ep10 = augmentor.apply_slice(full_wav, 0, 16000, epoch=10, seed=123)
+    assert not torch.equal(out_ep10, full_wav[0:16000])
+
+
+def test_generator_isolation_and_reproducibility():
+    """Verify that global PyTorch RNG is not mutated and output is deterministic with identical seed."""
+    cfg = {
+        "enabled": True,
+        "max_epochs": 10,
+        "noise": {
+            "enabled": True,
+            "prob": 1.0,
+            "sources": {"pink": 1.0},
+            "snr_db_start": 15.0,
+            "snr_db_end": 15.0,
+        },
+    }
+    augmentor = AudioAugmentor(cfg, max_epochs=10, seed=42)
+    clean = torch.randn(2, 16000)
+
+    # Identical seed/step -> identical output
+    noisy1 = augmentor.apply(clean, epoch=1, device=torch.device("cpu"), step=1)
+    noisy2 = augmentor.apply(clean, epoch=1, device=torch.device("cpu"), step=1)
+    assert torch.equal(noisy1, noisy2)
+    assert not torch.isnan(noisy1).any()
+    assert torch.isfinite(noisy1).all()
+

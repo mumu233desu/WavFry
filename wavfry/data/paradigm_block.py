@@ -283,7 +283,7 @@ class ContinuousAudioBlockDataset(Dataset):
         if self.reverb_augmentor is not None:
             reverb_seed = self.seed + self.current_epoch * 100003 + idx * 1009
             waveform = self.reverb_augmentor.apply_slice(
-                full_waveform, start_frame, end_frame, seed=reverb_seed
+                full_waveform, start_frame, end_frame, epoch=self.current_epoch, seed=reverb_seed
             )
         else:
             waveform = full_waveform[start_frame:end_frame].clone()
