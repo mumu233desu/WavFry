@@ -1,4 +1,8 @@
-# WavFry Technical Report: High-Precision WavLM-Based Creaky Voice Detection on the Bilingual CS-Dialogue Corpus
+# WavFry Technical Report (NCMMSC 2026 Conference Version)
+# High-Precision WavLM-Based Creaky Voice Detection on the Bilingual CS-Dialogue Corpus
+
+> **文档性质**：NCMMSC 2026 会议版原始技术报告归档（单任务嘎裂声探测架构、LOOCV 交叉验证与 8-bit AdamW 优化体系）  
+> **后续升级**：多任务联合探测（嘎裂声 + 气声）、VSDC-Net 弱监督与全量层敏感度审计请参阅后续扩展技术规范文档。
 
 ---
 
