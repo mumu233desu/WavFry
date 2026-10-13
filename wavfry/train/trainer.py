@@ -397,7 +397,7 @@ class Trainer:
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
                 loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
-                current_losses[task] = loss.detach().item()
+                current_losses[task] = loss.detach()
                 is_trainable = train_heads_cfg.get(task, True)
                 if not (training and not is_trainable):
                     total_loss = total_loss + loss
@@ -473,7 +473,7 @@ class Trainer:
                     is_trainable = train_heads_cfg.get(task, True)
                     if not (training and not is_trainable):
                         total_loss = total_loss + w_task_frame_loss
-                    current_losses[f'{task}_frame'] = w_task_frame_loss.detach().item()
+                    current_losses[f'{task}_frame'] = w_task_frame_loss.detach()
 
         self._current_losses = current_losses
         return total_loss, logits_by_task, targets_by_task
@@ -535,7 +535,7 @@ class Trainer:
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
                 loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
-                current_losses[task] = loss.detach().item()
+                current_losses[task] = loss.detach()
                 is_trainable = train_heads_cfg.get(task, True)
                 if not (training and not is_trainable):
                     total_loss = total_loss + loss
@@ -724,7 +724,7 @@ class Trainer:
             with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                 if source == 'weak':
                     loss, examples = self._forward_weak_batch(batch, epoch=epoch)
-                    weak_loss_sum += loss.detach().item() * examples
+                    weak_loss_sum = weak_loss_sum + (loss.detach() * examples)
                     loss = loss * (examples * weak_count / weak_population)
                     weak_examples += examples
                     weak_batches += 1
@@ -767,15 +767,15 @@ class Trainer:
                     if epoch > stage_epochs[0]:
                         self.mean_teacher.update_teacher()
 
-            total_loss += loss.item() * group_size
+            total_loss = total_loss + (loss.detach() * group_size)
             if hasattr(self, "_current_losses") and self._current_losses:
                 for task in tasks:
                     if task in self._current_losses:
-                        task_loss_sums[task] += self._current_losses[task]
+                        task_loss_sums[task] = task_loss_sums[task] + self._current_losses[task]
                         task_loss_counts[task] += 1
                 for task in tasks:
                     if f'{task}_frame' in self._current_losses:
-                        frame_loss_sums[task] += self._current_losses[f'{task}_frame']
+                        frame_loss_sums[task] = frame_loss_sums[task] + self._current_losses[f'{task}_frame']
                         frame_loss_counts[task] += 1
 
             for task in tasks:
@@ -783,10 +783,12 @@ class Trainer:
                     all_logits[task].append(logits_dict[task].detach())
                     all_labels[task].append(labels_dict[task].detach())
 
-            if not self.quiet:
-                pbar.set_postfix({'loss': loss.item()})
-            elif (i + 1) % 50 == 0 or (i + 1) == batch_count:
-                print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{batch_count} - Batch Loss: {loss.item():.4f}", flush=True)
+            if (i + 1) % 50 == 0 or (i + 1) == batch_count:
+                loss_val = loss.detach().item()
+                if not self.quiet:
+                    pbar.set_postfix({'loss': f"{loss_val:.4f}"})
+                else:
+                    print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{batch_count} - Batch Loss: {loss_val:.4f}", flush=True)
 
         # Flush remaining gradients
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
@@ -806,16 +808,19 @@ class Trainer:
         primary_task = self.primary_task
         metrics = {}
         if getattr(self, 'weak_loader', None) is not None:
-            metrics['loss_weak_breathy'] = weak_loss_sum / max(weak_examples, 1)
+            w_avg = weak_loss_sum / max(weak_examples, 1)
+            metrics['loss_weak_breathy'] = w_avg.item() if isinstance(w_avg, torch.Tensor) else float(w_avg)
             metrics['weak_utterances'] = weak_examples
             metrics['manual_batches'] = len(self.train_loader)
             metrics['weak_batches'] = weak_batches
         for task in tasks:
             if task_loss_counts[task] > 0:
-                metrics[f"loss_{task}"] = task_loss_sums[task] / task_loss_counts[task]
+                t_avg = task_loss_sums[task] / task_loss_counts[task]
+                metrics[f"loss_{task}"] = t_avg.item() if isinstance(t_avg, torch.Tensor) else float(t_avg)
         for task in tasks:
             if frame_loss_counts[task] > 0:
-                metrics[f"loss_{task}_frame"] = frame_loss_sums[task] / frame_loss_counts[task]
+                f_avg = frame_loss_sums[task] / frame_loss_counts[task]
+                metrics[f"loss_{task}_frame"] = f_avg.item() if isinstance(f_avg, torch.Tensor) else float(f_avg)
         if "loss_creaky_frame" in metrics:
             metrics["loss_frame"] = metrics["loss_creaky_frame"]
 
@@ -837,7 +842,10 @@ class Trainer:
                         metrics["auc_pr"] = 0.0
                         metrics["f1"] = 0.0
 
-        return total_loss / batch_count, metrics
+        epoch_total_loss = total_loss / batch_count
+        if isinstance(epoch_total_loss, torch.Tensor):
+            epoch_total_loss = epoch_total_loss.item()
+        return float(epoch_total_loss), metrics
 
     def validate(self, epoch):
         self.model.eval()
@@ -866,15 +874,15 @@ class Trainer:
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
                     loss, logits_dict, labels_dict, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
 
-                total_loss += loss.item()
+                total_loss = total_loss + loss.detach()
                 if hasattr(self, "_current_losses") and self._current_losses:
                     for task in tasks:
                         if task in self._current_losses:
-                            val_task_loss_sums[task] += self._current_losses[task]
+                            val_task_loss_sums[task] = val_task_loss_sums[task] + self._current_losses[task]
                             val_task_loss_counts[task] += 1
                     for task in tasks:
                         if f'{task}_frame' in self._current_losses:
-                            val_frame_loss_sums[task] += self._current_losses[f'{task}_frame']
+                            val_frame_loss_sums[task] = val_frame_loss_sums[task] + self._current_losses[f'{task}_frame']
                             val_frame_loss_counts[task] += 1
 
                 if self.quiet and ((i + 1) % 50 == 0 or (i + 1) == len(self.val_loader)):
@@ -908,10 +916,12 @@ class Trainer:
         metrics = {}
         for task in tasks:
             if val_task_loss_counts[task] > 0:
-                metrics[f"loss_{task}"] = val_task_loss_sums[task] / val_task_loss_counts[task]
+                t_avg = val_task_loss_sums[task] / val_task_loss_counts[task]
+                metrics[f"loss_{task}"] = t_avg.item() if isinstance(t_avg, torch.Tensor) else float(t_avg)
         for task in tasks:
             if val_frame_loss_counts[task] > 0:
-                metrics[f"loss_{task}_frame"] = val_frame_loss_sums[task] / val_frame_loss_counts[task]
+                f_avg = val_frame_loss_sums[task] / val_frame_loss_counts[task]
+                metrics[f"loss_{task}_frame"] = f_avg.item() if isinstance(f_avg, torch.Tensor) else float(f_avg)
         if "loss_creaky_frame" in metrics:
             metrics["loss_frame"] = metrics["loss_creaky_frame"]
 
@@ -945,7 +955,10 @@ class Trainer:
         if frame_proxy_values:
             metrics['frame_proxy_auroc'] = float(np.mean(frame_proxy_values))
 
-        return total_loss / len(self.val_loader), metrics
+        epoch_val_loss = total_loss / len(self.val_loader)
+        if isinstance(epoch_val_loss, torch.Tensor):
+            epoch_val_loss = epoch_val_loss.item()
+        return float(epoch_val_loss), metrics
 
     def save_history(self):
         """Save detailed epoch-by-epoch history to JSON and CSV atomically in both log_dir and ckpt_dir."""
