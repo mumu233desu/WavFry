@@ -440,7 +440,14 @@ class AudioAugmentor:
         from df.enhance import enhance
 
         B, T = waveforms.shape
-        enhanced_list = []
+
+        # Isolated deterministic RNG avoiding global torch.rand
+        base_seed = self.seed + epoch * 100003 + (step or 0) * 1009 + 42
+        rng = random.Random(base_seed)
+
+        selected_indices = [i for i in range(B) if rng.random() < prob]
+        if not selected_indices:
+            return waveforms
 
         if next(self.dfn_model.parameters()).device != device:
             self.dfn_model = self.dfn_model.to(device)
@@ -448,30 +455,40 @@ class AudioAugmentor:
         resample_to_48 = self._get_resampler(16000, 48000, device)
         resample_to_16 = self._get_resampler(48000, 16000, device)
 
-        # Isolated deterministic RNG avoiding global torch.rand
-        base_seed = self.seed + epoch * 100003 + (step or 0) * 1009 + 42
-        rng = random.Random(base_seed)
+        # 1. Batch resample on device (single vectorized GPU kernel)
+        sub_wavs = waveforms[selected_indices]
+        sub_wavs_48 = resample_to_48(sub_wavs)
 
-        for i in range(B):
-            if rng.random() < prob:
-                wav = waveforms[i : i + 1]
-                wav_48 = resample_to_48(wav)
+        # 2. Single PCIe D2H transfer
+        sub_wavs_48_cpu = sub_wavs_48.cpu()
+
+        # 3. CPU-side sequential enhance loop (mandated by DFState statefulness)
+        enhanced_list = []
+        with torch.no_grad():
+            for k in range(len(selected_indices)):
                 if hasattr(self.dfn_df_state, "reset"):
                     self.dfn_df_state.reset()
-                with torch.no_grad():
-                    wav_48_cpu = wav_48.cpu()
-                    wav_enhanced_cpu = enhance(self.dfn_model, self.dfn_df_state, wav_48_cpu, atten_lim_db=atten_db)
-                    wav_enhanced = wav_enhanced_cpu.to(device)
-                wav_16 = resample_to_16(wav_enhanced)
-                if wav_16.shape[-1] > T:
-                    wav_16 = wav_16[..., :T]
-                elif wav_16.shape[-1] < T:
-                    wav_16 = torch.nn.functional.pad(wav_16, (0, T - wav_16.shape[-1]))
-                enhanced_list.append(wav_16)
-            else:
-                enhanced_list.append(waveforms[i : i + 1])
+                wav_k = sub_wavs_48_cpu[k : k + 1]
+                wav_k_enhanced = enhance(self.dfn_model, self.dfn_df_state, wav_k, atten_lim_db=atten_db)
+                enhanced_list.append(wav_k_enhanced)
+            sub_enhanced_cpu = torch.cat(enhanced_list, dim=0)
 
-        return torch.cat(enhanced_list, dim=0)
+        # 4. Single PCIe H2D transfer
+        sub_enhanced = sub_enhanced_cpu.to(device)
+
+        # 5. Batch resample back to 16kHz on device (single vectorized GPU kernel)
+        sub_wavs_16 = resample_to_16(sub_enhanced)
+
+        # Length alignment
+        if sub_wavs_16.shape[-1] > T:
+            sub_wavs_16 = sub_wavs_16[..., :T]
+        elif sub_wavs_16.shape[-1] < T:
+            sub_wavs_16 = torch.nn.functional.pad(sub_wavs_16, (0, T - sub_wavs_16.shape[-1]))
+
+        # Scatter write back into cloned batch
+        output_waveforms = waveforms.clone()
+        output_waveforms[selected_indices] = sub_wavs_16
+        return output_waveforms
 
     def add_noise(
         self,
