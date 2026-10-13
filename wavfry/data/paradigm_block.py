@@ -192,8 +192,10 @@ class ContinuousAudioBlockDataset(Dataset):
         fold_index: int = 0,
         cache_waveforms: bool = True,
         max_cache_files: int = 1000,
+        reverb_augmentor: Optional[Any] = None,
     ) -> None:
         self.target_sr = int(target_sr)
+        self.reverb_augmentor = reverb_augmentor
         # Frame-space boundary trimming is performed by the model after WavLM
         # determines its output stride; the Dataset keeps sample-space bounds.
         self.boundary_trim_frames = max(0, int(boundary_trim_frames))
@@ -277,8 +279,14 @@ class ContinuousAudioBlockDataset(Dataset):
         end_s = max(start_s, min(float(block["end_s"]), total_duration))
         start_frame = max(0, int(round(start_s * self.target_sr)))
         end_frame = min(full_waveform.shape[0], int(round(end_s * self.target_sr)))
-        # Clone waveform slice to prevent in-place modifications from polluting the RAM cache
-        waveform = full_waveform[start_frame:end_frame].clone()
+        # Waveform slice with optional authentic acoustic reverberation preserving pre-context
+        if self.reverb_augmentor is not None:
+            reverb_seed = self.seed + self.current_epoch * 100003 + idx * 1009
+            waveform = self.reverb_augmentor.apply_slice(
+                full_waveform, start_frame, end_frame, seed=reverb_seed
+            )
+        else:
+            waveform = full_waveform[start_frame:end_frame].clone()
         if waveform.numel() == 0:
             target_samples = int(round(self.duration_ms * self.target_sr / 1000.0))
             waveform = torch.zeros(target_samples, dtype=full_waveform.dtype)

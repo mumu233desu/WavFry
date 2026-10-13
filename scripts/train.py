@@ -103,12 +103,20 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
     if paradigm not in {'segment', 'block'}:
         raise ValueError(f"Unknown training paradigm: {paradigm}")
     augmentor = None
+    reverb_augmentor = None
     aug_cfg = config.get('augmentation', {})
     if aug_cfg.get('enabled', False):
         from wavfry.data.augmentation import AudioAugmentor
         train_epochs = config.get('training', {}).get('epochs', 30)
-        augmentor = AudioAugmentor(aug_cfg, max_epochs=train_epochs)
+        aug_seed = config['training'].get('seed', 42)
+        augmentor = AudioAugmentor(aug_cfg, max_epochs=train_epochs, seed=aug_seed)
         print(f"Data augmentation enabled for training (scheduled across {train_epochs} epochs).")
+
+        reverb_cfg = aug_cfg.get('reverb', {})
+        if reverb_cfg.get('enabled', False):
+            from wavfry.data.augmentation import ReverbAugmentor
+            reverb_augmentor = ReverbAugmentor(reverb_cfg, seed=aug_seed)
+            print("Reverb acoustic augmentation enabled for training.")
 
     if paradigm == 'block':
         from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
@@ -121,8 +129,8 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             seed=config['training'].get('seed', 42),
             fold_index=fold_idx,
         )
-        train_ds = ContinuousAudioBlockDataset(train_df, **common_block)
-        val_ds = ContinuousAudioBlockDataset(val_df, **common_block)
+        train_ds = ContinuousAudioBlockDataset(train_df, reverb_augmentor=reverb_augmentor, **common_block)
+        val_ds = ContinuousAudioBlockDataset(val_df, reverb_augmentor=None, **common_block)
         collate = collate_block_fn
         train_batch_size = int(block_cfg['batch_size'])
         val_batch_size = int(block_cfg.get('val_batch_size', train_batch_size))
