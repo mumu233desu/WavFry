@@ -107,3 +107,37 @@ def test_deterministic_reproducibility():
     out2 = engine.apply_tensor(x, "street_5db", seed=777)
 
     assert torch.all(out1 == out2)
+
+
+def test_causal_rir_convolution_impulse_response():
+    engine = AcousticDegradationEngine()
+    # Delta impulse signal
+    delta = torch.zeros(1, 16000)
+    delta[0, 0] = 1.0
+
+    out = engine.apply_tensor(delta, "reverb", seed=42)
+    # The output at t=0 should be non-zero (direct sound arrival)
+    assert abs(out[0, 0].item()) > 1e-4
+
+    # Early energy (first 1000 samples) must be significantly higher than late energy (last 1000 samples)
+    # Under time-reversed convolution, late energy would be high and early energy low!
+    early_energy = torch.sum(out[0, :1000] ** 2).item()
+    late_energy = torch.sum(out[0, 10000:11000] ** 2).item()
+    assert early_energy > late_energy * 2.0
+
+
+def test_global_torch_seed_not_polluted():
+    engine = AcousticDegradationEngine()
+    x = torch.randn(1, 16000)
+
+    # Calling degradation with a seed should not reset global torch.randn sequence
+    torch.manual_seed(999)
+    val_before = torch.randn(10)
+
+    torch.manual_seed(999)
+    # Call degradation
+    _ = engine.apply_tensor(x, "pink_10db", seed=12345)
+    val_after = torch.randn(10)
+
+    # Should match because global PRNG was not mutated
+    assert torch.allclose(val_before, val_after)

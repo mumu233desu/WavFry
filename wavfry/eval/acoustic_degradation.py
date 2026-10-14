@@ -163,7 +163,7 @@ class AcousticDegradationEngine:
             print(f"[AcousticDegradation] Notice: RIR directory {self.rir_dir} not found. Fallback to synthetic.")
             return
 
-        rir_files = sorted(list(self.rir_dir.glob("*.flac")) + list(self.rir_dir.glob("*.wav")))
+        rir_files = sorted(list(self.rir_dir.rglob("*.flac")) + list(self.rir_dir.rglob("*.wav")))
         for fpath in rir_files:
             try:
                 wf, sr = sf.read(str(fpath), always_2d=False, dtype="float32")
@@ -203,33 +203,35 @@ class AcousticDegradationEngine:
         device: torch.device = torch.device("cpu"),
     ) -> torch.Tensor:
         """Sample a deterministic or random noise slice of length `num_samples`."""
-        rng = np.random.RandomState(seed) if seed is not None else np.random
+        seed_clean = int(seed % (2**32 - 1)) if seed is not None else None
+        rng = np.random.RandomState(seed_clean) if seed_clean is not None else np.random
 
-        # 1. Real-world scenario noise from pool
+        # 1. Real-world scenario noise from pool (slice on CPU first to avoid PCIe overhead)
         if noise_type in self._noise_pool and len(self._noise_pool[noise_type]) > 0:
             pool = self._noise_pool[noise_type]
             track_idx = rng.randint(0, len(pool))
-            track = pool[track_idx].to(device)
+            track_cpu = pool[track_idx]
 
-            if len(track) >= num_samples:
-                max_start = len(track) - num_samples
+            if len(track_cpu) >= num_samples:
+                max_start = len(track_cpu) - num_samples
                 start = rng.randint(0, max_start + 1)
-                return track[start : start + num_samples].clone()
+                return track_cpu[start : start + num_samples].clone().to(device)
             else:
-                repeats = int(math.ceil(num_samples / len(track)))
-                tiled = track.repeat(repeats)
-                return tiled[:num_samples].clone()
+                repeats = int(math.ceil(num_samples / len(track_cpu)))
+                tiled = track_cpu.repeat(repeats)
+                return tiled[:num_samples].clone().to(device)
+
+        # Isolated generator to avoid mutating global PyTorch seed
+        gen = torch.Generator(device="cpu")
+        if seed_clean is not None:
+            gen.manual_seed(seed_clean)
 
         # 2. White noise fallback
         if noise_type == "white":
-            if seed is not None:
-                torch.manual_seed(seed)
-            return torch.randn(num_samples, device=device)
+            return torch.randn(num_samples, generator=gen, device="cpu").to(device)
 
         # 3. Pink noise (1/f) synthesis
-        if seed is not None:
-            torch.manual_seed(seed)
-        white = torch.randn(num_samples + 200, device=device)
+        white = torch.randn(num_samples + 200, generator=gen, device="cpu").to(device)
         fft_len = num_samples + 200
         fft_coeffs = torch.fft.rfft(white)
         freqs = torch.fft.rfftfreq(fft_len, d=1.0 / self.sample_rate)
@@ -257,7 +259,7 @@ class AcousticDegradationEngine:
         """
         parsed = parse_condition_str(condition) if isinstance(condition, str) else condition
         if parsed.is_clean:
-            return waveforms
+            return waveforms.clone()
 
         orig_shape = waveforms.shape
         orig_device = waveforms.device
@@ -273,24 +275,26 @@ class AcousticDegradationEngine:
 
         b_size, t_len = wf.shape
 
-        # Step 1: Apply RIR reverberation if requested
+        # Step 1: Apply RIR reverberation if requested (causal linear convolution)
         if parsed.has_reverb:
+            seed_clean = int(seed % (2**32 - 1)) if seed is not None else None
             if len(self._rir_pool) > 0:
-                rng = np.random.RandomState(seed) if seed is not None else np.random
+                rng = np.random.RandomState(seed_clean) if seed_clean is not None else np.random
                 rir_idx = rng.randint(0, len(self._rir_pool))
                 rir = self._rir_pool[rir_idx].to(orig_device).float()
             else:
                 rir = self._generate_synthetic_rir(rt60=0.4, device=orig_device).float()
 
-            rir_len = len(rir)
-            # Padded 1D convolution: pad left so time alignment is preserved
-            wf_expanded = wf.unsqueeze(1)  # (B, 1, T)
-            rir_expanded = rir.view(1, 1, -1)  # (1, 1, L)
-            padded = torch.nn.functional.pad(wf_expanded, (rir_len - 1, 0))
-            reverbed = torch.nn.functional.conv1d(padded, rir_expanded).squeeze(1)
+            rir_tensor = rir.unsqueeze(0)  # (1, L)
+            # Mathematically exact linear causal convolution via FFT convolution, truncated to original length
+            reverbed = torchaudio.functional.fftconvolve(wf, rir_tensor, mode="full")[:, :t_len]
 
-            # Preserve direct sound energy ratio: 70% direct + 30% spatial reverb
-            wf = 0.7 * wf + 0.3 * reverbed
+            if len(self._rir_pool) > 0:
+                # Real-world impulse responses already preserve physical direct sound + reflection ratio
+                wf = reverbed
+            else:
+                # Synthetic exponential decay RIR: dry/wet mix
+                wf = 0.7 * wf + 0.3 * reverbed
 
         # Step 2: Apply noise if requested
         if parsed.noise_type is not None and parsed.snr_db is not None:
@@ -348,7 +352,14 @@ class AcousticDegradationEngine:
         if sr != self.sample_rate:
             tensor_out = torchaudio.functional.resample(tensor_out, self.sample_rate, sr)
 
-        return tensor_out.squeeze(0).cpu().numpy().astype(np.float32)
+        out_np = tensor_out.squeeze(0).cpu().numpy().astype(np.float32)
+        # Strict sample length preservation
+        if len(out_np) != len(audio):
+            if len(out_np) > len(audio):
+                out_np = out_np[:len(audio)]
+            else:
+                out_np = np.pad(out_np, (0, len(audio) - len(out_np)))
+        return out_np
 
     def create_degraded_wav_file(
         self,
@@ -369,7 +380,15 @@ class AcousticDegradationEngine:
             audio = np.mean(audio, axis=1)
 
         degraded = self.apply_numpy(audio, sr, condition, seed=seed)
-        sf.write(str(dst), degraded, sr, format="FLAC", subtype="PCM_16")
+
+        # Normalize if peak exceeds 1.0 to prevent PCM_16 hard distortion
+        max_val = float(np.max(np.abs(degraded)))
+        if max_val > 1.0:
+            degraded = degraded / (max_val + 1e-4) * 0.99
+
+        ext = dst.suffix.lower()
+        fmt = "WAV" if ext in (".wav", "") else ("FLAC" if ext == ".flac" else "WAV")
+        sf.write(str(dst), degraded, sr, format=fmt, subtype="PCM_16")
         return dst
 
 

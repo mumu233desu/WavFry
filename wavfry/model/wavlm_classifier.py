@@ -1,10 +1,11 @@
-from __future__ import annotations
-
+import logging
 from typing import Any
 
 import torch
 import torch.nn as nn
 from transformers import AutoModel, WavLMModel
+
+logger = logging.getLogger(__name__)
 
 
 class WavFryClassifier(nn.Module):
