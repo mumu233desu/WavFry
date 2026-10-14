@@ -4,6 +4,14 @@
 
 ---
 
+> [!CAUTION] 理论边界与不可识别性终审定论 (Final Academic Verdict: Unidentifiability Limit)
+> **终审结论（2026-10-15）**：
+> 1. **单标注者二值体系的数学欠定性**：在仅有离散二值听辨标签（$y \in \{0, 1\}$）的数据集上，模型预测的后验概率 $P(y=1 \mid x)$ 本质上是感知标签的条件期望。在没有多标注者众包投票软标签或同步 EGG 生理传感器接触商的前提下，试图将单一标量后验解耦为“物理严重度（Degree）”与“认知置信度（Confidence）”是一个**严格病态欠定、不可识别的问题（Ill-Posed Unidentifiable Problem）**；
+> 2. **实证发现的流形塌缩**：在无监督 RealNVP 流训练中，由于 NLL 损失的反向传播驱使未约束的线性瓶颈层尺度塌缩（$W_b \to 0$），导致潜在特征收缩至原点，使相对密度 $\Delta \log p$ 冲破上限截断，引发验证集置信度恒定饱和在 $0.996$；
+> 3. **主线决策**：停止在二值数据上追求虚幻的单标量置信度解耦。将本探索作为消融实验归档，主线采用坚固的 **温度校准（Temperature Scaling）+ 风险-覆盖率（Risk-Coverage / AURC）** 框架，并将不可识别性推导作为核心理论贡献写入论文 Discussion（详见 [`docs/discussion_unidentifiability_of_phonation_decoupling.md`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/docs/discussion_unidentifiability_of_phonation_decoupling.md)）。
+
+---
+
 ## 1. 核心理论与架构定型记录
 - **实现模型**：`NaturalEvidentialPhonationHead` (NEPH)。
 - **核心定位**：解决传统 Sigmoid 点估计中“物理临界发声态（$p \approx 0.5$ 且确知）”与“环境噪声认知盲区（$p \approx 0.5$ 且极度不确定）”信息坍缩的学术硬伤。

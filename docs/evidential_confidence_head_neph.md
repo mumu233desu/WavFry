@@ -11,6 +11,15 @@
 
 ---
 
+> [!WARNING] 理论边界与不可识别性声明 (Theoretical Boundary & Unidentifiability Invariant)
+> **重要警示（2026-10-15 学术定论）**：
+> 本文所实现的“自然证据发声头（NEPH）”作为**探索性消融实验归档**。经过深度数学推演与实证检验，已确立以下学术定论：
+> 1. **单标注者二值体系下的欠定性（Unidentifiability Limit）**：在仅有离散二值听辨标签（$y \in \{0, 1\}$）的数据集上，模型只能估计条件期望 $P(y=1 \mid x)$。在数学上**无法区分**“轻微发声的物理连续态（Degree $\approx 0.5$）”与“听辨分歧的感知模糊态（Ambiguity $\approx 0.5$）”。任何宣称在单标注者二值数据上实现两者完全解耦的无监督头均属于欠定病态假说；
+> 2. **无监督流模型的流形塌缩与典型度错位**：流模型估计的仅为声学几何“输入典型度（Typicality）”，且在真实含噪语料（CS-Dialogue）中极易因无监督 NLL 梯度导致潜空间零塌缩（数值锁死在饱和上限 0.996）；
+> 3. **主线决策**：本项目主线模型**不采用** NEPH 作为最终生产头。正式论文发表坚持 Anti-Overclaiming 原则，采用坚固的 **温度校准（Temperature Scaling）+ 风险-覆盖率（Risk-Coverage / AURC）** 框架，并将不可识别性推导作为核心理论贡献写入论文 Discussion（详见专属文稿 [`docs/discussion_unidentifiability_of_phonation_decoupling.md`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/docs/discussion_unidentifiability_of_phonation_decoupling.md)）。
+
+---
+
 ## 摘要 (Abstract)
 
 在语音病理学与副语言发声检测（如嘎裂声 Creaky Voice、气声 Breathy Voice）中，传统的判决头大多采用一阶 Sigmoid 点估计输出分类概率 $p \in [0, 1]$。然而，这一经典架构在理论上存在根本性缺陷：它将**“物理临界发声态（物理发声轻微，但声学特征清晰确凿，输出 $p \approx 0.5$）”**与**“声学环境退化（强噪声或混响导致模型认知迷茫，输出 $p \approx 0.5$）”**两类截然不同的物理现象混淆坍缩在同一个标量值中。
