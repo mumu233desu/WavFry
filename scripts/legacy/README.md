@@ -22,6 +22,7 @@ KeyError，部分静默读取空值），部分脚本的标注/评测路径也�
 | `generate_reverb_testset.py` | 离线生成固定混响测试集 | 同上，被动态声学退化引擎及 QUT-NOISE / RIR 卷积架构取代 |
 | `eval_wavfry_testset.py` | 基于离线目录的 WavFry 测试集评测 | 被统一多任务与动态退化评测体系取代 |
 | `eval_baselines_testset.py` | 基于离线目录的外部基线评测 | 依赖已弃用的离线加噪文件夹；正在逐步接入统一动态退化引擎 |
+| `evaluate_robustness_and_bootstrap.py` | 单模型历史深度截断与离线加噪 Bootstrap | 其层截断评估已被 `scripts/layer_importance_and_truncation_audit/` 替代；跨模型通用统计检验已被 `scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py` 替代 |
 
 当前有效的替代入口：
 

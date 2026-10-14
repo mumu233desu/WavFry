@@ -6,10 +6,10 @@
 
 ## 核心脚本与职责
 
-| 脚本 | 论文对应图表 | 核心功能 | 运行方式 |
-| :--- | :--- | :--- | :--- |
-| **`evaluate_paired_models_bootstrap.py`**<br>**(推荐核心入口)** | **Table 1 / Table 2 / 消融对比主表** | **双模型配对显著性检验**：输入任意两个模型 Checkpoint（如 Weak-On vs Weak-Off，或 Baseline vs WavFry），在未见发音人上进行 1000 轮配对重采样，输出 95% 置信区间、经验 $p$ 值（Davison & Hinkley 1997 连续性平滑）与发音人胜率细分。支持 `--noise-condition`。 | `uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py --model-a <path> --model-b <path>` |
-| `evaluate_robustness_and_bootstrap.py`<br>*(历史单模型评测)* | 历史单模型截断表 | 针对单个 Checkpoint 测试不同保留层数。其核心功能大部分已迁移至更高效的 `scripts/layer_importance_and_truncation_audit/`。 | 仅供单模型特定基准复现 |
+- **`evaluate_paired_models_bootstrap.py` (核心通用入口)**：
+  - **服务论文**：Table 1 / Table 2 / 消融对比主表、噪声鲁棒性对比表。
+  - **功能**：输入任意两个模型 Checkpoint（如 Weak-On vs Weak-Off、Baseline vs WavFry、含/不含某一架构模块），在未见发音人上进行 1000 轮配对整群重采样，输出 95% 置信区间、经验 $p$ 值（Davison & Hinkley 1997 连续性平滑）与发音人胜率细分。
+  - **环境支持**：原生支持 `--noise-condition`（如 `clean`, `cafe_5db`, `car_5db`, `reverb` 等），通过动态退化引擎完成严苛环境下的统计学推断。
 
 ---
 
