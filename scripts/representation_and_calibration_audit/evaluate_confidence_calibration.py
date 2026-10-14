@@ -248,10 +248,11 @@ def evaluate_domain_predictions(
     start_time = time.time()
     task_preds: Dict[str, Dict[str, List[float]]] = {t: {} for t in eval_tasks}
 
-    print(f"[Evaluation] Evaluating domain '{domain}' across tasks {eval_tasks}...")
+    print(f"[Evaluation] Evaluating domain '{domain}' across tasks {eval_tasks}...", flush=True)
     engine = get_acoustic_degradation_engine()
 
     total_evaluated = 0
+    total_batches = len(loader)
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
             waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
@@ -292,12 +293,16 @@ def evaluate_domain_predictions(
                                     store[i_key][2] += 1
                                 total_evaluated += 1
 
+            if (batch_idx + 1) % 150 == 0 or (batch_idx + 1) == total_batches:
+                elapsed_now = time.time() - start_time
+                print(f"  -> [{domain}] Batch {batch_idx + 1}/{total_batches} ({100.0 * (batch_idx + 1) / total_batches:.1f}%) | {elapsed_now:.1f}s elapsed", flush=True)
+
             if max_samples and (total_evaluated // len(eval_tasks)) >= max_samples:
-                print(f"[Evaluation] Reached max sample budget ({max_samples}). Stopping domain '{domain}'.")
+                print(f"[Evaluation] Reached max sample budget ({max_samples}). Stopping domain '{domain}'.", flush=True)
                 break
 
     elapsed = time.time() - start_time
-    print(f"[Evaluation] Domain '{domain}' completed in {elapsed:.1f}s.")
+    print(f"[Evaluation] Domain '{domain}' completed in {elapsed:.1f}s.", flush=True)
 
     # Average logits and compute sigmoid probabilities
     results: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
