@@ -690,6 +690,36 @@ class WavFryClassifier(nn.Module):
             return frames
 
         # Segment / Utterance mode
+        if getattr(self, "interval_from_frame_enabled", False):
+            from .losses import pool_frame_logits
+
+            outputs: dict[str, torch.Tensor] = {}
+            mode = self.interval_from_frame_cfg.get("mode", "linear_softmax")
+            for task in self.tasks:
+                frame_logits = self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
+                if mode == "lse_mean":
+                    lse = pool_frame_logits(
+                        frame_logits,
+                        valid_mask,
+                        mode="lse",
+                        temperature=self.interval_from_frame_cfg.get("temperature", 1.0),
+                    )
+                    mean = (
+                        frame_logits.masked_fill(~valid_mask, 0.0).sum(dim=-1)
+                        / valid_mask.sum(dim=-1).clamp_min(1)
+                    )
+                    pooled = self.frame_mil_fusions[task](torch.stack([lse, mean], dim=-1)).squeeze(-1)
+                else:
+                    pooled = pool_frame_logits(
+                        frame_logits,
+                        valid_mask,
+                        mode=mode,
+                        topk_ratio=self.interval_from_frame_cfg.get("topk_ratio", 0.2),
+                        temperature=self.interval_from_frame_cfg.get("temperature", 1.0),
+                    )
+                outputs[task] = pooled
+            return outputs
+
         outputs: dict[str, torch.Tensor] = {}
         for task in self.tasks:
             sequence = hidden_by_task[task]

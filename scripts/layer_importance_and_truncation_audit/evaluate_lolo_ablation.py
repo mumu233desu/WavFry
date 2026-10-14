@@ -49,6 +49,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from wavfry.data import dataset as dataset_mod
 from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
+from wavfry.eval.acoustic_degradation import get_acoustic_degradation_engine
 
 
 def parse_args():
@@ -112,6 +113,12 @@ def parse_args():
         type=int,
         default=None,
         help="Optional upper bound on batches to process (useful for rapid profiling).",
+    )
+    parser.add_argument(
+        "--noise-condition",
+        type=str,
+        default=None,
+        help="Acoustic degradation condition for robust LOLO layer audit (e.g., 'cafe_5db', 'car_0db', 'reverb', 'street_5db'). Defaults to clean.",
     )
     return parser.parse_args()
 
@@ -376,6 +383,7 @@ def evaluate_lolo_single_pass(
     conditions: List[Dict[str, Any]],
     eval_tasks: List[str],
     max_batches: Optional[int] = None,
+    noise_condition: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Execute single-pass forward caching LOLO evaluation across conditions and tasks."""
     model.eval()
@@ -424,7 +432,7 @@ def evaluate_lolo_single_pass(
     batch_count = 0
     total_batches = min(len(loader), max_batches) if max_batches else len(loader)
 
-    print(f"\n[Evaluating] Processing {total_batches} batches across {num_conditions} conditions for tasks {eval_tasks}...")
+    print(f"\n[Evaluating] Processing {total_batches} batches across {num_conditions} conditions for tasks {eval_tasks} (degradation: {noise_condition or 'clean'})...")
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
@@ -438,6 +446,8 @@ def evaluate_lolo_single_pass(
             if paradigm == "block":
                 waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
                 waveforms = waveforms.to(device)
+                if noise_condition:
+                    waveforms = get_acoustic_degradation_engine().apply_tensor(waveforms, noise_condition, seed=42 + batch_idx * 1009)
                 bounds = bounds.to(device)
                 labels = labels.to(device)
                 valid = valid.to(device)
@@ -498,6 +508,8 @@ def evaluate_lolo_single_pass(
                 # Segment Mode
                 waveforms, labels, lengths, speakers, meta = batch
                 waveforms = waveforms.to(device)
+                if noise_condition:
+                    waveforms = get_acoustic_degradation_engine().apply_tensor(waveforms, noise_condition, seed=42 + batch_idx * 1009)
                 labels = labels.to(device)
                 lengths = lengths.to(device)
 
@@ -701,6 +713,7 @@ def main():
         conditions=conditions,
         eval_tasks=eval_tasks,
         max_batches=args.max_batches,
+        noise_condition=args.noise_condition,
     )
 
     # Flatten results for CSV
@@ -709,6 +722,9 @@ def main():
         all_rows.extend(rows)
 
     out_path = Path(args.output) if Path(args.output).is_absolute() else (PROJECT_ROOT / args.output)
+    if args.noise_condition and args.output == "data/experiments/lolo_ablation_results.csv":
+        out_path = out_path.with_name(f"lolo_ablation_results_{args.noise_condition}.csv")
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     res_df = pd.DataFrame(all_rows)
     res_df.to_csv(out_path, index=False)

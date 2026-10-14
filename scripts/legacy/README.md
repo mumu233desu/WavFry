@@ -18,11 +18,17 @@ KeyError，部分静默读取空值），部分脚本的标注/评测路径也�
 | `run_ablation_batch2_val.py` | Batch2 作验证集的消融 | 同上 |
 | `run_ablation_temporal.py` | 时序类消融 | `data.annotated_speakers` 已删除 |
 | `visualize_pos_encoder.py` | 可视化位置编码 | 硬编码旧 checkpoint 路径 |
+| `generate_noisy_testset.py` | 离线生成高斯加噪测试集 | 被统一动态声学退化引擎 `wavfry/eval/acoustic_degradation.py` 取代，避免占用数 GB 离线磁盘且消除人造高斯白噪失真 |
+| `generate_reverb_testset.py` | 离线生成固定混响测试集 | 同上，被动态声学退化引擎及 QUT-NOISE / RIR 卷积架构取代 |
+| `eval_wavfry_testset.py` | 基于离线目录的 WavFry 测试集评测 | 被统一多任务与动态退化评测体系取代 |
+| `eval_baselines_testset.py` | 基于离线目录的外部基线评测 | 依赖已弃用的离线加噪文件夹；正在逐步接入统一动态退化引擎 |
 
 当前有效的替代入口：
 
 - 训练：`scripts/train.py`（配置见 `config/`，消融用 `run_frozen_wavlm_ablation.py`）
-- 测试集评测：`scripts/eval_wavfry_testset.py`（主模型）、`scripts/eval_baselines_testset.py`（外部基线）
+- 声学退化引擎：`wavfry/eval/acoustic_degradation.py`（支持 3x3 真实 QUT-NOISE 与真实空间混响）
+- 校准与 CKA 审计：`scripts/representation_and_calibration_audit/`
+- 层重要性与深度裁剪：`scripts/layer_importance_and_truncation_audit/`
+- 统计显著性 Bootstrap：`scripts/statistical_bootstrap_audit/`
 - 韵律基线：`scripts/experiments/run_prosodic_baseline.py`
-- LOLO 层消融：`scripts/experiments/evaluate_lolo_ablation.py`
 - Few-shot 基准：`scripts/experiments/run_fewshot_experiment.py`

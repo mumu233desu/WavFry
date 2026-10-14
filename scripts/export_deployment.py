@@ -60,20 +60,39 @@ class ONNXExportWrapper(torch.nn.Module):
         valid_mask = torch.arange(first_seq.size(1), device=waveform.device).unsqueeze(0) < out_lengths.unsqueeze(1)
 
         outputs_list = []
-        for t in self.active_tasks:
-            sequence = hidden_by_task[t]
-            mask_f = valid_mask.unsqueeze(-1).to(sequence.dtype)
-            if self.model.pooling_mode == "mean":
-                counts = mask_f.sum(dim=1).clamp_min(1.0)
-                pooled = (sequence * mask_f).sum(dim=1) / counts
-            elif self.model.pooling_mode in ("mean_attn", "mean_topk"):
-                counts = mask_f.sum(dim=1).clamp_min(1.0)
-                mean_p = (sequence * mask_f).sum(dim=1) / counts
-                attn_p = self.model._attn_pool(sequence, valid_mask, t)
-                pooled = torch.cat([mean_p, attn_p], dim=-1)
-            else:
-                pooled = self.model._attn_pool(sequence, valid_mask, t)
-            outputs_list.append(self.model.heads[t](pooled).squeeze(-1))
+        if getattr(self.model, "interval_from_frame_enabled", False):
+            from wavfry.model.losses import pool_frame_logits
+            mode = self.model.interval_from_frame_cfg.get("mode", "linear_softmax")
+            for t in self.active_tasks:
+                frame_logits = self.model.frame_heads[t](hidden_by_task[t]).squeeze(-1)
+                if mode == "lse_mean":
+                    lse = pool_frame_logits(frame_logits, valid_mask, mode="lse", temperature=self.model.interval_from_frame_cfg.get("temperature", 1.0))
+                    mean = (frame_logits.masked_fill(~valid_mask, 0.0).sum(dim=-1) / valid_mask.sum(dim=-1).clamp_min(1))
+                    pooled = self.model.frame_mil_fusions[t](torch.stack([lse, mean], dim=-1)).squeeze(-1)
+                else:
+                    pooled = pool_frame_logits(
+                        frame_logits,
+                        valid_mask,
+                        mode=mode,
+                        topk_ratio=self.model.interval_from_frame_cfg.get("topk_ratio", 0.2),
+                        temperature=self.model.interval_from_frame_cfg.get("temperature", 1.0),
+                    )
+                outputs_list.append(pooled)
+        else:
+            for t in self.active_tasks:
+                sequence = hidden_by_task[t]
+                mask_f = valid_mask.unsqueeze(-1).to(sequence.dtype)
+                if self.model.pooling_mode == "mean":
+                    counts = mask_f.sum(dim=1).clamp_min(1.0)
+                    pooled = (sequence * mask_f).sum(dim=1) / counts
+                elif self.model.pooling_mode in ("mean_attn", "mean_topk"):
+                    counts = mask_f.sum(dim=1).clamp_min(1.0)
+                    mean_p = (sequence * mask_f).sum(dim=1) / counts
+                    attn_p = self.model._attn_pool(sequence, valid_mask, t)
+                    pooled = torch.cat([mean_p, attn_p], dim=-1)
+                else:
+                    pooled = self.model._attn_pool(sequence, valid_mask, t)
+                outputs_list.append(self.model.heads[t](pooled).squeeze(-1))
 
         if self.export_frames:
             if hasattr(self.model, "frame_heads") and self.model.frame_heads is not None:
