@@ -169,10 +169,13 @@ def run_speaker_cluster_bootstrap(
             p_val = 1.0
             sig = "Baseline"
         else:
-            # Two-sided empirical p-value testing whether 0 is in CI
-            p_pos = np.mean(deltas > 0)
-            p_neg = np.mean(deltas < 0)
-            p_val = float(2 * min(p_pos, p_neg))
+            # Two-sided empirical p-value with Davison & Hinkley (1997) continuity correction
+            # Prevents illegal p=0.0000 in finite Monte Carlo resampling
+            n_valid = len(deltas)
+            count_pos = np.sum(deltas >= 0)
+            count_neg = np.sum(deltas <= 0)
+            p_val = float(2.0 * min((1 + count_pos) / (n_valid + 1), (1 + count_neg) / (n_valid + 1)))
+            p_val = min(1.0, p_val)
             if p_val > 0.05:
                 sig = "Not Significant (p > 0.05)"
             elif p_val <= 0.01:

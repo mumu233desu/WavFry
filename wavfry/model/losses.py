@@ -54,17 +54,26 @@ def linear_softmax_pool(logits, mask):
     orig_dtype = logits.dtype
     logits_fp32 = logits.float()
     probs = torch.sigmoid(logits_fp32).masked_fill(~mask, 0.0)
-    weights = probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-7)
+    sum_probs = probs.sum(dim=-1, keepdim=True)
+    count = mask.sum(dim=-1, keepdim=True).clamp_min(1.0).float()
+    # When all frames have vanishing probability (e.g. extremely negative logits),
+    # fallback to uniform average across valid frames to prevent weights from vanishing
+    # and collapsing the pooled logit to 0.0 (prob 0.50).
+    is_vanishing = sum_probs < 1e-7
+    uniform_weights = mask.float() / count
+    norm_weights = probs / sum_probs.clamp_min(1e-7)
+    weights = torch.where(is_vanishing, uniform_weights, norm_weights)
     pooled = (logits_fp32 * weights).sum(dim=-1)
     return pooled.to(dtype=orig_dtype)
 
 
 def pool_frame_logits(logits, mask, mode="lse", topk_ratio=0.2, temperature=1.0):
     """Return one MIL logit per interval from ``[N, T]`` frame logits."""
-    if logits.ndim != 2 or mask.shape != logits.shape:
-        raise ValueError("logits and mask must both have shape [N, T]")
-    if not mask.any(dim=-1).all():
-        raise ValueError("each interval must contain at least one valid frame")
+    if not torch.jit.is_tracing():
+        if logits.ndim != 2 or mask.shape != logits.shape:
+            raise ValueError("logits and mask must both have shape [N, T]")
+        if not mask.any(dim=-1).all():
+            raise ValueError("each interval must contain at least one valid frame")
     if mode == "lse":
         return logmeanexp_pool(logits, mask, temperature)
     if mode == "max":

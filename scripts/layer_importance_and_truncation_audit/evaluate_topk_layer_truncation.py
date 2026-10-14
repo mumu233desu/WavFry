@@ -118,26 +118,15 @@ def parse_args():
 
 
 def resolve_checkpoint(ckpt_path: Optional[str]) -> Path:
-    if ckpt_path:
-        p = Path(ckpt_path)
-        if p.exists():
-            return p
+    if not ckpt_path:
+        raise ValueError(
+            "Explicit --checkpoint argument is REQUIRED under Zero-Guessing policy. "
+            "Silent fallback to arbitrary candidate paths is forbidden."
+        )
+    p = Path(ckpt_path)
+    if not p.exists():
         raise FileNotFoundError(f"Specified checkpoint not found: {ckpt_path}")
-
-    candidates = [
-        Path("R:/checkpoints/ablation_weak_on_vsdc_real_noise/best_model.pt"),
-        Path("R:/checkpoints/ablation_weak_on_vsdc_full/best_model.pt"),
-        Path("R:/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt"),
-        PROJECT_ROOT / "exp_results/checkpoints/ablation_weak_on_vsdc_real_noise/best_model.pt",
-        PROJECT_ROOT / "exp_results/checkpoints/ablation_weak_on_vsdc_full/best_model.pt",
-        PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt",
-    ]
-    for c in candidates:
-        if c.exists():
-            print(f"[Checkpoint] Auto-resolved to checkpoint: {c}")
-            return c
-
-    raise FileNotFoundError("No default checkpoint found. Please provide --checkpoint path.")
+    return p
 
 
 def resolve_device(requested_device: Optional[str]) -> torch.device:
@@ -180,7 +169,10 @@ def load_model_from_checkpoint(ckpt_path: Path, device: torch.device) -> tuple[W
         key = k[7:] if k.startswith("module.") else k
         cleaned_sd[key] = v
 
-    model.load_state_dict(cleaned_sd, strict=False)
+    missing_keys, unexpected_keys = model.load_state_dict(cleaned_sd, strict=False)
+    critical_missing = [k for k in missing_keys if not k.startswith("wavlm.")]
+    if critical_missing:
+        raise RuntimeError(f"Fail-Fast: Required classification weights missing from checkpoint: {critical_missing}")
     model.to(device)
     model.eval()
 
@@ -545,13 +537,32 @@ def evaluate_truncation_single_pass(
                     for task_name in eval_tasks:
                         task_idx = model.tasks.index(task_name) if task_name in model.tasks else 0
                         t_labels = labels[..., task_idx] if (labels.ndim > 1 and labels.shape[-1] > task_idx) else labels
-                        pooled = model._pool_batch(
-                            mixed_by_task[task_name][c_idx],
-                            valid_mask=seq_mask,
-                            lengths=out_lengths,
-                            task=task_name,
-                        )
-                        c_logits = model.heads[task_name](pooled).squeeze(-1)
+                        hidden_cond_task = mixed_by_task[task_name][c_idx]
+                        if getattr(model, "interval_from_frame_enabled", False):
+                            from wavfry.model.losses import pool_frame_logits
+                            frame_logits = model.frame_heads[task_name](hidden_cond_task).squeeze(-1)
+                            mode = model.interval_from_frame_cfg.get("mode", "linear_softmax")
+                            if mode == "lse_mean":
+                                lse = pool_frame_logits(
+                                    frame_logits, seq_mask, mode="lse",
+                                    temperature=model.interval_from_frame_cfg.get("temperature", 1.0)
+                                )
+                                mean = frame_logits.masked_fill(~seq_mask, 0.0).sum(dim=-1) / seq_mask.sum(dim=-1).clamp_min(1)
+                                c_logits = model.frame_mil_fusions[task_name](torch.stack([lse, mean], dim=-1)).squeeze(-1)
+                            else:
+                                c_logits = pool_frame_logits(
+                                    frame_logits, seq_mask, mode=mode,
+                                    topk_ratio=model.interval_from_frame_cfg.get("topk_ratio", 0.2),
+                                    temperature=model.interval_from_frame_cfg.get("temperature", 1.0),
+                                )
+                        else:
+                            pooled = model._pool_batch(
+                                hidden_cond_task,
+                                valid_mask=seq_mask,
+                                lengths=out_lengths,
+                                task=task_name,
+                            )
+                            c_logits = model.heads[task_name](pooled).squeeze(-1)
                         cond_segment_preds[task_name][c_idx].extend(c_logits.cpu().numpy().tolist())
                         cond_segment_labels[task_name][c_idx].extend(t_labels.cpu().numpy().tolist())
 

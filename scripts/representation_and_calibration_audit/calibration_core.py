@@ -218,7 +218,7 @@ def plot_reliability_diagram(
 
     ax_main.set_xlim(0.0, 1.0)
     ax_main.set_ylim(0.0, 1.05)
-    ax_main.set_ylabel("Empirical Accuracy", fontsize=11, fontweight="bold")
+    ax_main.set_ylabel(r"Observed Positive Rate $\mathbb{P}(Y=1 \mid \hat{p})$", fontsize=11, fontweight="bold")
     ax_main.set_title(f"{title}\nTask: {task_name.capitalize()}", fontsize=12, fontweight="bold", pad=10)
 
     # Metrics annotation box
@@ -485,26 +485,24 @@ def plot_snr_decay_curves(
                 label=scen_label,
             )
 
-    # Reverb markers
+    # Reverb reference lines (convolutional room acoustics benchmark, separate from additive SNR axis)
     if "reverb" in domain_results:
-        ax.scatter(
-            [0.0],
-            [domain_results["reverb"]["ece"] * 100.0],
+        rev_ece = domain_results["reverb"]["ece"] * 100.0
+        ax.axhline(
+            rev_ece,
             color="#16a085",
-            marker="*",
-            s=120,
-            zorder=5,
-            label=f"Reverb Only ({domain_results['reverb']['ece'] * 100.0:.2f}%)",
+            linestyle=":",
+            linewidth=1.8,
+            label=f"Reverb Ref ({rev_ece:.2f}%)",
         )
     if "reverb_cafe_5db" in domain_results:
-        ax.scatter(
-            [5.0],
-            [domain_results["reverb_cafe_5db"]["ece"] * 100.0],
+        rev_cafe_ece = domain_results["reverb_cafe_5db"]["ece"] * 100.0
+        ax.axhline(
+            rev_cafe_ece,
             color="#c0392b",
-            marker="D",
-            s=80,
-            zorder=5,
-            label=f"Reverb + Cafe 5dB ({domain_results['reverb_cafe_5db']['ece'] * 100.0:.2f}%)",
+            linestyle="-.",
+            linewidth=1.8,
+            label=f"Composite (Reverb+Cafe 5dB: {rev_cafe_ece:.2f}%)",
         )
 
     ax.set_xlim(16.0, -1.0)  # Invert X axis so noise increases to the right
