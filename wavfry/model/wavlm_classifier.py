@@ -654,6 +654,7 @@ class WavFryClassifier(nn.Module):
         interval_valid: torch.Tensor | None = None,
         layer_mask: torch.Tensor | None = None,
         return_frames: bool = False,
+        slot_valid: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         """Forward pass supporting multi-task block and segment inference.
 
@@ -663,6 +664,9 @@ class WavFryClassifier(nn.Module):
             In segment mode:
                 Dict with {task: Tensor[B]}
         """
+        if interval_valid is None and slot_valid is not None:
+            interval_valid = slot_valid
+
         hidden_by_task, out_lengths, valid_mask = self._encode_sequence(x, lengths, layer_mask=layer_mask)
         frames = None
         if return_frames:

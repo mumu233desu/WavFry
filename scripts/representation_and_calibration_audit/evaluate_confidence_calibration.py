@@ -270,7 +270,7 @@ def evaluate_domain_predictions(
                 wf_pert,
                 lengths=lengths,
                 interval_bounds=bounds,
-                slot_valid=valid,
+                interval_valid=valid,
             )
 
             for task_name in eval_tasks:
