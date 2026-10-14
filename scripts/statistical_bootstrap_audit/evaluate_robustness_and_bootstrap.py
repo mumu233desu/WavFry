@@ -456,9 +456,16 @@ def main():
     args = parser.parse_args()
 
     device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
-    ckpt_path = Path(args.checkpoint) if args.checkpoint else (PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt")
-    if not ckpt_path.exists():
-        ckpt_path = PROJECT_ROOT / "exp_results/checkpoints/ncmmsc_camera_ready/best_model.pt"
+    if args.checkpoint:
+        ckpt_path = Path(args.checkpoint)
+    else:
+        ckpt_path = PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt"
+
+    if not ckpt_path.is_file():
+        raise FileNotFoundError(
+            f"Model checkpoint not found at: {ckpt_path}\n"
+            f"Please specify a valid checkpoint path using '--checkpoint <path>'."
+        )
 
     model, config, threshold = load_model(ckpt_path, device)
     out_dir = Path(args.output_dir) if Path(args.output_dir).is_absolute() else (PROJECT_ROOT / args.output_dir)

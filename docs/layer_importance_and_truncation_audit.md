@@ -3,8 +3,8 @@
 
 > **归档位置**: `docs/layer_importance_and_truncation_audit.md`  
 > **涉及脚本**:  
-> - 微观单层敏感度审计: [`scripts/experiments/evaluate_lolo_ablation.py`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/scripts/experiments/evaluate_lolo_ablation.py)  
-> - 宏观计算深度裁剪: [`scripts/experiments/evaluate_topk_layer_truncation.py`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/scripts/experiments/evaluate_topk_layer_truncation.py)  
+> - 微观单层敏感度审计: [`scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py)  
+> - 宏观计算深度裁剪: [`scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py)  
 > **测试用例**: [`tests/test_lolo_layer_mask.py`](file:///e:/Corpus/CS-Dialogue/data/short_wav/WAVE/06_wavfry/tests/test_lolo_layer_mask.py)  
 > **评测基准模型**: `R:\checkpoints\ablation_weak_on_vsdc_real_noise\best_model.pt` (Epoch 9)  
 > **评测数据集**: 完整验证集 `VAL` (15,836 个音频片段，492 个 Block 批次)
@@ -64,25 +64,27 @@
 ### 3.1 运行微观 LOLO 审计
 ```powershell
 # 仅评测气声
-uv run python scripts/experiments/evaluate_lolo_ablation.py `
+uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py `
   --checkpoint R:\checkpoints\ablation_weak_on_vsdc_real_noise\best_model.pt `
   --task breathy `
   --device cuda
 
-# 双任务全量评测
-uv run python scripts/experiments/evaluate_lolo_ablation.py `
+# 双任务全量评测（支持真实声学环境加噪，例如 --noise-condition cafe_snr15）
+uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py `
   --checkpoint R:\checkpoints\ablation_weak_on_vsdc_real_noise\best_model.pt `
   --task all `
+  --noise-condition clean `
   --device cuda
 ```
 - 输出目录：`data/experiments/lolo_ablation_results.csv` 与 `.md`。
 
 ### 3.2 运行宏观 Top-k 截断评测
 ```powershell
-# 双任务全量深度截断评测
-uv run python scripts/experiments/evaluate_topk_layer_truncation.py `
+# 双任务全量深度截断评测（支持真实声学环境加噪，例如 --noise-condition car_snr5）
+uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py `
   --checkpoint R:\checkpoints\ablation_weak_on_vsdc_real_noise\best_model.pt `
   --task all `
+  --noise-condition clean `
   --device cuda
 ```
 - 输出目录：`data/experiments/topk_layer_truncation_evaluation/`
