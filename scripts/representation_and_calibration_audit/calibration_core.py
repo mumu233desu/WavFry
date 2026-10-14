@@ -329,3 +329,203 @@ def plot_domain_shift_comparison(
     print(f"[INFO] Saved Domain Shift Calibration Plot to {pdf_path} and {png_path}")
 
     return fig
+
+
+def format_paradigm_a_summary_table(
+    domain_results: Dict[str, Dict[str, Any]],
+    task_name: str,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Format evaluation results into Paradigm A Factorial Matrix (3 Noise Types x 3 SNR Levels).
+
+    Returns:
+        (markdown_table_string, structured_rows_list)
+    """
+    scenarios = [
+        ("cafe", "Cafe (Non-stationary Babble)"),
+        ("car", "Car (Low-freq Rumble)"),
+        ("street", "Street (Dynamic Traffic)"),
+    ]
+    snr_levels = [15.0, 5.0, 0.0]
+    snr_headers = ["15 dB (Mild)", "5 dB (Moderate)", "0 dB (Severe)"]
+
+    table_lines = [
+        f"### Paradigm A: Factorial Evaluation Matrix (Task: `{task_name.upper()}`)",
+        "| Noise Scenario | 15 dB (Mild) | 5 dB (Moderate) | 0 dB (Severe) | Scenario Mean ECE |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ]
+
+    structured_rows: List[Dict[str, Any]] = []
+    col_sums = [0.0, 0.0, 0.0]
+    col_counts = [0, 0, 0]
+
+    for scen_key, scen_label in scenarios:
+        row_cells = []
+        row_vals = []
+        for col_idx, snr in enumerate(snr_levels):
+            cond_key = f"{scen_key}_{int(snr)}db"
+            if cond_key in domain_results:
+                ece_pct = domain_results[cond_key]["ece"] * 100.0
+                row_cells.append(f"{ece_pct:.2f}%")
+                row_vals.append(ece_pct)
+                col_sums[col_idx] += ece_pct
+                col_counts[col_idx] += 1
+                structured_rows.append({
+                    "task": task_name,
+                    "condition": cond_key,
+                    "scenario": scen_key,
+                    "snr_db": snr,
+                    "ece_pct": round(ece_pct, 2),
+                    "mce_pct": round(domain_results[cond_key]["mce"] * 100.0, 2),
+                    "brier_score": round(domain_results[cond_key]["brier_score"], 4),
+                    "n_samples": domain_results[cond_key]["total_samples"],
+                })
+            else:
+                row_cells.append("—")
+
+        mean_val = (sum(row_vals) / len(row_vals)) if row_vals else 0.0
+        table_lines.append(
+            f"| **{scen_label}** | {row_cells[0]} | {row_cells[1]} | {row_cells[2]} | **{mean_val:.2f}%** |"
+        )
+
+    # Average Across Scenarios row
+    avg_cells = []
+    total_vals = []
+    for col_idx in range(len(snr_levels)):
+        if col_counts[col_idx] > 0:
+            avg_col = col_sums[col_idx] / col_counts[col_idx]
+            avg_cells.append(f"**{avg_col:.2f}%**")
+            total_vals.append(avg_col)
+        else:
+            avg_cells.append("—")
+    overall_mean = (sum(total_vals) / len(total_vals)) if total_vals else 0.0
+    table_lines.append(
+        f"| **Average Across Scenarios** | {avg_cells[0]} | {avg_cells[1]} | {avg_cells[2]} | 🏆 **{overall_mean:.2f}%** |"
+    )
+
+    # Spatial and Reference conditions
+    table_lines.extend([
+        "",
+        "#### Reference & Spatial Controls",
+    ])
+    for ref_key, ref_label in [
+        ("clean", "Clean (In-Distribution Reference)"),
+        ("reverb", "Reverb Only (Spatial RIR)"),
+        ("reverb_cafe_5db", "Composite (Reverb + Cafe 5dB)"),
+    ]:
+        if ref_key in domain_results:
+            d = domain_results[ref_key]
+            table_lines.append(
+                f"- **{ref_label}**: ECE = **{d['ece'] * 100:.2f}%** | MCE = {d['mce'] * 100:.2f}% | Brier = {d['brier_score']:.4f} (N={d['total_samples']:,})"
+            )
+            structured_rows.append({
+                "task": task_name,
+                "condition": ref_key,
+                "scenario": "reference",
+                "snr_db": None,
+                "ece_pct": round(d["ece"] * 100.0, 2),
+                "mce_pct": round(d["mce"] * 100.0, 2),
+                "brier_score": round(d["brier_score"], 4),
+                "n_samples": d["total_samples"],
+            })
+
+    table_lines.append("")
+    return "\n".join(table_lines), structured_rows
+
+
+def plot_snr_decay_curves(
+    domain_results: Dict[str, Dict[str, Any]],
+    task_name: str,
+    output_path: Union[str, Path],
+) -> Optional[plt.Figure]:
+    """
+    Render publication-grade SNR degradation curves across Cafe, Car, and Street.
+    X-axis: SNR in descending order (Clean/Inf -> 15 dB -> 5 dB -> 0 dB).
+    Y-axis: ECE (%).
+    """
+    scenarios = [
+        ("cafe", "Cafe (Babble)", "#e67e22", "s"),
+        ("car", "Car (Rumble)", "#2980b9", "o"),
+        ("street", "Street (Traffic)", "#8e44ad", "^"),
+    ]
+    snr_levels = [15.0, 5.0, 0.0]
+
+    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
+    fig, ax = plt.subplots(figsize=(6.5, 4.8))
+
+    # Reference clean baseline if available
+    if "clean" in domain_results:
+        clean_ece = domain_results["clean"]["ece"] * 100.0
+        ax.axhline(
+            clean_ece,
+            color="#27ae60",
+            linestyle="--",
+            linewidth=1.8,
+            label=f"Clean Baseline ({clean_ece:.2f}%)",
+        )
+
+    # Plot lines for each scenario
+    for scen_key, scen_label, color, marker in scenarios:
+        x_pts = []
+        y_pts = []
+        for snr in snr_levels:
+            cond_key = f"{scen_key}_{int(snr)}db"
+            if cond_key in domain_results:
+                x_pts.append(snr)
+                y_pts.append(domain_results[cond_key]["ece"] * 100.0)
+
+        if len(x_pts) > 0:
+            ax.plot(
+                x_pts,
+                y_pts,
+                color=color,
+                marker=marker,
+                linewidth=2.0,
+                markersize=7,
+                label=scen_label,
+            )
+
+    # Reverb markers
+    if "reverb" in domain_results:
+        ax.scatter(
+            [0.0],
+            [domain_results["reverb"]["ece"] * 100.0],
+            color="#16a085",
+            marker="*",
+            s=120,
+            zorder=5,
+            label=f"Reverb Only ({domain_results['reverb']['ece'] * 100.0:.2f}%)",
+        )
+    if "reverb_cafe_5db" in domain_results:
+        ax.scatter(
+            [5.0],
+            [domain_results["reverb_cafe_5db"]["ece"] * 100.0],
+            color="#c0392b",
+            marker="D",
+            s=80,
+            zorder=5,
+            label=f"Reverb + Cafe 5dB ({domain_results['reverb_cafe_5db']['ece'] * 100.0:.2f}%)",
+        )
+
+    ax.set_xlim(16.0, -1.0)  # Invert X axis so noise increases to the right
+    ax.set_xlabel("Signal-to-Noise Ratio (SNR dB) $\\rightarrow$ More Severe", fontsize=11, fontweight="bold")
+    ax.set_ylabel("Expected Calibration Error (ECE %)", fontsize=11, fontweight="bold")
+    ax.set_title(
+        f"Acoustic Degradation Calibration Robustness\nTask: {task_name.capitalize()}",
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
+    )
+    ax.legend(loc="upper left", frameon=True, fontsize=9)
+    ax.grid(True, linestyle=":", alpha=0.6)
+
+    p = Path(output_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path = p.with_suffix(".pdf")
+    png_path = p.with_suffix(".png")
+    fig.savefig(pdf_path, bbox_inches="tight", format="pdf")
+    fig.savefig(png_path, bbox_inches="tight", dpi=300, format="png")
+    print(f"[INFO] Saved SNR Decay Plot to {pdf_path} and {png_path}")
+
+    return fig
+

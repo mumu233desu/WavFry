@@ -45,6 +45,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
+from wavfry.eval.acoustic_degradation import get_acoustic_degradation_engine
 from scripts.representation_and_calibration_audit.cka_core import (
     compute_cross_condition_cka,
     compute_layer_cka_matrix,
@@ -122,6 +123,12 @@ def parse_args():
         type=float,
         default=10.0,
         help="SNR level in dB for cross-condition noise evaluation when --compare-noise is set.",
+    )
+    parser.add_argument(
+        "--noise-condition",
+        type=str,
+        default=None,
+        help="Acoustic degradation condition for stability audit (e.g., 'cafe_5db', 'car_0db', 'reverb', 'street_5db'). Defaults to 'cafe_{snr}db'.",
     )
     parser.add_argument(
         "--unbiased",
@@ -230,14 +237,6 @@ def prepare_dataloader(
     return loader, paradigm
 
 
-def add_gaussian_noise(waveforms: torch.Tensor, snr_db: float) -> torch.Tensor:
-    """Add scaled Gaussian white noise at specified SNR (dB)."""
-    signal_pwr = torch.mean(waveforms ** 2, dim=-1, keepdim=True).clamp_min(1e-9)
-    noise_pwr_target = signal_pwr / (10.0 ** (snr_db / 10.0))
-    noise = torch.randn_like(waveforms) * torch.sqrt(noise_pwr_target)
-    return waveforms + noise
-
-
 def extract_layer_representations(
     model: WavFryClassifier,
     loader: DataLoader,
@@ -246,6 +245,7 @@ def extract_layer_representations(
     max_samples: Optional[int] = None,
     compare_noise: bool = False,
     noise_snr_db: float = 10.0,
+    noise_condition: Optional[str] = None,
 ) -> Tuple[Dict[int, np.ndarray], Optional[Dict[int, np.ndarray]], int]:
     """
     Extract pooled hidden state vectors for each layer (0 to 12) across target intervals.
@@ -260,7 +260,9 @@ def extract_layer_representations(
     start_time = time.time()
     task_idx = model.tasks.index(target_task) if target_task in model.tasks else 0
 
-    print(f"[Extraction] Extracting representations for task '{target_task}'...")
+    degradation_condition = noise_condition if noise_condition else f"cafe_{int(noise_snr_db)}db"
+    print(f"[Extraction] Extracting representations for task '{target_task}' (degradation: {degradation_condition if compare_noise else 'none'})...")
+    engine = get_acoustic_degradation_engine() if compare_noise else None
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
@@ -281,10 +283,11 @@ def extract_layer_representations(
             outputs_clean = model.wavlm(x_in, attention_mask=attention_mask, output_hidden_states=True)
             clean_states = [h.detach() for h in outputs_clean.hidden_states]  # 13 x [B, T, D]
 
-            # Noisy forward pass (if requested)
+            # Noisy / degraded forward pass (if requested)
             noisy_states = None
             if compare_noise:
-                noisy_waveforms = add_gaussian_noise(waveforms, snr_db=noise_snr_db)
+                batch_seed = 42 + batch_idx * 1009
+                noisy_waveforms = engine.apply_tensor(waveforms, degradation_condition, seed=batch_seed)
                 x_noisy = noisy_waveforms.to(wavlm_dtype) if noisy_waveforms.dtype != wavlm_dtype else noisy_waveforms
                 outputs_noisy = model.wavlm(x_noisy, attention_mask=attention_mask, output_hidden_states=True)
                 noisy_states = [h.detach() for h in outputs_noisy.hidden_states]
@@ -493,6 +496,7 @@ def main():
             max_samples=max_samples,
             compare_noise=args.compare_noise,
             noise_snr_db=args.noise_snr_db,
+            noise_condition=args.noise_condition,
         )
 
         # 3. Compute 13x13 CKA Matrix

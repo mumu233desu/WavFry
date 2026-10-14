@@ -133,23 +133,24 @@ uv run python scripts/representation_and_calibration_audit/evaluate_confidence_c
     --task creaky
 ```
 
-#### 跨域偏移校准压测（Domain Shift Stress Test）：
+#### 范式 A 严谨正交实验评估（Paradigm A: 3x3 Factorial Matrix + Controls）：
 ```bash
 uv run python scripts/representation_and_calibration_audit/evaluate_confidence_calibration.py \
-    --checkpoint exp_results/checkpoints/ablation_weak_on_vsdc_full/best_model.pt \
+    --checkpoint exp_results/checkpoints/ablation_weak_on_vsdc_real_noise/best_model.pt \
     --split test \
     --task creaky \
-    --test-domain-shift \
+    --paradigm-a \
     --device cuda \
-    --output-dir exp_results/audit_reports/calibration_analysis/
+    --output-dir exp_results/audit_reports/calibration_paradigm_a/
 ```
 
 #### 关键参数说明：
 - `--checkpoint` (必需): 模型权重路径。
 - `--split` (可选): 数据切分，`val` 或 `test`。
-- `--task` (可选): 评估任务，`creaky` 或 `breathy`。
+- `--task` (可选): 评估任务，`creaky`、`breathy` 或 `all`。
 - `--num-bins` (可选): 校准分箱数，默认 10。
-- `--test-domain-shift` (可选): 自动压测 5 种声学域（Clean、Cafe 0dB、Car 0dB、Cafe 10dB、Reverb RIR），并输出对比漂移曲线。
+- `--paradigm-a` (推荐): 自动运行严谨学术正交实验矩阵：3 种真实物理场景（`cafe`, `car`, `street`）$\times$ 3 档 SNR 梯次（`15dB`, `5dB`, `0dB`）+ `Clean` 基准 + 空间混响对照组（`reverb`, `reverb_cafe_5db`）。
+- `--eval-domains` (可选): 自定义声学域列表（如 `--eval-domains clean cafe_5db car_0db`）。
 - `--output-dir` (可选): 结果保存目录。
 
 ---
@@ -165,10 +166,11 @@ uv run python scripts/representation_and_calibration_audit/evaluate_confidence_c
 - `cka_audit_summary.md`: 自动生成的 Markdown 格式实验分析报告，便于直接引用。
 
 ### 5.2 置信度校准输出文件
-- `reliability_diagram_{domain}.pdf` / `.png`: 双面板可靠性图表（上：经验准确率与 Gap 梯级，下：预测置信度样本频数分布）。
-- `domain_shift_calibration_curves.pdf` / `.png`: 多声学域置信度漂移对比曲线。
-- `calibration_metrics_{domain}.csv`: 每个分箱的详细样本数、平均置信度、实际正例率与 Gap。
-- `calibration_audit_summary.md`: ECE、MCE、Brier Score 的量化汇总表格与分析。
+- `paradigm_a_factorial_matrix_{task}.csv`: 3x3 场景 x SNR 矩阵结构化数据。
+- `snr_ece_decay_{task}.pdf` / `.png`: 随 SNR 恶化（Clean -> 15dB -> 5dB -> 0dB）的 ECE 单调衰退折线对比图。
+- `reliability_diagram_{task}_clean.pdf` / `.png`: 双面板可靠性图表（上：经验准确率与 Gap 梯级，下：预测置信度样本频数分布）。
+- `ece_calibration_metrics.csv`: 所有测试条件的详细样本数、平均置信度、实际正例率与 Gap。
+- `calibration_audit_report.md`: 包含 Paradigm A 格式化对比表格的完整审计报告。
 
 ---
 
