@@ -88,9 +88,131 @@ def pool_frame_logits(logits, mask, mode="lse", topk_ratio=0.2, temperature=1.0)
     raise ValueError(f"Unknown frame MIL pooling mode: {mode}")
 
 
+class BayesianExpectedCrossEntropyLoss(nn.Module):
+    """Bayesian Expected Cross-Entropy Loss for Beta/Dirichlet evidential distributions.
+
+    Computes the exact analytic expectation of cross-entropy under the second-order
+    Beta(alpha, beta) distribution:
+        L = y * (psi(alpha + beta) - psi(alpha)) + (1 - y) * (psi(alpha + beta) - psi(beta))
+    where psi is the digamma function.
+    """
+
+    def __init__(self, pos_weight=None, reduction="mean"):
+        super().__init__()
+        self.reduction = reduction
+        if pos_weight is not None:
+            if not isinstance(pos_weight, torch.Tensor):
+                pos_weight = torch.tensor(pos_weight, dtype=torch.float32)
+            self.register_buffer("pos_weight", pos_weight)
+        else:
+            self.pos_weight = None
+
+    def forward(
+        self,
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute Bayes cross-entropy loss.
+
+        Args:
+            alpha: Positive evidence parameter [..., ] (>= 1.0)
+            beta: Negative evidence parameter [..., ] (>= 1.0)
+            targets: Binary ground truth in {0, 1} [..., ]
+        """
+        # Ensure float32 for digamma numerical precision
+        alpha_f = alpha.float().clamp_min(1.0)
+        beta_f = beta.float().clamp_min(1.0)
+        targets_f = targets.float()
+        s_f = alpha_f + beta_f
+
+        psi_s = torch.digamma(s_f)
+        term_pos = psi_s - torch.digamma(alpha_f)  # Expected -log(p)
+        term_neg = psi_s - torch.digamma(beta_f)  # Expected -log(1-p)
+
+        if self.pos_weight is not None:
+            term_pos = term_pos * self.pos_weight
+
+        loss = targets_f * term_pos + (1.0 - targets_f) * term_neg
+
+        if self.reduction == "mean":
+            return loss.mean().to(dtype=alpha.dtype)
+        elif self.reduction == "sum":
+            return loss.sum().to(dtype=alpha.dtype)
+        return loss.to(dtype=alpha.dtype)
+
+
+def pool_evidential_intervals(
+    frame_degree: torch.Tensor,
+    frame_evidence: torch.Tensor,
+    mask: torch.Tensor,
+    weights: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    """Pool frame-level evidential predictions over interval masks using Subjective Logic.
+
+    Applies duration-normalized cumulative fusion (defending Pitfall 4) to ensure
+    evidence accumulation is invariant to raw phone duration.
+
+    Args:
+        frame_degree: [N, T] frame phonation degree in [0, 1]
+        frame_evidence: [N, T] frame evidence count (>= 0)
+        mask: [N, T] boolean mask selecting frames in each interval
+        weights: Optional [N, T] frame importance weights
+
+    Returns:
+        Dict with interval-level:
+            degree: [N] pooled degree in [0, 1]
+            confidence: [N] pooled confidence in [0, 1]
+            alpha: [N] pooled Beta alpha parameter
+            beta: [N] pooled Beta beta parameter
+            evidence: [N] duration-normalized total evidence
+            logits: [N] equivalent logit for backward compatibility
+    """
+    orig_dtype = frame_degree.dtype
+    deg_f = frame_degree.float()
+    ev_f = frame_evidence.float()
+    mask_f = mask.float()
+
+    if weights is not None:
+        w = weights.float() * mask_f
+    else:
+        w = mask_f
+
+    # Duration normalization weights: sum(w_norm) == 1 per interval
+    w_sum = w.sum(dim=-1, keepdim=True).clamp_min(1e-7)
+    w_norm = w / w_sum
+
+    # Subjective Logic cumulative evidence integration
+    e1 = (w_norm * ev_f * deg_f).sum(dim=-1)
+    e0 = (w_norm * ev_f * (1.0 - deg_f)).sum(dim=-1)
+
+    alpha = 1.0 + e1
+    beta = 1.0 + e0
+    s = alpha + beta
+
+    degree = alpha / s
+    evidence = e1 + e0
+    confidence = evidence / (2.0 + evidence)
+
+    # Invert to logit for seamless drop-in compatibility with existing evaluators
+    clamped_deg = degree.clamp(min=1e-7, max=1.0 - 1e-7)
+    logits = torch.log(clamped_deg / (1.0 - clamped_deg))
+
+    return {
+        "degree": degree.to(dtype=orig_dtype),
+        "confidence": confidence.to(dtype=orig_dtype),
+        "alpha": alpha.to(dtype=orig_dtype),
+        "beta": beta.to(dtype=orig_dtype),
+        "evidence": evidence.to(dtype=orig_dtype),
+        "logits": logits.to(dtype=orig_dtype),
+    }
+
+
 def get_loss_fn(config, pos_weight=None):
     loss_type = config['training'].get('loss', 'focal')
-    if loss_type == 'focal':
+    if loss_type == 'bayes':
+        return BayesianExpectedCrossEntropyLoss(pos_weight=pos_weight)
+    elif loss_type == 'focal':
         return FocalLoss(
             alpha=config['training'].get('focal_alpha', 0.75),
             gamma=config['training'].get('focal_gamma', 2.0),

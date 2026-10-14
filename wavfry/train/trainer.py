@@ -254,7 +254,7 @@ class Trainer:
             if isinstance(m, (nn.LayerNorm, nn.BatchNorm1d, nn.GroupNorm))
             for p in m.parameters()
         }
-        no_decay_param = lambda n, p: "bias" in n or id(p) in norm_param_ids
+        no_decay_param = lambda n, p: "bias" in n or id(p) in norm_param_ids or ".flow." in n
 
         is_scalar_mix = lambda n: "scalar_mix" in n
         is_backbone = lambda n: (n.startswith("wavlm.") or n.startswith("backbone.")) and not is_scalar_mix(n)
@@ -375,7 +375,7 @@ class Trainer:
             return labels.squeeze(-1)
         return labels
 
-    def _compute_block_loss(self, outputs, labels, slot_valid, training=True):
+    def _compute_block_loss(self, outputs, labels, slot_valid, training=True, clean_mask=None):
         self._current_frame_proxy = None
         slot_valid = outputs.get('interval_valid', slot_valid)
         train_heads_cfg = self.config.get('training', {}).get('train_heads', {})
@@ -398,11 +398,45 @@ class Trainer:
 
             valid_mask = ~torch.isnan(task_targets)
             if valid_mask.any():
-                loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
+                from ..model.losses import BayesianExpectedCrossEntropyLoss
+                if isinstance(self.loss_fns[task], BayesianExpectedCrossEntropyLoss) and "interval_alpha" in outputs:
+                    task_alpha = outputs["interval_alpha"][task][slot_valid]
+                    task_beta = outputs["interval_beta"][task][slot_valid]
+                    loss = self.loss_fns[task](task_alpha[valid_mask], task_beta[valid_mask], task_targets[valid_mask])
+                else:
+                    loss = self.loss_fns[task](task_logits[valid_mask], task_targets[valid_mask])
                 current_losses[task] = loss.detach()
                 is_trainable = train_heads_cfg.get(task, True)
                 if not (training and not is_trainable):
                     total_loss = total_loss + loss
+
+        # Evidential Flow Loss (Clean-Manifold Flow Training, Defending Pitfall 2)
+        if getattr(self.model, "head_type", "linear") == "evidential" and "frame_evidential" in outputs:
+            ev_cfg = self.config.get("training", {}).get("evidential", {})
+            w_flow = float(ev_cfg.get("flow_loss_weight", 0.001))
+            if w_flow > 0.0:
+                flow_losses = []
+                frame_valid = outputs.get("frame_valid", None)
+                for task in tasks:
+                    if task in outputs["frame_evidential"]:
+                        ev_out = outputs["frame_evidential"][task]
+                        log_p = ev_out.get("log_prob", ev_out.get("log_p", None))  # [B, T]
+                        if log_p is None:
+                            continue
+                        c_mask = clean_mask if clean_mask is not None else torch.ones(log_p.shape[0], dtype=torch.bool, device=log_p.device)
+                        if c_mask.any():
+                            clean_log_p = log_p[c_mask]
+                            if frame_valid is not None:
+                                c_vf = frame_valid[c_mask]
+                                if c_vf.any():
+                                    clean_log_p = clean_log_p[c_vf]
+                            flow_losses.append(-clean_log_p.mean())
+                if flow_losses:
+                    tot_flow_loss = w_flow * torch.stack(flow_losses).mean()
+                    is_trainable = any(train_heads_cfg.get(t, True) for t in tasks)
+                    if not (training and not is_trainable):
+                        total_loss = total_loss + tot_flow_loss
+                    current_losses["flow"] = tot_flow_loss.detach()
 
         if not total_loss.requires_grad and any(p.requires_grad for p in self.model.parameters()):
             dummy_grad = sum(p.sum() * 0.0 for p in self.model.parameters() if p.requires_grad)
@@ -488,14 +522,22 @@ class Trainer:
             labels = labels.to(self.device, non_blocking=True)
             valid = valid.to(self.device, non_blocking=True)
             lengths = lengths.to(self.device, non_blocking=True)
+            orig_waveforms = waveforms
             if training and self.augmentor is not None:
                 waveforms = self.augmentor.apply(waveforms, epoch, self.device, step=step)
             outputs = self.model(waveforms, lengths, interval_bounds=bounds, interval_valid=valid)
             effective_valid = outputs.get('interval_valid', valid)
             if not effective_valid.any():
                 raise RuntimeError("Block batch contains no interval with valid frames")
+
+            clean_mask = None
+            if training and self.augmentor is not None:
+                clean_mask = (torch.max(torch.abs(waveforms - orig_waveforms), dim=-1).values < 1e-5)
+            elif training:
+                clean_mask = torch.ones(waveforms.shape[0], dtype=torch.bool, device=self.device)
+
             loss, logits_by_task, targets_by_task = self._compute_block_loss(
-                outputs, labels, effective_valid, training=training
+                outputs, labels, effective_valid, training=training, clean_mask=clean_mask
             )
             if not training:
                 valid_cpu = effective_valid.detach().cpu().numpy()
@@ -506,7 +548,13 @@ class Trainer:
                         if valid_cpu[b, s]:
                             flat_speakers.append(speakers[b])
                             flat_ids.append(interval_ids[b][s])
-                return loss, logits_by_task, targets_by_task, flat_speakers, flat_ids, None
+                tasks = getattr(self.model, "tasks", ["creaky"])
+                extra_eval = {}
+                if "interval_confidence" in outputs:
+                    extra_eval["confidence"] = {t: outputs["interval_confidence"][t][effective_valid] for t in tasks}
+                if "interval_degree" in outputs:
+                    extra_eval["degree"] = {t: outputs["interval_degree"][t][effective_valid] for t in tasks}
+                return loss, logits_by_task, targets_by_task, flat_speakers, flat_ids, extra_eval
             return loss, logits_by_task, targets_by_task, None, None, None
 
         # Segment mode
@@ -551,17 +599,23 @@ class Trainer:
 
     @staticmethod
     def _merge_interval_prediction(
-        store: dict, interval_id, logit: torch.Tensor, label: torch.Tensor
+        store: dict, interval_id, logit: torch.Tensor, label: torch.Tensor, conf: torch.Tensor | None = None
     ) -> None:
         """Accumulate one (block, slot) prediction into the per-interval store."""
         logit_cpu = logit if logit.device.type == "cpu" else logit.detach().cpu()
         label_cpu = label if label.device.type == "cpu" else label.detach().cpu()
+        conf_cpu = (conf if conf.device.type == "cpu" else conf.detach().cpu()) if conf is not None else None
         entry = store.get(interval_id)
         if entry is None:
-            store[interval_id] = [logit_cpu, label_cpu, 1]
+            store[interval_id] = [logit_cpu, label_cpu, 1, conf_cpu]
             return
         entry[0] += logit_cpu
         entry[2] += 1
+        if conf_cpu is not None and len(entry) > 3:
+            if entry[3] is None:
+                entry[3] = conf_cpu.clone()
+            else:
+                entry[3] += conf_cpu
         # A first-seen NaN label (interval unlabeled in an earlier block) must
         # not mask a valid label observed in a later block of the same interval.
         if torch.isnan(entry[1]) and not torch.isnan(label_cpu):
@@ -626,8 +680,7 @@ class Trainer:
         # Bridge: Connect weak supervision to primary evaluation frame head
         w_head_align = float(bas_cfg.get("loss_weight_head_align", 0.1))
         if w_head_align > 0 and hasattr(self.model, "frame_heads") and "breathy" in self.model.frame_heads:
-            frame_head_logits = self.model.frame_heads["breathy"](pos_h).squeeze(-1)
-            frame_head_probs = torch.sigmoid(frame_head_logits)
+            frame_head_probs = self.model.get_frame_degree("breathy", pos_h)
             bag_prob_head = self.model.breathy_suppressor.pooling(frame_head_probs, pos_mask)
             loss_head_bag = _safe_bce(bag_prob_head, 1.0)
             loss_head_align = F.mse_loss(
@@ -693,6 +746,16 @@ class Trainer:
             sampler.set_epoch(epoch)
 
         self.model.train()
+        if getattr(self.model, "head_type", "linear") == "evidential":
+            ev_cfg = self.config.get("training", {}).get("evidential", {})
+            warmup_epochs = int(ev_cfg.get("evidence_floor_epochs", 2))
+            floor_val = float(ev_cfg.get("evidence_floor", 10.0))
+            current_floor = floor_val if epoch <= warmup_epochs else 0.0
+            if hasattr(self.model, "frame_heads"):
+                for head in self.model.frame_heads.values():
+                    if hasattr(head, "evidence_floor"):
+                        head.evidence_floor = current_floor
+
         if getattr(self, "mean_teacher", None) is not None:
             stage_epochs = self.vsdc_cfg.get("curriculum", {}).get("stage_epochs", [3, 10])
             if epoch == stage_epochs[0] + 1 and not getattr(self, "_teacher_synced", False):
@@ -874,7 +937,7 @@ class Trainer:
             for i, batch in enumerate(val_iter):
                 device_type = 'cuda' if 'cuda' in str(self.device) else 'cpu'
                 with torch.amp.autocast(device_type, enabled=self.use_amp, dtype=self.autocast_dtype):
-                    loss, logits_dict, labels_dict, speaker_ids, item_ids, waveforms = self._forward_batch(batch, epoch, training=False)
+                    loss, logits_dict, labels_dict, speaker_ids, item_ids, extra_eval = self._forward_batch(batch, epoch, training=False)
 
                 total_loss = total_loss + loss.detach()
                 if hasattr(self, "_current_losses") and self._current_losses:
@@ -897,9 +960,14 @@ class Trainer:
                     for task in tasks:
                         t_logits = logits_dict[task].detach().cpu()
                         t_labels = labels_dict[task].detach().cpu()
-                        for logit, label, interval_id in zip(t_logits, t_labels, item_ids):
+                        t_confs = None
+                        if extra_eval is not None and isinstance(extra_eval, dict) and "confidence" in extra_eval:
+                            if task in extra_eval["confidence"]:
+                                t_confs = extra_eval["confidence"][task].detach().cpu()
+                        for idx, (logit, label, interval_id) in enumerate(zip(t_logits, t_labels, item_ids)):
+                            conf = t_confs[idx] if t_confs is not None else None
                             self._merge_interval_prediction(
-                                interval_predictions[task], interval_id, logit, label
+                                interval_predictions[task], interval_id, logit, label, conf=conf
                             )
                     continue
 
@@ -907,12 +975,15 @@ class Trainer:
                     all_logits[task].append(logits_dict[task].detach().cpu())
                     all_labels[task].append(labels_dict[task].detach().cpu())
 
+        all_confs = {task: [] for task in tasks}
         if self.paradigm == 'block':
             for task in tasks:
                 t_dict = interval_predictions[task]
                 if t_dict:
                     all_logits[task] = [(item[0] / item[2]).reshape(1) for item in t_dict.values()]
                     all_labels[task] = [item[1].reshape(1) for item in t_dict.values()]
+                    if any(len(item) > 3 and item[3] is not None for item in t_dict.values()):
+                        all_confs[task] = [(item[3] / item[2]).reshape(1) for item in t_dict.values() if item[3] is not None]
 
         primary_task = self.primary_task
         metrics = {}
@@ -938,10 +1009,18 @@ class Trainer:
                         metrics[f"{k}_{task}"] = v
                     metrics[f'logits_{task}'] = t_logits_cat[valid_m]
                     metrics[f'labels_{task}'] = t_labels_cat[valid_m]
+                    if all_confs[task]:
+                        t_conf_cat = torch.cat(all_confs[task])
+                        conf_sub = t_conf_cat[valid_m] if len(t_conf_cat) == len(valid_m) else t_conf_cat
+                        metrics[f"mean_confidence_{task}"] = float(conf_sub.mean())
                     if task == primary_task:
                         metrics.update(task_m)
                         metrics['logits'] = t_logits_cat[valid_m]
                         metrics['labels'] = t_labels_cat[valid_m]
+                        if all_confs[task]:
+                            t_conf_cat = torch.cat(all_confs[task])
+                            conf_sub = t_conf_cat[valid_m] if len(t_conf_cat) == len(valid_m) else t_conf_cat
+                            metrics["mean_confidence"] = float(conf_sub.mean())
                 else:
                     metrics[f"auc_pr_{task}"] = 0.0
                     metrics[f"f1_{task}"] = 0.0
@@ -1060,6 +1139,9 @@ class Trainer:
                         parts.append(f"L: {t_tr_l:.4f}/{t_val_l:.4f}")
                     if t_val_pr is not None:
                         parts.append(f"PR: {t_val_pr:.4f}")
+                    t_val_conf = val_metrics.get(f'mean_confidence_{task}')
+                    if t_val_conf is not None:
+                        parts.append(f"Conf: {t_val_conf:.3f}")
                     if parts:
                         extra_info.append(f"{task.capitalize()} ({', '.join(parts)})")
                 extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
@@ -1083,9 +1165,14 @@ class Trainer:
                         self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
                     if f'f1_{task}' in val_metrics:
                         self.writer.add_scalar(f'F1_{task}/val', val_metrics[f'f1_{task}'], epoch)
+                    if f'mean_confidence_{task}' in val_metrics:
+                        self.writer.add_scalar(f'Confidence/{task}_val', val_metrics[f'mean_confidence_{task}'], epoch)
                     if f'loss_{task}' in val_metrics:
                         self.writer.add_scalar(f'{task}_loss/val', val_metrics[f'loss_{task}'], epoch)
                         self.writer.add_scalar(f'Loss/{task}_val', val_metrics[f'loss_{task}'], epoch)
+
+                if 'mean_confidence' in val_metrics:
+                    self.writer.add_scalar('Confidence/val', val_metrics['mean_confidence'], epoch)
 
                 for task in tasks:
                     if f'loss_{task}_frame' in val_metrics:
@@ -1191,11 +1278,17 @@ class Trainer:
                     epoch_record[f'train_loss_{task}_frame'] = float(train_metrics[f'loss_{task}_frame'])
                 if f'loss_{task}_frame' in val_metrics:
                     epoch_record[f'val_loss_{task}_frame'] = float(val_metrics[f'loss_{task}_frame'])
+                if f'mean_confidence_{task}' in val_metrics:
+                    epoch_record[f'val_mean_confidence_{task}'] = float(val_metrics[f'mean_confidence_{task}'])
+            if 'mean_confidence' in val_metrics:
+                epoch_record['val_mean_confidence'] = float(val_metrics['mean_confidence'])
             for key in ('loss_weak_breathy', 'weak_utterances', 'manual_batches', 'weak_batches'):
                 if key in train_metrics:
                     epoch_record[key] = train_metrics[key]
             self.history.append(epoch_record)
             self.save_history()
+            if self.writer:
+                self.writer.flush()
                 
             patience = self.config['eval'].get('early_stopping_patience', 0)
             if patience > 0 and self.patience_counter >= patience:

@@ -131,18 +131,49 @@ class WavFryClassifier(nn.Module):
             mode = self.interval_from_frame_cfg["mode"]
             if mode not in {"lse", "max", "linear_softmax", "top_k_mean", "lse_mean"}:
                 raise ValueError(f"Unsupported interval_from_frame mode: {mode}")
-            if self.interval_from_frame_cfg["temperature"] <= 0:
-                raise ValueError("interval_from_frame.temperature must be positive")
             if not 0 < self.interval_from_frame_cfg["topk_ratio"] <= 1:
                 raise ValueError("interval_from_frame.topk_ratio must be in (0, 1]")
-        if self.frame_head_enabled:
-            self.frame_heads = nn.ModuleDict({
-                task: nn.Sequential(
-                    nn.LayerNorm(self.hidden_dim),
-                    nn.Linear(self.hidden_dim, 1),
+
+        self.head_type = model_cfg.get("head_type", "linear")
+        if self.head_type not in {"linear", "evidential"}:
+            raise ValueError(f"Unsupported model.head_type: '{self.head_type}'. Supported: ['linear', 'evidential']")
+        evidential_cfg = model_cfg.get("evidential", {})
+        self.evidential_cfg = {
+            "latent_dim": int(evidential_cfg.get("latent_dim", 16)),
+            "flow_layers": int(evidential_cfg.get("flow_layers", 4)),
+            "evidence_scale": float(evidential_cfg.get("evidence_scale", 100.0)),
+            "temp_density": float(evidential_cfg.get("temp_density", 4.0)),
+        }
+
+        if self.head_type == "evidential":
+            if not (self.frame_head_enabled and getattr(self, "interval_from_frame_enabled", False)):
+                raise ValueError(
+                    "[CONFIG ERROR] Natural Evidential Phonation Head (NEPH) requires both "
+                    "'block.frame_head.enabled=true' and 'block.frame_head.interval_from_frame.enabled=true'."
                 )
-                for task in self.tasks
-            })
+
+        if self.frame_head_enabled:
+            if self.head_type == "evidential":
+                from .evidential_head import NaturalEvidentialPhonationHead
+                self.frame_heads = nn.ModuleDict({
+                    task: NaturalEvidentialPhonationHead(
+                        in_features=self.hidden_dim,
+                        latent_dim=self.evidential_cfg["latent_dim"],
+                        flow_layers=self.evidential_cfg["flow_layers"],
+                        evidence_scale=self.evidential_cfg["evidence_scale"],
+                        temp_density=self.evidential_cfg["temp_density"],
+                        dropout=dropout,
+                    )
+                    for task in self.tasks
+                })
+            else:
+                self.frame_heads = nn.ModuleDict({
+                    task: nn.Sequential(
+                        nn.LayerNorm(self.hidden_dim),
+                        nn.Linear(self.hidden_dim, 1),
+                    )
+                    for task in self.tasks
+                })
             if (frame_cfg.get("mil_mode", "lse") == "lse_mean"
                     or (self.interval_from_frame_enabled and self.interval_from_frame_cfg["mode"] == "lse_mean")):
                 self.frame_mil_fusions = nn.ModuleDict({
@@ -499,6 +530,8 @@ class WavFryClassifier(nn.Module):
     ) -> torch.Tensor:
         """Vectorize sample-space interval bounds into WavLM frame masks."""
         conv_stride = 320
+        if lengths is None:
+            lengths = torch.full((interval_bounds.shape[0],), frame_count * conv_stride, device=interval_bounds.device, dtype=torch.long)
         audio_lengths = lengths.unsqueeze(1)
         start_samples = interval_bounds[..., 0].clamp_min(0)
         start_samples = torch.minimum(start_samples, audio_lengths)
@@ -556,48 +589,92 @@ class WavFryClassifier(nn.Module):
             pos_bias = self.pos_scorer(pos_emb).squeeze(-1)
 
         interval_logits_by_task: dict[str, torch.Tensor] = {}
+        interval_degree_by_task: dict[str, torch.Tensor] = {}
+        interval_confidence_by_task: dict[str, torch.Tensor] = {}
+        interval_alpha_by_task: dict[str, torch.Tensor] = {}
+        interval_beta_by_task: dict[str, torch.Tensor] = {}
+
         frame_logits_by_task: dict[str, torch.Tensor] | None = None
+        frame_evidential_by_task: dict[str, dict[str, torch.Tensor]] | None = None
         if self.frame_head_enabled:
-            frame_logits_by_task = {
-                task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
-                for task in self.tasks
-            }
+            frame_logits_by_task = {}
+            if self.head_type == "evidential":
+                frame_evidential_by_task = {}
+                for task in self.tasks:
+                    ev_out = self.frame_heads[task](hidden_by_task[task])
+                    frame_evidential_by_task[task] = ev_out
+                    frame_logits_by_task[task] = ev_out["raw_logits"]
+            else:
+                for task in self.tasks:
+                    frame_logits_by_task[task] = self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
 
         if self.interval_from_frame_enabled:
-            from .losses import pool_frame_logits
-
             flat_mask = interval_masks.reshape(batch * slots, -1)
             valid_flat = slot_valid.reshape(-1)
-            for task in self.tasks:
-                frame_logits = frame_logits_by_task[task]
-                expanded = frame_logits.unsqueeze(1).expand(-1, slots, -1).reshape(batch * slots, -1)
-                pooled_flat = torch.zeros(batch * slots, dtype=frame_logits.dtype, device=frame_logits.device)
-                if valid_flat.any():
-                    valid_logits = expanded[valid_flat]
-                    valid_masks = flat_mask[valid_flat]
-                    mode = self.interval_from_frame_cfg["mode"]
-                    if mode == "lse_mean":
-                        lse = pool_frame_logits(
-                            valid_logits,
-                            valid_masks,
-                            mode="lse",
-                            temperature=self.interval_from_frame_cfg["temperature"],
-                        )
-                        mean = (
-                            valid_logits.masked_fill(~valid_masks, 0.0).sum(dim=-1)
-                            / valid_masks.sum(dim=-1).clamp_min(1)
-                        )
-                        pooled = self.frame_mil_fusions[task](torch.stack([lse, mean], dim=-1)).squeeze(-1)
-                    else:
-                        pooled = pool_frame_logits(
-                            valid_logits,
-                            valid_masks,
-                            mode=mode,
-                            topk_ratio=self.interval_from_frame_cfg["topk_ratio"],
-                            temperature=self.interval_from_frame_cfg["temperature"],
-                        )
-                    pooled_flat[valid_flat] = pooled
-                interval_logits_by_task[task] = pooled_flat.view(batch, slots)
+
+            if self.head_type == "evidential":
+                from .losses import pool_evidential_intervals
+
+                for task in self.tasks:
+                    ev_dict = frame_evidential_by_task[task]
+                    deg_expanded = ev_dict["degree"].unsqueeze(1).expand(-1, slots, -1).reshape(batch * slots, -1)
+                    ev_expanded = ev_dict["evidence"].unsqueeze(1).expand(-1, slots, -1).reshape(batch * slots, -1)
+
+                    pooled_logits_flat = torch.zeros(batch * slots, dtype=deg_expanded.dtype, device=deg_expanded.device)
+                    pooled_deg_flat = torch.zeros(batch * slots, dtype=deg_expanded.dtype, device=deg_expanded.device)
+                    pooled_conf_flat = torch.zeros(batch * slots, dtype=deg_expanded.dtype, device=deg_expanded.device)
+                    pooled_alpha_flat = torch.ones(batch * slots, dtype=deg_expanded.dtype, device=deg_expanded.device)
+                    pooled_beta_flat = torch.ones(batch * slots, dtype=deg_expanded.dtype, device=deg_expanded.device)
+
+                    if valid_flat.any():
+                        valid_deg = deg_expanded[valid_flat]
+                        valid_ev = ev_expanded[valid_flat]
+                        valid_masks = flat_mask[valid_flat]
+                        pooled_dict = pool_evidential_intervals(valid_deg, valid_ev, valid_masks)
+                        pooled_logits_flat[valid_flat] = pooled_dict["logits"]
+                        pooled_deg_flat[valid_flat] = pooled_dict["degree"]
+                        pooled_conf_flat[valid_flat] = pooled_dict["confidence"]
+                        pooled_alpha_flat[valid_flat] = pooled_dict["alpha"]
+                        pooled_beta_flat[valid_flat] = pooled_dict["beta"]
+
+                    interval_logits_by_task[task] = pooled_logits_flat.view(batch, slots)
+                    interval_degree_by_task[task] = pooled_deg_flat.view(batch, slots)
+                    interval_confidence_by_task[task] = pooled_conf_flat.view(batch, slots)
+                    interval_alpha_by_task[task] = pooled_alpha_flat.view(batch, slots)
+                    interval_beta_by_task[task] = pooled_beta_flat.view(batch, slots)
+            else:
+                from .losses import pool_frame_logits
+
+                for task in self.tasks:
+                    frame_logits = frame_logits_by_task[task]
+                    expanded = frame_logits.unsqueeze(1).expand(-1, slots, -1).reshape(batch * slots, -1)
+                    pooled_flat = torch.zeros(batch * slots, dtype=frame_logits.dtype, device=frame_logits.device)
+                    if valid_flat.any():
+                        valid_logits = expanded[valid_flat]
+                        valid_masks = flat_mask[valid_flat]
+                        mode = self.interval_from_frame_cfg["mode"]
+                        if mode == "lse_mean":
+                            lse = pool_frame_logits(
+                                valid_logits,
+                                valid_masks,
+                                mode="lse",
+                                temperature=self.interval_from_frame_cfg["temperature"],
+                            )
+                            mean = (
+                                valid_logits.masked_fill(~valid_masks, 0.0).sum(dim=-1)
+                                / valid_masks.sum(dim=-1).clamp_min(1)
+                            )
+                            pooled = self.frame_mil_fusions[task](torch.stack([lse, mean], dim=-1)).squeeze(-1)
+                        else:
+                            pooled = pool_frame_logits(
+                                valid_logits,
+                                valid_masks,
+                                mode=mode,
+                                topk_ratio=self.interval_from_frame_cfg["topk_ratio"],
+                                temperature=self.interval_from_frame_cfg["temperature"],
+                            )
+                        pooled_flat[valid_flat] = pooled
+                    interval_logits_by_task[task] = pooled_flat.view(batch, slots)
         else:
             for task in self.tasks:
                 sequence = hidden_by_task[task]
@@ -642,6 +719,12 @@ class WavFryClassifier(nn.Module):
             "interval_valid": slot_valid,
             "tasks": self.tasks,
         }
+        if self.head_type == "evidential":
+            result["interval_degree"] = interval_degree_by_task
+            result["interval_confidence"] = interval_confidence_by_task
+            result["interval_alpha"] = interval_alpha_by_task
+            result["interval_beta"] = interval_beta_by_task
+            result["frame_evidential"] = frame_evidential_by_task
         if self.frame_head_enabled:
             result["frame_logits"] = frame_logits_by_task
         return result
@@ -676,14 +759,27 @@ class WavFryClassifier(nn.Module):
             for kernel, step in zip(self.wavlm.config.conv_kernel, self.wavlm.config.conv_stride):
                 receptive += (int(kernel) - 1) * stride
                 stride *= int(step)
+
+            frame_logits = {}
+            frame_evidential = {} if self.head_type == "evidential" else None
+            for task in self.tasks:
+                if self.head_type == "evidential":
+                    ev_out = self.frame_heads[task](hidden_by_task[task])
+                    frame_logits[task] = ev_out["raw_logits"]
+                    frame_evidential[task] = ev_out
+                else:
+                    frame_logits[task] = self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
+
             frames = {
-                "frame_logits": {task: self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
-                                 for task in self.tasks},
+                "frame_logits": frame_logits,
                 "frame_hidden": {task: hidden_by_task[task] for task in self.tasks},
                 "frame_valid": valid_mask,
                 "frame_stride_samples": stride,
                 "frame_receptive_samples": receptive,
             }
+            if self.head_type == "evidential":
+                frames["frame_evidential"] = frame_evidential
+
         if interval_bounds is not None:
             if interval_valid is None:
                 interval_valid = torch.ones(interval_bounds.shape[:2], dtype=torch.bool, device=x.device)
@@ -696,9 +792,18 @@ class WavFryClassifier(nn.Module):
 
         # Segment / Utterance mode
         if getattr(self, "interval_from_frame_enabled", False):
-            from .losses import pool_frame_logits
-
             outputs: dict[str, torch.Tensor] = {}
+            if self.head_type == "evidential":
+                from .losses import pool_evidential_intervals
+                for task in self.tasks:
+                    ev_out = self.frame_heads[task](hidden_by_task[task])
+                    pooled_dict = pool_evidential_intervals(
+                        ev_out["degree"], ev_out["evidence"], valid_mask
+                    )
+                    outputs[task] = pooled_dict["logits"]
+                return outputs
+
+            from .losses import pool_frame_logits
             mode = self.interval_from_frame_cfg.get("mode", "linear_softmax")
             for task in self.tasks:
                 frame_logits = self.frame_heads[task](hidden_by_task[task]).squeeze(-1)
@@ -750,3 +855,18 @@ class WavFryClassifier(nn.Module):
             freq = 1.0 / (10000.0 ** (2.0 * i / d_model))
         angles = pos.unsqueeze(-1) * freq
         return torch.cat([angles.sin(), angles.cos()], dim=-1)
+
+    def get_frame_degree(self, task: str, h: torch.Tensor) -> torch.Tensor:
+        """Unified contract method to obtain frame-level Degree probability in [0, 1]."""
+        head = self.frame_heads[task]
+        if hasattr(head, "get_degree"):
+            return head.get_degree(h)
+        return torch.sigmoid(head(h).squeeze(-1))
+
+    def get_frame_confidence(self, task: str, h: torch.Tensor) -> torch.Tensor:
+        """Unified contract method to obtain frame-level Confidence in [0, 1]."""
+        head = self.frame_heads[task]
+        if hasattr(head, "get_confidence"):
+            return head.get_confidence(h)
+        logits = head(h).squeeze(-1)
+        return torch.ones_like(logits)

@@ -1,0 +1,182 @@
+# ==============================================================================
+# WavFry Experiment Configuration:
+# Natural Evidential Phonation Head (NEPH) - Scratch Retraining
+# Decoupled Severity (Degree) & Representation Certainty (Confidence)
+# Frozen WavLM-Base+ Backbone | Multi-Task [Creaky, Breathy] | Block Paradigm
+# ==============================================================================
+
+# ── 数据 ──────────────────────────────────────────────
+data:
+  isolate_split_speakers: true       # 从 val/test 中剔除与 train 重叠的发音人
+  num_workers: auto                  # Windows 自动设为 0 避免多进程卡死
+  pin_memory: true
+  prefetch_factor: 2
+
+# ── 模型 ──────────────────────────────────────────────
+model:
+  backbone: microsoft/wavlm-base-plus
+  fine_tune_layers: "none"           # 绝对冻结骨干网络 (Inviolable Rule)
+  use_scalar_mix: true               # 保持 13 层标量加权参数可学习
+  dropout: 0.1
+  head_hidden_dim: 256
+  use_positional_encoding: false
+  pos_embed_dim: 32
+  tasks: [creaky, breathy]           # 双任务独立解耦输出 (Degree, Confidence)
+  head_type: evidential              # 激活 Natural Evidential Phonation Head (NEPH)
+  evidential:
+    latent_dim: 16                   # 16D 紧凑发声特征潜空间
+    flow_layers: 4                   # 4 步轻量 RealNVP 仿射耦合流
+    evidence_scale: 100.0            # 最大证据量尺度因子 N_H
+    temp_density: 4.0                # 相对对数密度温度系数 T_density
+
+# ── 训练 ──────────────────────────────────────────────
+training:
+  quiet: true
+  optimizer: adamw_fp32
+  epochs: 20
+  gradient_accumulation_steps: 1
+  backbone_lr: 0.0                   # 全冻结骨干无需更新
+  head_lr: 1.0e-4                    # 分类头 + RealNVP flow + scalar mix LR
+  scalar_mix_lr: 1.0e-3
+  warmup_steps: 200
+  weight_decay: 0.01                 # 仅应用于分类头权重层 (RealNVP 自动豁免)
+  grad_clip: 1.0
+  loss: bayes                        # 贝叶斯期望交叉熵损失 (Bayesian Expected Cross Entropy)
+  seed: 42
+  mixed_precision: bf16
+  gradient_checkpointing: false
+
+  # ── Evidential 专项参数 (NEPH) ────────────────────────
+  evidential:
+    flow_loss_weight: 0.001          # 纯净流形 NLL 损失权重 (Clean-Manifold Flow Training)
+    evidence_floor: 10.0             # 冷启动保底证据数 (Defending Cold-Start Gradient Starvation)
+    evidence_floor_epochs: 2         # 前 2 个 Epoch 启用保底证据数平滑爬升
+
+  # ── 学习率调度 ──────────────────────────────────────
+  lr_schedule: cosine
+  min_lr_ratio: 0.05
+
+  # ── 训练范式主开关 ──────────────────────────────────
+  paradigm: block                    # 2.0s 连续音频块分类
+
+  # ── Block 范式专属参数 ────────────────────────────────
+  block:
+    batch_size: 64
+    val_batch_size: 128
+    duration_ms: 2000
+    hop_ms: 1000
+    max_intervals: 12
+    boundary_trim_frames: 0
+    frame_head:
+      enabled: true
+      loss_weight: 0.1
+      mil_mode: linear_softmax
+      temperature: 1.0
+      topk_ratio: 0.2
+      interval_from_frame:
+        enabled: true
+        mode: linear_softmax
+        temperature: 1.0
+        topk_ratio: 0.2
+
+  weak_supervision:
+    enabled: true
+    manifest: manifests/weak_breathy.csv
+    task: breathy
+    candidate_scope: vowels
+    loss_weight: 0.3
+    start_epoch: 4
+    samples_per_epoch: 447
+    max_windows: 64
+
+  # ── VSDC-Net 弱监督时序定位增强配置 ───────────────────────
+  vsdc:
+    enabled: true
+    mil_pooling: linear_softmax
+
+    bas_net:
+      enabled: true
+      hidden_dim: 256
+      loss_weight_base: 0.1
+      loss_weight_supp: 0.1
+      loss_weight_supp_zero: 0.1
+      loss_weight_sparse: 0.005
+      loss_weight_head_align: 0.1
+
+    speaker_contrast:
+      enabled: true
+      temperature: 0.07
+      topk_anchors: 2
+      proj_dim: 128
+      loss_weight: 0.2
+
+    mean_teacher:
+      enabled: true
+      ema_decay: 0.98
+      median_window: 3
+      temp_sharp: 0.5
+      conf_margin: 0.35
+      loss_weight: 1.0
+
+    curriculum:
+      enabled: true
+      stage_epochs: [3, 7]
+
+  pooling_mode: attn
+  topk_ratio: 0.2
+  topk_min_frames: 3
+
+# ── 评估 ──────────────────────────────────────────────
+eval:
+  primary_task: creaky        # 主任务仲裁
+  primary_metric: auc_pr      # 严守学术严谨性，早停仲裁以 Degree PR-AUC 为准
+  early_stopping_patience: 3
+  eval_interval: 2
+
+# ── TensorBoard ───────────────────────────────────────
+tensorboard:
+  log_dir: R:/runs/ablation_evidential_confidence_scratch
+  log_audio_samples: true
+  audio_sample_count: 4
+  log_confusion_matrix: true
+  log_pr_curve: true
+
+# ── Checkpoint ────────────────────────────────────────
+checkpoint:
+  dir: R:/checkpoints/ablation_evidential_confidence_scratch
+  save_mode: delta
+  keep_best_count: 3
+
+# ── 数据增强 ──────────────────────────────────────────
+augmentation:
+  enabled: true
+  aug_order: noise_first
+  schedule_power: 2.0
+
+  reverb:
+    enabled: true
+    prob: 0.3
+    curriculum: true
+    max_epochs: 20
+    schedule_power: 2.0
+    rir_dir: E:/Corpus/Noise/QUT-NOISE_processed/impulses
+    scenarios: [car, reverb]
+
+  noise:
+    enabled: true
+    prob: 0.5
+    sources:
+      pink: 0.3
+      real_world: 0.7
+    real_world_dir: E:/Corpus/Noise/QUT-NOISE_processed/noise
+    scenarios: [cafe, car, home, reverb, street]
+    type: pink
+    pink_low_cutoff_hz: 10.0
+    snr_db_start: 30.0
+    snr_db_end: 10.0
+
+  denoising:
+    enabled: true
+    prob: 0.5
+    atten_lim_db_start: 0.0
+    atten_lim_db_end: 15.0
