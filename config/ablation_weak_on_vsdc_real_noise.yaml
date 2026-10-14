@@ -137,7 +137,7 @@ training:
     # 单一任务流三阶段渐进式调度
     curriculum:
       enabled: true
-      stage_epochs: [3, 10]          # Epoch 1-3: 冷启动; Epoch 4-10: BaS+对比; Epoch 11-20: 均值教师全协同
+      stage_epochs: [3, 7]           # Epoch 1-3: 冷启动; Epoch 4-7: BaS+对比; Epoch 8-20: 均值教师全协同
 
   # ── 池化策略 ────────────────────────────────────────
   pooling_mode: attn        # attn (learnable temporal attention) | mean | mean_attn | mean_topk
@@ -148,7 +148,8 @@ training:
 eval:
   primary_task: creaky        # 主任务：决定 pos_weight 口径（已按任务解耦）、顶层指标与早停仲裁
   primary_metric: auc_pr        # auc_pr（推荐）| f1 — 决定 early-stopping 和最优 ckpt 判断依据
-  early_stopping_patience: 3  # 连续 3 个 epoch 验证集指标不上升则早停
+  early_stopping_patience: 3  # 连续 3 次验证评估指标不上升则早停
+  eval_interval: 2            # 验证评估周期：每 2 个 epoch 执行一次验证（节约 50% 验证集前向耗时）
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:

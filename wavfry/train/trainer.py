@@ -143,6 +143,8 @@ class Trainer:
             )
         self.best_primary_metric_val = 0.0
         self.patience_counter = 0
+        # Validation evaluation interval (run validation every N epochs)
+        self.eval_interval = max(1, int(self.config.get('eval', {}).get('eval_interval', 1)))
         # Holds (logits, labels) from the best validation epoch for threshold search
         self._best_val_logits: torch.Tensor | None = None
         self._best_val_labels: torch.Tensor | None = None
@@ -1032,106 +1034,128 @@ class Trainer:
                 g_name = g.get('name', 'group')
                 self.writer.add_scalar(f'LR/{g_name}', g['lr'], epoch)
 
-            val_loss, val_metrics = self.validate(epoch)
+            should_validate = (epoch % self.eval_interval == 0) or (epoch == self.epochs)
+            if should_validate:
+                val_loss, val_metrics = self.validate(epoch)
 
-            # Scalar Mix layer distribution logging
-            if getattr(self.model, "use_scalar_mix", False) and hasattr(self.model, "scalar_mix_weights"):
-                with torch.no_grad():
-                    for task in tasks:
-                        if task in self.model.scalar_mix_weights:
-                            w = torch.softmax(self.model.scalar_mix_weights[task].detach().cpu(), dim=0)
-                            if self.writer:
-                                for i, v in enumerate(w):
-                                    self.writer.add_scalar(f"ScalarMix/{task}/L{i}", float(v), epoch)
-                            top3_idx = torch.topk(w, k=min(3, len(w))).indices.tolist()
-                            logger.info(f"[{task}] Scalar Mix: " + ", ".join(f"L{i}:{w[i]:.3f}" for i in range(len(w))) + f" (Top3: {[f'L{i}' for i in top3_idx]})")
-            
-            extra_info = []
-            for task in tasks:
-                t_tr_l = train_metrics.get(f'loss_{task}')
-                t_val_l = val_metrics.get(f'loss_{task}')
-                t_val_pr = val_metrics.get(f'auc_pr_{task}')
-                parts = []
-                if t_tr_l is not None and t_val_l is not None:
-                    parts.append(f"L: {t_tr_l:.4f}/{t_val_l:.4f}")
-                if t_val_pr is not None:
-                    parts.append(f"PR: {t_val_pr:.4f}")
-                if parts:
-                    extra_info.append(f"{task.capitalize()} ({', '.join(parts)})")
-            extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
-
-            print(
-                f"[Epoch {epoch:02d}/{self.epochs:02d}] "
-                f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics.get('auc_pr', 0.0):.4f}, F1: {train_metrics.get('f1', 0.0):.4f} | "
-                f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics.get('auc_pr', 0.0):.4f}, F1: {val_metrics.get('f1', 0.0):.4f}"
-                f"{extra_str}",
-                flush=True
-            )
-            
-            # Logging
-            self.writer.add_scalar('Loss/val', val_loss, epoch)
-            self.writer.add_scalar('total_loss/val', val_loss, epoch)
-            if len(tasks) == 1:
-                self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)
-                self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)
-            for task in tasks:
-                if f'auc_pr_{task}' in val_metrics:
-                    self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
-                if f'f1_{task}' in val_metrics:
-                    self.writer.add_scalar(f'F1_{task}/val', val_metrics[f'f1_{task}'], epoch)
-                if f'loss_{task}' in val_metrics:
-                    self.writer.add_scalar(f'{task}_loss/val', val_metrics[f'loss_{task}'], epoch)
-                    self.writer.add_scalar(f'Loss/{task}_val', val_metrics[f'loss_{task}'], epoch)
-
-            for task in tasks:
-                if f'loss_{task}_frame' in val_metrics:
-                    self.writer.add_scalar(f'{task}_frame_loss/val', val_metrics[f'loss_{task}_frame'], epoch)
-                    self.writer.add_scalar(f'Loss/{task}_frame_val', val_metrics[f'loss_{task}_frame'], epoch)
-                if f'loss_{task}' in val_metrics:
-                    t_val_tot = val_metrics[f'loss_{task}'] + val_metrics.get(f'loss_{task}_frame', 0.0)
-                    self.writer.add_scalar(f'{task}_total_loss/val', t_val_tot, epoch)
-                    self.writer.add_scalar(f'Loss/{task}_total_val', t_val_tot, epoch)
-            if 'frame_proxy_auroc' in val_metrics:
-                self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics['frame_proxy_auroc'], epoch)
-
-            # PR Curves per task
-            if self.config['tensorboard'].get('log_pr_curve', True):
+                # Scalar Mix layer distribution logging
+                if getattr(self.model, "use_scalar_mix", False) and hasattr(self.model, "scalar_mix_weights"):
+                    with torch.no_grad():
+                        for task in tasks:
+                            if task in self.model.scalar_mix_weights:
+                                w = torch.softmax(self.model.scalar_mix_weights[task].detach().cpu(), dim=0)
+                                if self.writer:
+                                    for i, v in enumerate(w):
+                                        self.writer.add_scalar(f"ScalarMix/{task}/L{i}", float(v), epoch)
+                                top3_idx = torch.topk(w, k=min(3, len(w))).indices.tolist()
+                                logger.info(f"[{task}] Scalar Mix: " + ", ".join(f"L{i}:{w[i]:.3f}" for i in range(len(w))) + f" (Top3: {[f'L{i}' for i in top3_idx]})")
+                
+                extra_info = []
                 for task in tasks:
-                    t_labels = val_metrics.get(f'labels_{task}', val_metrics.get('labels') if task == primary_task else None)
-                    t_logits = val_metrics.get(f'logits_{task}', val_metrics.get('logits') if task == primary_task else None)
-                    if t_labels is not None and t_logits is not None and len(t_labels) > 1:
-                        if (t_labels > 0.5).any() and (t_labels <= 0.5).any():
-                            curve_tag = f'PR_Curve_{task}/val' if len(tasks) > 1 else 'PR_Curve/val'
-                            self.writer.add_pr_curve(curve_tag, t_labels, torch.sigmoid(t_logits), epoch)
-            
-            # Confusion Matrix
-            if 'cm' in val_metrics:
-                self.log_confusion_matrix(val_metrics['cm'], epoch)
-            
-            # Audio Samples (Error Analysis)
-            if self.config['tensorboard'].get('log_audio_samples', True):
-                self.log_audio_samples(epoch, val_metrics.get('samples', {}))
-            
-            # Early Stopping and Checkpointing — based on configured primary metric
-            is_best = False
-            current_val = val_metrics.get(self.primary_metric, float('nan'))
-            if math.isnan(current_val):
-                logger.warning(
-                    f"Epoch {epoch}: {self.primary_metric} is NaN (likely single-class validation fold). "
-                    "Freezing patience counter."
+                    t_tr_l = train_metrics.get(f'loss_{task}')
+                    t_val_l = val_metrics.get(f'loss_{task}')
+                    t_val_pr = val_metrics.get(f'auc_pr_{task}')
+                    parts = []
+                    if t_tr_l is not None and t_val_l is not None:
+                        parts.append(f"L: {t_tr_l:.4f}/{t_val_l:.4f}")
+                    if t_val_pr is not None:
+                        parts.append(f"PR: {t_val_pr:.4f}")
+                    if parts:
+                        extra_info.append(f"{task.capitalize()} ({', '.join(parts)})")
+                extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
+
+                print(
+                    f"[Epoch {epoch:02d}/{self.epochs:02d}] "
+                    f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics.get('auc_pr', 0.0):.4f}, F1: {train_metrics.get('f1', 0.0):.4f} | "
+                    f"Val Loss: {val_loss:.4f}, PR-AUC: {val_metrics.get('auc_pr', 0.0):.4f}, F1: {val_metrics.get('f1', 0.0):.4f}"
+                    f"{extra_str}",
+                    flush=True
                 )
-                self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
-            elif current_val > self.best_primary_metric_val:
-                self.best_primary_metric_val = current_val
-                self.patience_counter = 0
-                # Cache raw outputs for post-training threshold grid search
-                self._best_val_logits = val_metrics['logits'].clone()
-                self._best_val_labels = val_metrics['labels'].clone()
-                self.save_checkpoint(epoch, val_metrics, is_best=True)
-                is_best = True
+                
+                # Logging
+                self.writer.add_scalar('Loss/val', val_loss, epoch)
+                self.writer.add_scalar('total_loss/val', val_loss, epoch)
+                if len(tasks) == 1:
+                    self.writer.add_scalar('PR_AUC/val', val_metrics.get('auc_pr', 0.0), epoch)
+                    self.writer.add_scalar('F1/val', val_metrics.get('f1', 0.0), epoch)
+                for task in tasks:
+                    if f'auc_pr_{task}' in val_metrics:
+                        self.writer.add_scalar(f'PR_AUC_{task}/val', val_metrics[f'auc_pr_{task}'], epoch)
+                    if f'f1_{task}' in val_metrics:
+                        self.writer.add_scalar(f'F1_{task}/val', val_metrics[f'f1_{task}'], epoch)
+                    if f'loss_{task}' in val_metrics:
+                        self.writer.add_scalar(f'{task}_loss/val', val_metrics[f'loss_{task}'], epoch)
+                        self.writer.add_scalar(f'Loss/{task}_val', val_metrics[f'loss_{task}'], epoch)
+
+                for task in tasks:
+                    if f'loss_{task}_frame' in val_metrics:
+                        self.writer.add_scalar(f'{task}_frame_loss/val', val_metrics[f'loss_{task}_frame'], epoch)
+                        self.writer.add_scalar(f'Loss/{task}_frame_val', val_metrics[f'loss_{task}_frame'], epoch)
+                    if f'loss_{task}' in val_metrics:
+                        t_val_tot = val_metrics[f'loss_{task}'] + val_metrics.get(f'loss_{task}_frame', 0.0)
+                        self.writer.add_scalar(f'{task}_total_loss/val', t_val_tot, epoch)
+                        self.writer.add_scalar(f'Loss/{task}_total_val', t_val_tot, epoch)
+                if 'frame_proxy_auROC' in val_metrics or 'frame_proxy_auroc' in val_metrics:
+                    auroc_key = 'frame_proxy_auroc' if 'frame_proxy_auroc' in val_metrics else 'frame_proxy_auROC'
+                    self.writer.add_scalar('Frame_Proxy_AUROC/val', val_metrics[auroc_key], epoch)
+
+                # PR Curves per task
+                if self.config['tensorboard'].get('log_pr_curve', True):
+                    for task in tasks:
+                        t_labels = val_metrics.get(f'labels_{task}', val_metrics.get('labels') if task == primary_task else None)
+                        t_logits = val_metrics.get(f'logits_{task}', val_metrics.get('logits') if task == primary_task else None)
+                        if t_labels is not None and t_logits is not None and len(t_labels) > 1:
+                            if (t_labels > 0.5).any() and (t_labels <= 0.5).any():
+                                curve_tag = f'PR_Curve_{task}/val' if len(tasks) > 1 else 'PR_Curve/val'
+                                self.writer.add_pr_curve(curve_tag, t_labels, torch.sigmoid(t_logits), epoch)
+                
+                # Confusion Matrix
+                if 'cm' in val_metrics:
+                    self.log_confusion_matrix(val_metrics['cm'], epoch)
+                
+                # Audio Samples (Error Analysis)
+                if self.config['tensorboard'].get('log_audio_samples', True):
+                    self.log_audio_samples(epoch, val_metrics.get('samples', {}))
+                
+                # Early Stopping and Checkpointing — based on configured primary metric
+                is_best = False
+                current_val = val_metrics.get(self.primary_metric, float('nan'))
+                if math.isnan(current_val):
+                    logger.warning(
+                        f"Epoch {epoch}: {self.primary_metric} is NaN (likely single-class validation fold). "
+                        "Freezing patience counter."
+                    )
+                    self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
+                elif current_val > self.best_primary_metric_val:
+                    self.best_primary_metric_val = current_val
+                    self.patience_counter = 0
+                    # Cache raw outputs for post-training threshold grid search
+                    self._best_val_logits = val_metrics['logits'].clone()
+                    self._best_val_labels = val_metrics['labels'].clone()
+                    self.save_checkpoint(epoch, val_metrics, is_best=True)
+                    is_best = True
+                else:
+                    self.patience_counter += 1
+                    # Save latest anyway even if not best, to support robust resume
+                    self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
             else:
-                self.patience_counter += 1
-                # Save latest anyway even if not best, to support robust resume
+                val_loss, val_metrics = None, {}
+                is_best = False
+                extra_info = []
+                for task in tasks:
+                    t_tr_l = train_metrics.get(f'loss_{task}')
+                    if t_tr_l is not None:
+                        extra_info.append(f"{task.capitalize()} (L: {t_tr_l:.4f})")
+                extra_str = f" | {', '.join(extra_info)}" if extra_info else ""
+                print(
+                    f"[Epoch {epoch:02d}/{self.epochs:02d}] "
+                    f"Train Loss: {train_loss:.4f}, PR-AUC: {train_metrics.get('auc_pr', 0.0):.4f}, F1: {train_metrics.get('f1', 0.0):.4f} | "
+                    f"Val: [Skipped (interval={self.eval_interval})]"
+                    f"{extra_str}",
+                    flush=True
+                )
+                # Freeze patience_counter (do NOT increment when validation is skipped)
+                # Save latest checkpoint for safe resumption
                 self.save_checkpoint(epoch, val_metrics, is_best=False, only_latest=True)
 
             epoch_time = time.time() - epoch_start_time
@@ -1143,12 +1167,12 @@ class Trainer:
                 'train_loss': float(train_loss),
                 'train_auc_pr': float(train_metrics.get('auc_pr', 0.0)),
                 'train_f1': float(train_metrics.get('f1', 0.0)),
-                'val_loss': float(val_loss),
-                'val_auc_pr': float(val_metrics.get('auc_pr', 0.0)),
-                'val_f1': float(val_metrics.get('f1', 0.0)),
-                'val_accuracy': float(val_metrics.get('accuracy', 0.0)),
-                'val_precision': float(val_metrics.get('precision', 0.0)),
-                'val_recall': float(val_metrics.get('recall', 0.0)),
+                'val_loss': float(val_loss) if val_loss is not None else None,
+                'val_auc_pr': float(val_metrics.get('auc_pr', 0.0)) if should_validate else None,
+                'val_f1': float(val_metrics.get('f1', 0.0)) if should_validate else None,
+                'val_accuracy': float(val_metrics.get('accuracy', 0.0)) if should_validate else None,
+                'val_precision': float(val_metrics.get('precision', 0.0)) if should_validate else None,
+                'val_recall': float(val_metrics.get('recall', 0.0)) if should_validate else None,
                 'lr_head': lr_head,
                 'lr_backbone': lr_backbone,
                 'is_best': bool(is_best),
@@ -1177,7 +1201,7 @@ class Trainer:
             if patience > 0 and self.patience_counter >= patience:
                 print(
                     f"Early stopping at epoch {epoch} "
-                    f"({self.primary_metric} did not improve for {patience} epochs)"
+                    f"({self.primary_metric} did not improve for {patience} evaluated epochs)"
                 )
                 break
 
@@ -1290,7 +1314,7 @@ class Trainer:
     # ──────────────────────────────────────────────────────────────────────
     def save_checkpoint(self, epoch, metrics, is_best=False, only_latest=False):
         save_mode = self.config['checkpoint']['save_mode']
-        f1 = metrics['f1']
+        f1 = metrics.get('f1', 0.0)
         
         if save_mode == 'delta':
             # Save all parameters that were being trained (requires_grad=True)
