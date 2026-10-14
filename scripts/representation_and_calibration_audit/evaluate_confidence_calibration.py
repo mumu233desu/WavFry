@@ -40,10 +40,17 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
+from wavfry.eval.acoustic_degradation import (
+    AcousticDegradationEngine,
+    PARADIGM_A_CONDITIONS,
+    get_acoustic_degradation_engine,
+)
 from scripts.representation_and_calibration_audit.calibration_core import (
     compute_reliability_diagram_bins,
+    format_paradigm_a_summary_table,
     plot_domain_shift_comparison,
     plot_reliability_diagram,
+    plot_snr_decay_curves,
 )
 
 
@@ -117,7 +124,12 @@ def parse_args():
         "--eval-domains",
         nargs="+",
         default=["clean"],
-        help="List of acoustic domains to evaluate: 'clean', 'noise_10db', 'noise_0db', 'reverb'.",
+        help="List of acoustic domains to evaluate: 'clean', 'cafe_5db', 'reverb', etc.",
+    )
+    parser.add_argument(
+        "--paradigm-a",
+        action="store_true",
+        help="Execute complete Paradigm A Factorial Matrix (3 Noise Scenarios [Cafe, Car, Street] x 3 SNR levels [15, 5, 0 dB] + Clean & Reverb controls).",
     )
     return parser.parse_args()
 
@@ -220,42 +232,6 @@ def prepare_dataloader(
     return loader, paradigm
 
 
-def apply_domain_degradation(waveforms: torch.Tensor, domain: str) -> torch.Tensor:
-    """Apply domain acoustic degradation (clean, noise, or simple reverb approximation)."""
-    if domain.lower() in ("clean", "default"):
-        return waveforms
-
-    if "noise" in domain.lower():
-        # Parse SNR from string like 'noise_10db' or 'noise_0db'
-        snr_db = 10.0
-        if "0db" in domain.lower():
-            snr_db = 0.0
-        elif "10db" in domain.lower():
-            snr_db = 10.0
-        elif "20db" in domain.lower():
-            snr_db = 20.0
-
-        signal_pwr = torch.mean(waveforms ** 2, dim=-1, keepdim=True).clamp_min(1e-9)
-        noise_pwr = signal_pwr / (10.0 ** (snr_db / 10.0))
-        noise = torch.randn_like(waveforms) * torch.sqrt(noise_pwr)
-        return waveforms + noise
-
-    if "reverb" in domain.lower():
-        # Decaying exponential impulse response approximation if no external RIR loaded
-        decay_time_samples = int(16000 * 0.3)  # 300ms decay
-        t = torch.linspace(0, 1, decay_time_samples, device=waveforms.device)
-        rir = torch.exp(-5.0 * t) * torch.randn(decay_time_samples, device=waveforms.device)
-        rir = rir / torch.norm(rir).clamp_min(1e-9)
-        rir = rir.view(1, 1, -1)
-
-        # 1D Conv convolution
-        padded_wf = torch.nn.functional.pad(waveforms.unsqueeze(1), (decay_time_samples - 1, 0))
-        reverbed = torch.nn.functional.conv1d(padded_wf, rir).squeeze(1)
-        return 0.7 * waveforms + 0.3 * reverbed
-
-    return waveforms
-
-
 def evaluate_domain_predictions(
     model: WavFryClassifier,
     loader: DataLoader,
@@ -273,6 +249,7 @@ def evaluate_domain_predictions(
     task_preds: Dict[str, Dict[str, List[float]]] = {t: {} for t in eval_tasks}
 
     print(f"[Evaluation] Evaluating domain '{domain}' across tasks {eval_tasks}...")
+    engine = get_acoustic_degradation_engine()
 
     total_evaluated = 0
     with torch.no_grad():
@@ -284,8 +261,9 @@ def evaluate_domain_predictions(
             valid = valid.to(device)
             lengths = lengths.to(device)
 
-            # Apply domain-specific perturbation
-            wf_pert = apply_domain_degradation(waveforms, domain)
+            # Apply domain-specific perturbation via unified AcousticDegradationEngine
+            batch_seed = 42 + batch_idx * 1009
+            wf_pert = engine.apply_tensor(waveforms, domain, seed=batch_seed)
 
             # Forward block
             block_out = model(
@@ -363,7 +341,11 @@ def main():
     loader, paradigm = prepare_dataloader(config, manifest_path, args.split, args.batch_size)
 
     eval_tasks = ["creaky", "breathy"] if args.task == "all" else [args.task]
-    domains = args.eval_domains
+    if args.paradigm_a:
+        domains = PARADIGM_A_CONDITIONS
+        print(f"[Paradigm A] Activated complete 3x3 Factorial Matrix + Controls ({len(domains)} conditions).")
+    else:
+        domains = args.eval_domains
 
     all_metrics_rows: List[Dict[str, Any]] = []
     task_domain_bins: Dict[str, Dict[str, Any]] = {t: {} for t in eval_tasks}
@@ -374,6 +356,7 @@ def main():
         f"- **Split**: `{args.split}` | **Evaluation Paradigm**: `{paradigm}`",
         f"- **Confidence Bins**: `{args.bins}`",
         f"- **Evaluated Domains**: `{', '.join(domains)}`",
+        f"- **Protocol**: `{'Paradigm A (3x3 Factorial Matrix + Controls)' if args.paradigm_a else 'Custom Domain Selection'}`",
         f"- **Timestamp**: `{time.strftime('%Y-%m-%d %H:%M:%S')}`",
         "",
         "---",
@@ -421,9 +404,37 @@ def main():
                     output_path=plot_path,
                 )
 
-    # 3. Plot Domain Shift comparison if multiple domains evaluated
+    # 3. Process Paradigm A outputs and Domain Shift comparisons
     for task_name in eval_tasks:
-        if len(domains) > 1:
+        # Check if any Paradigm A conditions exist
+        has_paradigm_a = any(c in task_domain_bins[task_name] for c in ("cafe_15db", "cafe_5db", "car_5db", "street_5db"))
+        if has_paradigm_a:
+            p_a_table_md, p_a_rows = format_paradigm_a_summary_table(task_domain_bins[task_name], task_name)
+            report_md_lines.extend([
+                p_a_table_md,
+                f"- **SNR-ECE Degradation Curves**: `snr_ece_decay_{task_name}.pdf` / `.png`",
+                "",
+                "---",
+                "",
+            ])
+
+            # Export Paradigm A CSV
+            pa_csv_path = output_dir / f"paradigm_a_factorial_matrix_{task_name}.csv"
+            with open(pa_csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["task", "condition", "scenario", "snr_db", "ece_pct", "mce_pct", "brier_score", "n_samples"])
+                writer.writeheader()
+                writer.writerows(p_a_rows)
+            print(f"[Done] Exported Paradigm A Factorial CSV to {pa_csv_path}")
+
+            # Plot publication-grade SNR decay curves
+            decay_plot_path = output_dir / f"snr_ece_decay_{task_name}"
+            plot_snr_decay_curves(
+                domain_results=task_domain_bins[task_name],
+                task_name=task_name,
+                output_path=decay_plot_path,
+            )
+
+        if len(domains) > 1 and not has_paradigm_a:
             comparison_path = output_dir / f"reliability_diagram_domain_shift_{task_name}"
             plot_domain_shift_comparison(
                 domain_results=task_domain_bins[task_name],
@@ -433,7 +444,7 @@ def main():
 
         # Markdown report table
         report_md_lines.extend([
-            f"## Task: `{task_name.upper()}` Calibration Metrics",
+            f"## Task: `{task_name.upper()}` Detailed Domain Calibration Metrics",
             "| Domain | Evaluated Samples | ECE (%) | MCE (%) | Brier Score | Reliability Assessment |",
             "| :--- | :---: | :---: | :---: | :---: | :--- |",
         ])
@@ -447,7 +458,7 @@ def main():
         report_md_lines.extend([
             "",
             f"- **Clean Reliability Diagram**: `reliability_diagram_{task_name}_clean.pdf` / `.png`",
-            f"- **Domain Shift Comparison**: `reliability_diagram_domain_shift_{task_name}.pdf` / `.png`" if len(domains) > 1 else "",
+            f"- **Domain Shift Comparison**: `reliability_diagram_domain_shift_{task_name}.pdf` / `.png`" if (len(domains) > 1 and not has_paradigm_a) else "",
             "",
             "---",
             "",
