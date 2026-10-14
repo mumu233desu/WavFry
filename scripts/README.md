@@ -1,103 +1,109 @@
-# WavFry 脚本库全景导航索引 (`scripts/`)
+# WavFry 实验评测与论文图表映射全景指南 (`scripts/`)
 
-本目录汇总了 WavFry 发声态多任务学习系统的全生命周期脚本，涵盖**数据构建、模型训练、推断部署、论文图表审计评测与人机协同标注管线**。
+本目录汇总了 WavFry 发声态多任务学习系统的全生命周期脚本。为了方便后续撰写学术论文、技术报告以及组织可复现实验，本指南建立了**论文图表（Tables & Figures）与评测脚本、输出资产、标准执行命令的一对一映射全景图**。
 
-> **⚠️ 核心执行规范**：
-> 本工程专属底层音频与声学依赖环境由 `uv` 全权管理。**严禁直接使用全局裸 `python` 执行任何脚本，必须统一使用 `uv run`**：
-> ```bash
-> # ✅ 正确范式：
-> uv run python scripts/train.py --config config/ablation_weak_on_vsdc.yaml
-> uv run pytest tests/
-> ```
+> **⚠️ 核心执行守则**：
+> 全工程所有底层依赖由 `uv` 严格隔离。**严禁直接使用裸 `python`，必须统一使用 `uv run` 执行**。
 
 ---
 
-## 1. 论文发表级审计与评测核心套件（子目录规范）
+## 1. 🎓 论文图表与测试评测脚本一对一映射总览 (Paper Roadmap)
 
-项目遵循**单一职责、高度内聚**的原则，将学术评测与实验验证划分为专门的子包，每个子包均配有详细的独立 `README.md` 与自动化测试：
+| 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Table 1: 主性能基准对比表**<br>(Main Benchmark) | 汇报 WavFry（Weak-On / Weak-Off）与经典对比基线（SVM 传统韵律、WavLM Zero-shot、纯线性头）在干净集与发音人泛化下的 PR-AUC、ROC-AUC、F1 指标。 | **`scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py`**<br>(基线对比配合 `scripts/experiments/run_prosodic_baseline.py`) | `data/experiments/statistical_bootstrap_audit/paired_bootstrap_report.csv`<br>`paired_bootstrap_audit_clean.md` | `uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py --model-a <weak_on> --model-b <weak_off>` |
+| **Table 2: 发音人级非参数配对 Bootstrap 显著性检验**<br>(Significance Audit) | 从统计学严谨角度裁定气声弱监督增益是否超越随机扰动（95% 置信区间、双尾经验 $p$ 检验与 8/9 发音人胜率），同时硬核证明对嘎裂声主任务零负迁移。 | **`scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py`** | 同上，自动导出详细的配对差异统计表与发音人胜/负/平分布。 | `uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py --model-a <weak_on> --model-b <weak_off> --n-bootstrap 1000` |
+| **Table 3 & Figure 4: LOLO 逐层消融敏感度矩阵**<br>(Micro Layer Ablation) | 剖析 WavLM 13 层（L0 CNN + L1~L12）的微观不可或缺性。揭示嘎裂声（底层微细脉冲 L1~L3）与气声（中层共振峰与高层语义 L4~L8）的**差异化语音学生理层级分布**。 | **`scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py`** | `data/experiments/lolo_ablation_evaluation/lolo_ablation_report.csv`<br>`lolo_ablation_summary.json` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py --checkpoint <ckpt>` |
+| **Table 4 & Figure 5: 宏观自顶向下层截断与轻量部署边界**<br>(Depth Truncation Pareto) | 自顶向下依次丢弃顶层 $k$ 个 Transformer 块（$k=1..12$）。论证保留浅层/中层（如前 6~7 层）即可无损保持精度，给出精度-算力/延迟 Pareto 前沿。 | **`scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py`** | `data/experiments/topk_layer_truncation_evaluation/topk_layer_truncation_report.csv`<br>`topk_layer_truncation_report.md` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py --checkpoint <ckpt>` |
+| **Table 5: 范式 A 12 场景声学退化因子校准矩阵**<br>(Paradigm A Calibration) | 覆盖 3 真实场景（Cafe/Car/Street）× 3 档 SNR（15/5/0 dB）+ 3 个对照组（Clean/Reverb/Reverb+Cafe 5dB）。量化各声学环境下的 ECE/MCE/Brier 置信度失调。 | **`scripts/representation_and_calibration_audit/evaluate_confidence_calibration.py`** | `data/experiments/confidence_calibration_audit/weak_on_vsdc/paradigm_a_factorial_matrix_{task}.csv`<br>`calibration_audit_report.md` | `uv run python scripts/representation_and_calibration_audit/evaluate_confidence_calibration.py --checkpoint <ckpt> --paradigm-a` |
+| **Figure 6: 可靠性图与信噪比单调衰减曲线**<br>(Reliability & Decay Curves) | 呈现两栏式发布级可靠性图（经验准确率阶梯图 + 样本分箱直方图），以及 ECE 随信噪比由 15dB 恶化至 0dB 的单调衰减物理规律曲线。 | **`scripts/representation_and_calibration_audit/evaluate_confidence_calibration.py`** | `data/experiments/confidence_calibration_audit/weak_on_vsdc/snr_ece_decay_{task}.pdf`<br>`reliability_diagram_{task}_clean.pdf` | 同上（随评测自动导出矢量 PDF 与高清 PNG） |
+| **Table 6 & Figure 7: CKA 表征几何热力图与跨环境稳定性**<br>(Representation CKA) | 构建 13×13 线性 CKA 矩阵，展示 SSL 骨干内部特征模块化；计算 Clean vs. 真实噪声（如 5dB Cafe/Car）下的同一层表征保真度，证明声学抗扰稳定性。 | **`scripts/representation_and_calibration_audit/evaluate_representation_cka.py`** | `data/experiments/representation_cka_audit/layer_cka_heatmap_{task}.pdf`<br>`cka_cross_condition_stability.pdf` | `uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py --checkpoint <ckpt> --compare-noise --noise-condition cafe_5db` |
+| **Figure 8: 典型案例 Praat 语图与时序轨迹对齐**<br>(Qualitative Case Studies) | 展示典型连续自然对话中嘎裂声声门脉冲周期、气声中高频湍流的声学语图，叠加模型逐帧预测输出与人工精标 Ground Truth 的完美契合。 | **`scripts/export_textgrid.py`** | 生成标准 Praat TextGrid 文件，供语音学专家在 Praat 中截取出版级波形与窄带语图。 | `uv run python scripts/export_textgrid.py --manifest manifests/segments_multi.csv` |
+| **Table 7: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF) | 汇报 ONNX 导出后在 CPU 与 GPU 上的单帧/单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。 | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`** | `deployments/wavfry_multitask.onnx` 及导出测试报告。 | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` |
+
+---
+
+## 2. 🗂️ 评测套件子目录架构与职责内聚
+
+为了杜绝历史零散脚本与“死脚本”滋生，所有评测功能均收敛于专属包中，且各包具备独立的 `README.md`：
 
 ```
 scripts/
-├── statistical_bootstrap_audit/          # [学术审计] 发音人级非参数聚类 Bootstrap 检验
-│   ├── evaluate_paired_models_bootstrap.py # 唯一官方双模型配对 Bootstrap 显著性检验入口
+├── statistical_bootstrap_audit/          # 对应 Table 1 & Table 2
+│   ├── evaluate_paired_models_bootstrap.py # [唯一入口] 发音人级聚类非参数配对 Bootstrap 检验
 │   └── README.md
-├── layer_importance_and_truncation_audit/# [学术审计] WavLM 层重要度与深度裁剪敏感度分析
-│   ├── evaluate_lolo_ablation.py          # LOLO 逐层剥离消融评测（微观不可或缺性）
-│   ├── evaluate_topk_layer_truncation.py  # 自顶向下逐层截断评测（宏观有效计算深度）
+├── layer_importance_and_truncation_audit/# 对应 Table 3, Table 4, Figure 4, Figure 5
+│   ├── evaluate_lolo_ablation.py          # [唯一入口] LOLO 逐层剥离消融评测（微观层不可或缺性）
+│   ├── evaluate_topk_layer_truncation.py  # [唯一入口] 自顶向下逐层截断评测（宏观计算深度 Pareto）
 │   └── README.md
-├── representation_and_calibration_audit/ # [学术审计] 表征 CKA 几何相似度与置信度校准
-│   ├── evaluate_confidence_calibration.py # 范式 A（12 场景）置信度校准与可靠性图生成
-│   ├── evaluate_representation_cka.py     # 13x13 层级 CKA 热力图与跨退化环境稳定性
-│   ├── calibration_core.py                # ECE / MCE / Brier 分数计算与绘图引擎
-│   ├── cka_core.py                        # 快速 Frobenius 范数与无偏 HSIC 计算引擎
+├── representation_and_calibration_audit/ # 对应 Table 5, Table 6, Figure 6, Figure 7
+│   ├── evaluate_confidence_calibration.py # [唯一入口] 范式 A 12 场景置信度校准与可靠性图生成
+│   ├── evaluate_representation_cka.py     # [唯一入口] 13x13 层级 CKA 热力图与跨退化环境稳定性
+│   ├── calibration_core.py                # ECE / MCE / Brier 分数计算与绘图核心引擎
+│   ├── cka_core.py                        # 快速 Frobenius 范数与无偏 HSIC 计算核心库
 │   └── README.md
-├── gemini_tts_synthesis/                 # [数据合成] 日语副语言气声双段式 TTS 合成切分标注管线
-│   ├── script_generator.py                # 语音学 Prompt 驱动的对话剧本生成
-│   ├── audio_dialogue_slicer.py           # 三阶段无爆音智能切分（TIFA+RMS能量谷+零交叉）
-│   ├── textgrid_labeler.py                # 元音抽取与分片标注导出
+├── gemini_tts_synthesis/                 # 数据工程：日语副语言气声双段式 TTS 合成切分标注管线
 │   └── README.md
-├── mllm_annotation/                      # [人机协同] 多模态大模型（MLLM）气声粗标预填
-│   ├── mllm_batch_prefill.py              # 并发预填、原子分片写入与人工劳动成果零覆盖保护
-│   ├── mllm_alignment_core.py             # TextGrid 音素强制对齐时间戳抽取
+├── mllm_annotation/                      # 数据工程：多模态大模型（MLLM）气声粗标预填与强制对齐管线
 │   └── README.md
-├── test_annot_mllm/                      # [前期探索] MLLM 气声检测基准指标对比
+├── experiments/                          # 基准支撑：传统韵律物理特征（Jitter/CPPS）与小样本实验
 │   └── README.md
-├── experiments/                          # [对比基线] 传统韵律物理特征（Jitter/CPPS）与小样本实验
-│   └── README.md
-└── legacy/                               # [历史归档] 已废弃/被重构的历史脚本归档库
+└── legacy/                               # 历史防腐：已废弃或被重构的旧脚本归档与说明
     └── README.md
 ```
 
 ---
 
-## 2. 核心生产与训练脚本 (`scripts/` 根目录)
+## 3. 🚀 论文完整评测复现流（One-Stop Reproduction Pipeline）
 
-| 脚本 | 核心职能 | 核心参数与执行示例 |
-| :--- | :--- | :--- |
-| **`train.py`** | **主模型训练启动程序**<br>支持多任务学习、VSDC-Net 背景抑制头、QUT-NOISE 动态加噪/混响退化课程调度、动态早停与断点恢复。 | `uv run python scripts/train.py --config config/ablation_weak_on_vsdc.yaml`<br>`uv run python scripts/train.py --resume R:\checkpoints\ablation_weak_on_vsdc\latest.pt` |
-| **`predict.py`** | **端到端批量与单音频推断**<br>支持对任意外部 `.wav` 预测嘎裂声与气声时序区间。 | `uv run python scripts/predict.py --checkpoint <path> --audio test.wav` |
-| **`export_deployment.py`** | **部署模型导出程序**<br>将 PyTorch 训练权重导出为优化后的 ONNX 格式，支持动态批处理与变长音频输入。 | `uv run python scripts/export_deployment.py --checkpoint <path> --output-dir deployments/` |
-| **`export_textgrid.py`** | **Praat TextGrid 格式导出**<br>将模型预测出的发声态区间写入标准 TextGrid，供语音学专家在 Praat 中直观可视化波形与语图。 | `uv run python scripts/export_textgrid.py --manifest manifests/segments_multi.csv` |
-| **`process_qut_noise.py`** | **真实噪声与物理 RIR 预处理**<br>切除 QUT-NOISE 扫频标定段、48k $\to$ 16k 重采样、提取第 1 列并施加 Parseval 单位能量归一化。 | `uv run python scripts/process_qut_noise.py --qut-dir data/qut_noise_raw` |
+当最终模型检查点（`best_model.pt`）就绪后，按照以下标准流水线即可一站式生成论文所需的全部图表数据：
 
----
+### Step 1: 主性能与配对显著性检验 (Table 1 & Table 2)
+```bash
+uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py \
+  --model-a R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --model-b R:\checkpoints\final_weak_off_baseline\best_model.pt \
+  --n-bootstrap 1000 \
+  --output-dir data/experiments/statistical_bootstrap_audit
+```
 
-## 3. 数据集构建与质量管控脚本
+### Step 2: 层敏感度与自顶向下截断消融 (Table 3, Table 4, Figure 4, Figure 5)
+```bash
+# 1. LOLO 微观逐层剥离消融
+uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py \
+  --checkpoint R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --split val \
+  --output-dir data/experiments/lolo_ablation_evaluation
 
-| 脚本 | 核心职能 |
-| :--- | :--- |
-| **`build_manifest.py`** | 汇总清洗后的强标注短音频与标注分片，生成主清单 `manifests/segments_multi.csv`。 |
-| **`build_weak_manifest.py`** | 汇总无人工标注、经由 MLLM/TTS 产生的弱标签清单 `manifests/weak_breathy.csv`。 |
-| **`review_annotation_quality.py`** | 校验标注数据质量，检查时间戳合法性与置信度分布。 |
-| **`audit_annotation_integrity.py`** | 审计人工标注资产保护（Human Labor Protection），确保无数据污染。 |
-| **`annotate_non_breathy_ishi.py`** | 基于 Carlos T. Ishi 语音学启发式规则标注常态（Modal）对照语音段。 |
-| **`annotate_non_breathy_rules.py`** | 基于停顿与能量阈值规则提取常态音频片段。 |
-| **`convert_textgrid_to_breathy_cache.py`** | 将 TextGrid 格式对齐文件预先转换为轻量二进制缓存。 |
-| **`diagnose_breathy_checkpoint.py`** | 针对特定 Checkpoint 的多任务头进行权重范数与注意力热力图快速诊断。 |
-| **`download_ucla_breathy.py`** | 下载并校验 UCLA 经典发声态语音学基准语料。 |
+# 2. Top-k 宏观自顶向下截断
+uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py \
+  --checkpoint R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --split val \
+  --output-dir data/experiments/topk_layer_truncation_evaluation
+```
 
----
+### Step 3: 范式 A 声学退化置信度校准与衰减曲线 (Table 5 & Figure 6)
+```bash
+uv run python scripts/representation_and_calibration_audit/evaluate_confidence_calibration.py \
+  --checkpoint R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --paradigm-a \
+  --output-dir data/experiments/confidence_calibration_audit/weak_on_vsdc
+```
 
-## 4. 声学统计与实验打包辅助
+### Step 4: CKA 表征几何与退化稳定性 (Table 6 & Figure 7)
+```bash
+uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py \
+  --checkpoint R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --compare-noise \
+  --noise-condition cafe_5db \
+  --output-dir data/experiments/representation_cka_audit
+```
 
-| 脚本 | 核心职能 |
-| :--- | :--- |
-| **`stat_esd_cpps.py`** | 统计 ESD 语料库的倒谱峰值突出度（CPPS）基线分布。 |
-| **`stat_jvnv_cpps.py`** | 统计 JVNV 语料库的 CPPS 声学物理分布。 |
-| **`stat_jvnv_voiced_segments.py`** | 统计发音人浊音段比例与平均音长。 |
-| **`generate_loocv_2fold_report.py`** | 聚合留一发音人交叉验证（LOOCV）2-Fold 实验指标并生成报告。 |
-| **`package_experiment.py`** | 自动化归档指定 run 的 checkpoint、log、tensorboard 与 config 为独立交付压缩包。 |
-| **`test_augmentation.py`** | 针对音频加噪与混响数据增强流水线的快速单音频声学校验脚本。 |
-| **`test_onnx_export.py`** | 验证导出的 ONNX 模型与 PyTorch 原生模型输出误差（Torch vs. ONNX Runtime 数值对齐）。 |
+### Step 5: 部署模型导出与推断延迟验证 (Table 7)
+```bash
+uv run python scripts/export_deployment.py \
+  --checkpoint R:\checkpoints\final_weak_on_vsdc\best_model.pt \
+  --output-dir deployments/
 
----
-
-## 5. 快速导航建议
-
-- **日常训练** $\to$ 参考 `scripts/train.py` 与 `config/` 目录；
-- **论文评测与图表生成** $\to$ 直接进入对应子包：
-  - Table 1 / Table 2 / 显著性 $p$ 检验 $\to$ `scripts/statistical_bootstrap_audit/`
-  - Figure 4 / Figure 5 / 消融实验 $\to$ `scripts/layer_importance_and_truncation_audit/`
-  - Figure 6 / Figure 7 / 校准与 CKA $\to$ `scripts/representation_and_calibration_audit/`
-- **语料生产与标注** $\to$ `scripts/gemini_tts_synthesis/` 与 `scripts/mllm_annotation/`；
-- **排查历史弃用脚本** $\to$ 参考 `scripts/legacy/README.md`。
+uv run python scripts/test_onnx_export.py
+```
