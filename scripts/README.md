@@ -99,11 +99,11 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 ---
 
-### 第四部分：定性案例与部署基准
+### 第四部分：语音学生理声学指标可解释性与边缘部署
 
 | 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Figure 8: 典型案例 Praat 语图与双发声态对齐**<br>(Qualitative Case Studies) | 展示典型连续自然对话中嘎裂声声门脉冲周期、气声中高频湍流的窄带语图，叠加双任务逐帧预测概率轨迹与人工精标 Ground Truth 的完美契合。 | **`scripts/export_textgrid.py`** | 生成标准 Praat TextGrid 文件，供在 Praat 中直接导出出版级截图。 | `uv run python scripts/export_textgrid.py --manifest manifests/segments_multi.csv` | 🟡 **待定选发话段并推理**<br>• 需在测试集筛选 2~3 个同时具备典型气声与嘎裂声的发话段；<br>• 用终版模型推理导出 TextGrid，导出出版级语图。 |
+| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/experiments/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`fig8_acoustic_physical_stratification.pdf` | `uv run python scripts/experiments/evaluate_acoustic_correlations.py --checkpoint <ckpt>` | 🟡 **待新建脚本并执行**<br>• 统一调用 Parselmouth 全样本批处理；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并导出出版级小提琴图。 |
 | **Table 9: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF) | 汇报 ONNX 导出后在 CPU 与 GPU 上的单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。 | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`** | `deployments/wavfry_multitask.onnx` 及导出验证报告。 | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` | 🟢 **管线就绪，待终版导出实测**<br>• 导出包装器已支持多任务与帧级头；<br>• 待终版 Checkpoint 训练完毕后，导出最终 ONNX 并实测 CPU/GPU 推理延迟与 RTF。 |
 
 ---
@@ -187,6 +187,11 @@ uv run python scripts/representation_and_calibration_audit/evaluate_representati
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
   --compare-noise \
   --output-dir data/experiments/representation_cka_audit
+
+# 4. 语音学生理声学指标可解释性校验 (Figure 8 & Table 8b)
+uv run python scripts/experiments/evaluate_acoustic_correlations.py \
+  --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
+  --output-dir data/experiments/interpretability
 ```
 
 ### Step 4: 边缘部署模型导出与推断延迟验证 (Table 9)
