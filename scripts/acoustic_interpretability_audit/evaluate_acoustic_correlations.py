@@ -151,28 +151,56 @@ def extract_physical_features_single(
     return res
 
 
-def extract_batch_physical_features(manifest_df: pd.DataFrame) -> pd.DataFrame:
+def _extract_single_worker(row_tuple: Tuple[str, str, float, float, str, str]) -> Dict[str, Any]:
+    audio_path_str, interval_key, start_s, end_s, dataset_id, file_key = row_tuple
+    feats = extract_physical_features_single(Path(audio_path_str), start_s, end_s)
+    return {
+        "interval_key": interval_key,
+        "dataset_id": dataset_id,
+        "file_key": file_key,
+        "start_s": start_s,
+        "end_s": end_s,
+        **feats,
+    }
+
+
+def extract_batch_physical_features(
+    manifest_df: pd.DataFrame, max_workers: Optional[int] = None
+) -> pd.DataFrame:
     """Extract physical acoustic metrics for missing rows in manifest."""
-    rows = []
     total = len(manifest_df)
-    for idx, (_, row) in enumerate(manifest_df.iterrows()):
-        if (idx + 1) % 100 == 0 or idx == total - 1:
-            logger.info(f"Extracting acoustic features: [{idx + 1}/{total}]...")
+    if total == 0:
+        return pd.DataFrame()
 
-        p = Path(row["audio_path"])
-        s = float(row["start_s"])
-        e = float(row["end_s"])
-        feats = extract_physical_features_single(p, s, e)
+    items = [
+        (
+            str(row["audio_path"]),
+            str(row["interval_key"]),
+            float(row["start_s"]),
+            float(row["end_s"]),
+            str(row.get("dataset_id", "cs_dialogue")),
+            str(row.get("file_key", Path(str(row["audio_path"])).stem)),
+        )
+        for _, row in manifest_df.iterrows()
+    ]
 
-        record = {
-            "interval_key": row["interval_key"],
-            "dataset_id": row.get("dataset_id", "cs_dialogue"),
-            "file_key": row.get("file_key", p.stem),
-            "start_s": s,
-            "end_s": e,
-            **feats,
-        }
-        rows.append(record)
+    # For tiny batches, run serially to avoid process spawn overhead
+    if total <= 20:
+        rows = [_extract_single_worker(item) for item in items]
+        return pd.DataFrame(rows)
+
+    workers = max_workers or min(12, os.cpu_count() or 4)
+    logger.info(f"Extracting acoustic features in parallel across {workers} CPU workers ({total} intervals)...")
+
+    import concurrent.futures
+
+    rows = []
+    chunksize = max(1, total // (workers * 4))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+        for idx, record in enumerate(executor.map(_extract_single_worker, items, chunksize=chunksize)):
+            rows.append(record)
+            if (idx + 1) % 100 == 0 or idx == total - 1:
+                logger.info(f"Acoustic features progress: [{idx + 1}/{total}] ({(idx + 1) / total * 100:.1f}%)")
 
     return pd.DataFrame(rows)
 
