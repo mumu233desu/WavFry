@@ -99,47 +99,80 @@ def compute_binary_metrics(
     }
 
 
+def _extract_single_praat_worker(item: Tuple[str, str, float, float, str, str, str]) -> Dict[str, Any]:
+    audio_path_str, interval_key, start_s, end_s, dataset_id, file_key, condition = item
+    audio_path = Path(audio_path_str)
+    if not audio_path.exists():
+        prob = 0.0
+    else:
+        try:
+            import parselmouth
+
+            sound = parselmouth.Sound(str(audio_path))
+            pitch = sound.to_pitch(time_step=0.015, pitch_floor=50.0, pitch_ceiling=350.0)
+            xs = np.array(pitch.xs())
+            freqs = np.array(pitch.selected_array["frequency"])
+            mask = (xs >= start_s) & (xs <= end_s)
+            if np.sum(mask) == 0:
+                prob = 0.0
+            else:
+                sub_f = freqs[mask]
+                uv_ratio = np.mean(sub_f == 0.0)
+                prob = float(np.clip(uv_ratio, 0.0, 1.0))
+        except Exception:
+            prob = 0.0
+
+    return {
+        "interval_key": interval_key,
+        "dataset_id": dataset_id,
+        "file_key": file_key,
+        "start_s": start_s,
+        "end_s": end_s,
+        "model_name": "Praat",
+        "tier": condition,
+        "prob_creaky": prob,
+    }
+
+
 def extract_praat_predictions(
     manifest_df: pd.DataFrame,
     degradation_engine: Optional[AcousticDegradationEngine] = None,
     condition: str = "clean",
+    max_workers: Optional[int] = None,
 ) -> pd.DataFrame:
     """Extract Praat pitch unvoiced/perturbation creaky predictions using Parselmouth."""
-    import parselmouth
+    total = len(manifest_df)
+    if total == 0:
+        return pd.DataFrame()
+
+    items = [
+        (
+            str(row["audio_path"]),
+            str(row["interval_key"]),
+            float(row["start_s"]),
+            float(row["end_s"]),
+            str(row.get("dataset_id", "cs_dialogue")),
+            str(row.get("file_key", Path(str(row["audio_path"])).stem)),
+            str(condition),
+        )
+        for _, row in manifest_df.iterrows()
+    ]
+
+    if total <= 20:
+        rows = [_extract_single_praat_worker(item) for item in items]
+        return pd.DataFrame(rows)
+
+    workers = max_workers or min(12, os.cpu_count() or 4)
+    logger.info(f"Extracting Praat predictions in parallel across {workers} CPU workers ({total} intervals)...")
+
+    import concurrent.futures
 
     rows = []
-    for _, row in manifest_df.iterrows():
-        audio_path = Path(row["audio_path"])
-        if not audio_path.exists():
-            prob = 0.0
-        else:
-            try:
-                sound = parselmouth.Sound(str(audio_path))
-                pitch = sound.to_pitch(time_step=0.015, pitch_floor=50.0, pitch_ceiling=350.0)
-                s = float(row["start_s"])
-                e = float(row["end_s"])
-                xs = np.array(pitch.xs())
-                freqs = np.array(pitch.selected_array["frequency"])
-                mask = (xs >= s) & (xs <= e)
-                if np.sum(mask) == 0:
-                    prob = 0.0
-                else:
-                    sub_f = freqs[mask]
-                    uv_ratio = np.mean(sub_f == 0.0)
-                    prob = float(np.clip(uv_ratio, 0.0, 1.0))
-            except Exception:
-                prob = 0.0
+    chunksize = max(1, total // (workers * 4))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+        for idx, record in enumerate(executor.map(_extract_single_praat_worker, items, chunksize=chunksize)):
+            rows.append(record)
 
-        rows.append({
-            "interval_key": row["interval_key"],
-            "dataset_id": row.get("dataset_id", "cs_dialogue"),
-            "file_key": row.get("file_key", audio_path.stem),
-            "start_s": float(row["start_s"]),
-            "end_s": float(row["end_s"]),
-            "model_name": "Praat",
-            "tier": condition,
-            "prob_creaky": prob,
-        })
     return pd.DataFrame(rows)
 
 

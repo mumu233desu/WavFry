@@ -194,7 +194,7 @@ def dump_model_predictions(
     degradation_engine: Any,
     out_csv_path: Union[str, Path],
     device: torch.device = torch.device("cpu"),
-    batch_size: int = 32,
+    batch_size: int = 128,
     tier_conditions: Optional[Dict[str, List[str]]] = None,
     sample_rate: int = 16000,
 ) -> pd.DataFrame:

@@ -126,6 +126,12 @@ def main():
         help="Base directory for experiment outputs.",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=128,
+        help="Inference batch size (default: 128, optimized for GPU VRAM).",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default="cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") != "" else "cpu",
@@ -203,6 +209,7 @@ dump_model_predictions(
     degradation_engine=deg_engine,
     out_csv_path=Path(r'{dump_target}'),
     device=torch.device('{args.device}'),
+    batch_size={args.batch_size},
 )
 print('Dump complete.')
 """,
