@@ -75,8 +75,8 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 | 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Table 1 & Figure 2: 主流前人基线横向对比与退化衰减曲线**<br>(Unified Baseline Benchmark) | **横向超越 4 大前人检测器**（Praat, Kane, DeepFry, CreaPy），且在 5 档声学退化下保持断层领先。<br>• **Figure 2**: 5 模型主折线，带浅色阴影带（Shaded Band 呈现 5 噪声方差）；<br>• **Table 1**: 5 梯度量化大表（附录附 19 条件明细）。 | **`scripts/baseline_comparison/evaluate_qut_baselines.py`**<br>(单脚本同时产出图与表) | `data/experiments/baselines/table1_baseline_benchmark.csv`<br>`fig2_baseline_noise_robustness.pdf` | `uv run python scripts/baseline_comparison/evaluate_qut_baselines.py` | 🟡 **待重构接入引擎**<br>• 新建单入口脚本接入退化引擎；<br>• 待新数据终版模型训练完成后，一键导出最终表格与矢量图。 |
-| **Table 2: 发音人性别公平性分析**<br>(Gender Demographic Fairness) | 评估模型在女性 vs 男性下的检测公平性，证明无发音人性别人群系统偏见（差异 < 2%）。<br>*(已剔除异构外部语料中不存在的三大方言区)* | **`scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py`** | `data/experiments/statistical_bootstrap_audit/gender_fairness_report.csv`<br>`fig_gender_fairness_violin.pdf` | `uv run python scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py --checkpoint <ckpt>` | 🟡 **待新建脚本并重跑**<br>• 归档旧方言脚本，新建纯净的性别公平性脚本；<br>• 待终版模型产出后统计导出。 |
+| **Table 1 & Figure 2: 主流前人基线横向对比与退化衰减曲线**<br>(Unified Baseline Benchmark) | **横向超越 4 大前人检测器**（Praat, Kane, DeepFry, CreaPy），且在 5 档声学退化下保持断层领先。<br>• **Figure 2**: 5 模型主折线，带浅色阴影带（Shaded Band 呈现 5 噪声方差）；<br>• **Table 1**: 5 梯度量化大表（附录附 19 条件明细）。 | **`scripts/baseline_comparison/evaluate_qut_baselines.py`**<br>(纯数据产出，解耦绘图) | `data/experiments/baselines/table1_baseline_comparison.csv`<br>`vowel_robustness_metrics.json` | `uv run python scripts/baseline_comparison/evaluate_qut_baselines.py` | 🟢 **管线就绪，待终版重刷**<br>• 已实现并验证增量缓存；<br>• 待新数据终版模型训练完成后，一键导出最终表格与矢量图。 |
+| **Table 2: 发音人性别公平性分析**<br>(Gender Demographic Fairness) | 评估模型在女性 vs 男性下的检测公平性，证明无发音人性别人群系统偏见（差异 < 2%）。<br>*(已剔除异构外部语料中不存在的三大方言区)* | **`scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py`** | `data/experiments/fairness/gender_fairness_distribution.csv`<br>`gender_metrics.json` | `uv run python scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 纯净的性别公平性脚本已落盘并跑通；<br>• 待终版模型产出后统计导出。 |
 
 ---
 
@@ -103,7 +103,7 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 | 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/experiments/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`fig8_acoustic_physical_stratification.pdf` | `uv run python scripts/experiments/evaluate_acoustic_correlations.py --checkpoint <ckpt>` | 🟡 **待新建脚本并执行**<br>• 统一调用 Parselmouth 全样本批处理；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并导出出版级小提琴图。 |
+| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`acoustic_correlations_metrics.json` | `uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 统一调用 Parselmouth 全样本批处理与增量 CSV 缓存；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并由专用绘图脚本导出出版级小提琴图。 |
 | **Table 9: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF) | 汇报 ONNX 导出后在 CPU 与 GPU 上的单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。 | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`** | `deployments/wavfry_multitask.onnx` 及导出验证报告。 | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` | 🟢 **管线就绪，待终版导出实测**<br>• 导出包装器已支持多任务与帧级头；<br>• 待终版 Checkpoint 训练完毕后，导出最终 ONNX 并实测 CPU/GPU 推理延迟与 RTF。 |
 
 ---
@@ -141,9 +141,27 @@ scripts/
 
 ---
 
-## 5. 🚀 论文终版一键评测复现流（Four-Step Final Reproduction Pipeline）
+## 5. 🚀 论文终版评测复现流（Final Reproduction Pipeline）
 
-当未来加入扩充数据（如修复后的 MELI、BreathyTTS 等）训练好终版模型检查点（`best_model.pt`）后，只需依次在终端执行以下四步流水线即可一站式生成论文所需的全部最终图表数据：
+### 🌟 顶层一键聚合评测入口（Master Orchestrator，推荐）
+当未来加入扩充数据（如修复后的 MELI、BreathyTTS 等）训练好终版模型检查点（`best_model.pt`）后，推荐直接运行顶层聚合总管脚本，一键完成全表、全图、全审计与离线绘图：
+
+```bash
+# 一键端到端全量执行（全表、全图、全审计）
+uv run python scripts/run_paper_evaluations.py \
+  --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
+  --manifest manifests/segments_multi.csv \
+  --modules all
+
+# 模块化拔插执行（例如仅跑基线、性别公平性与声学物理可解释性）
+uv run python scripts/run_paper_evaluations.py \
+  --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
+  --modules baselines,gender,acoustic_corr
+```
+
+---
+
+### 分步独立执行流水线（Modular Step-by-Step）
 
 ### Step 1: 嘎裂声前人基线横向对比与抗噪曲线 (Table 1 & Figure 2)
 ```bash
@@ -189,7 +207,7 @@ uv run python scripts/representation_and_calibration_audit/evaluate_representati
   --output-dir data/experiments/representation_cka_audit
 
 # 4. 语音学生理声学指标可解释性校验 (Figure 8 & Table 8b)
-uv run python scripts/experiments/evaluate_acoustic_correlations.py \
+uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
   --output-dir data/experiments/interpretability
 ```

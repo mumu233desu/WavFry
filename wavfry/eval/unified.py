@@ -103,7 +103,8 @@ def load_model_from_checkpoint(
     except (TypeError, Exception):
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     config = ckpt["config"]
-    model = model_mod.WavFryClassifier(config)
+    cls = getattr(model_mod, "WavFryClassifier", model_mod)
+    model = cls(config)
     save_mode = config.get("checkpoint", {}).get("save_mode", "delta")
     if save_mode == "delta":
         result = model.load_state_dict(ckpt["model_state_dict"], strict=False)
