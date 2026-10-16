@@ -45,11 +45,21 @@ try:
 
     manual_annotation = __import__(
         "04_creaky_tools.src.manual_annotation",
-        fromlist=["load_annotations", "annotation_storage_path", "ANNOTATION_FILENAME"],
+        fromlist=[
+            "load_annotations",
+            "annotation_storage_path",
+            "ANNOTATION_FILENAME",
+            "is_kappa_batch",
+            "get_kappa_eval_dir",
+            "load_kappa_consensus_annotations",
+        ],
     )
     load_annotations = manual_annotation.load_annotations
     annotation_storage_path = manual_annotation.annotation_storage_path
     ANNOTATION_FILENAME = getattr(manual_annotation, "ANNOTATION_FILENAME", "manual_creaky_annotations.json")
+    is_kappa_batch = getattr(manual_annotation, "is_kappa_batch", lambda b, cache_dir=None, task="creaky": False)
+    get_kappa_eval_dir = getattr(manual_annotation, "get_kappa_eval_dir", lambda b, bid, task="creaky": None)
+    load_kappa_consensus_annotations = getattr(manual_annotation, "load_kappa_consensus_annotations", None)
     _HAS_CREAKY_TOOLS = True
 except (ImportError, ModuleNotFoundError):
     _HAS_CREAKY_TOOLS = False
@@ -61,6 +71,9 @@ except (ImportError, ModuleNotFoundError):
     load_annotations = None
     annotation_storage_path = None
     ANNOTATION_FILENAME = "manual_creaky_annotations.json"
+    is_kappa_batch = lambda b, cache_dir=None, task="creaky": False
+    get_kappa_eval_dir = lambda b, bid, task="creaky": None
+    load_kappa_consensus_annotations = None
 
 DEFAULT_TRAINING_PHONE_TYPES = {
     "vowel",
@@ -187,7 +200,7 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                 b_name = b.get("name") or f"Batch {b_id}"
                 b_split = b.get("split") or "unassigned"
                 b_path = annotation_storage_path(textgrid_dir, batch_id=b_id)
-                batch_items.append((b_id, b_name, b_split, b_path))
+                batch_items.append((b_id, b_name, b_split, b_path, b))
         except Exception as e:
             raise RuntimeError(
                 f"[manifest] [{dataset_id}] Failed to read batches from {sampling_state_path}: {e}"
@@ -214,18 +227,31 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
         ]
 
         missing_media: list[str] = []
+        target_task = "breathy" if (breathy_spec and not label_schema.get("creaky", True)) else "creaky"
 
-        for b_id, b_name, b_split, annotation_path in batch_items:
+        for b_id, b_name, b_split, annotation_path, b_entry in batch_items:
             if b_split not in {"train", "val", "test"}:
                 continue
 
-            if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
-                raise FileNotFoundError(
-                    f"[manifest] [{dataset_id}] Annotation storage for Batch [{b_id}] '{b_name}' not found at: {annotation_path}"
-                )
+            # Check if this batch is a Kappa Test Batch
+            is_kappa = is_kappa_batch(b_entry, cache_dir=textgrid_dir, task=target_task)
+            kappa_eval_dir = get_kappa_eval_dir(textgrid_dir, batch_id=b_id, task=target_task) if is_kappa else None
 
-            print(f"[manifest] [{dataset_id}] Loading Batch [{b_id}] '{b_name}' (split='{b_split}') from {annotation_path}...")
-            batch_annotations = load_annotations(annotation_path)
+            if is_kappa and kappa_eval_dir and load_kappa_consensus_annotations is not None:
+                print(f"[manifest] [{dataset_id}] Batch [{b_id}] '{b_name}' recognized as KAPPA TEST BATCH.")
+                print(f"[manifest] [{dataset_id}] Loading multi-annotator consensus from: {kappa_eval_dir}...")
+                batch_annotations = load_kappa_consensus_annotations(kappa_eval_dir, task=target_task)
+                n_unanimous = batch_annotations.get("total_unanimous", 0)
+                n_disputed = batch_annotations.get("total_disputed", 0)
+                print(f"[manifest] [{dataset_id}] Kappa Consensus: {n_unanimous} unanimous intervals kept, {n_disputed} disputed/unverified intervals excluded.")
+            else:
+                if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
+                    raise FileNotFoundError(
+                        f"[manifest] [{dataset_id}] Annotation storage for Batch [{b_id}] '{b_name}' not found at: {annotation_path}"
+                    )
+                print(f"[manifest] [{dataset_id}] Loading Batch [{b_id}] '{b_name}' (split='{b_split}') from {annotation_path}...")
+                batch_annotations = load_annotations(annotation_path)
+
             files_with_annotations = batch_annotations.get("files", {})
             if not isinstance(files_with_annotations, dict):
                 continue
