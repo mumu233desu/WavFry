@@ -472,8 +472,8 @@ def main():
         
         # Optimization: Pre-load the backbone model once to avoid redundant loading in each fold
         print(f"Pre-loading backbone: {config['model']['backbone']}...")
-        from transformers import WavLMModel
-        preloaded_wavlm = WavLMModel.from_pretrained(config['model']['backbone'])
+        from transformers import AutoModel
+        preloaded_wavlm = AutoModel.from_pretrained(config['model']['backbone'])
         # Keep on CPU to save GPU memory during the full LOOCV process
         preloaded_wavlm.cpu() 
         

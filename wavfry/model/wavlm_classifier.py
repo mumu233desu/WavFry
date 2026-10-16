@@ -306,6 +306,11 @@ class WavFryClassifier(nn.Module):
                     param.requires_grad = True
 
     @property
+    def backbone(self) -> nn.Module:
+        """Alias for self.wavlm supporting generic SSL backbones (WavLM, HuBERT, wav2vec 2.0)."""
+        return self.wavlm
+
+    @property
     def is_backbone_frozen(self) -> bool:
         """Derived from live requires_grad state so runtime re-freezing (e.g.
         TTA adaptation) can never desynchronize the flag from reality."""
