@@ -91,8 +91,13 @@ class TestKappaUnification:
         (a_dir / "shard.json").write_text(json.dumps(shard_a), encoding="utf-8")
         (b_dir / "shard.json").write_text(json.dumps(shard_b), encoding="utf-8")
 
+        # Create a non-annotator folder to ensure it doesn't poison consensus
+        (k_dir / "plots").mkdir()
+        (k_dir / "reports").mkdir()
+
         consensus = load_kappa_consensus_annotations(k_dir, task="creaky")
-        annos = consensus["files"]["sample_1"]["annotations"]
+        entry = consensus["files"]["sample_1"]
+        annos = entry["annotations"]
 
         assert annos["0.00|0.50|a"] == "creaky"
         assert annos["0.50|1.00|i"] == "non_creaky"
@@ -101,3 +106,10 @@ class TestKappaUnification:
         assert annos["2.00|2.50|o"] == "uncertain"
         assert consensus["total_unanimous"] == 2
         assert consensus["total_disputed"] == 3
+        assert entry.get("is_frame_verified") is True
+
+        # Test annotator_subdirs explicit filtering
+        consensus_a_b = load_kappa_consensus_annotations(
+            k_dir, task="creaky", annotator_subdirs=["annotator_A", "annotator_B"]
+        )
+        assert consensus_a_b["total_unanimous"] == 2

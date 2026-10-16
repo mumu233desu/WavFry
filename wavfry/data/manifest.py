@@ -859,7 +859,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     # Collect batches and/or monolithic cache files
     sampling_state_path = cache_dir / "sampling_state.json"
     batches_dir = cache_dir / "batches"
-    batch_items: list[tuple[int | None, str, str, Path]] = []
+    batch_items: list[tuple[int | None, str, str, Path, dict[str, Any] | None]] = []
 
     if sampling_state_path.exists():
         try:
@@ -874,7 +874,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     alt_path = b_anno_dir / "manual_breathy_annotations.json"
                     if alt_path.exists() or (b_anno_dir / "manual_breathy_annotations.json.d").exists():
                         b_path = alt_path
-                batch_items.append((b_id, b_name, b_split, b_path))
+                batch_items.append((b_id, b_name, b_split, b_path, b))
         except Exception as e:
             print(f"[manifest] [{dataset_id}] Warning: Failed to parse sampling_state.json: {e}")
 
@@ -882,7 +882,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
         for fname in ("manual_breathy_annotations.json", ANNOTATION_FILENAME):
             unbatched_path = cache_dir / fname
             if unbatched_path.exists() or (cache_dir / f"{fname}.d").exists():
-                batch_items.append((None, "Default", "unassigned", unbatched_path))
+                batch_items.append((None, "Default", "unassigned", unbatched_path, None))
                 break
 
     if not batch_items:
@@ -897,14 +897,25 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     missing_audio: list[str] = []
     seen_file_splits: dict[str, tuple[int | None, str]] = {}
 
-    for b_id, b_name, b_split, annotation_path in batch_items:
-        if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
-            continue
+    for b_id, b_name, b_split, annotation_path, b_entry in batch_items:
+        is_kappa = (b_entry is not None) and is_kappa_batch(b_entry, cache_dir=cache_dir, task="breathy")
+        kappa_eval_dir = get_kappa_eval_dir(cache_dir, batch_id=b_id, task="breathy") if (is_kappa and b_id is not None) else None
 
-        if _HAS_CREAKY_TOOLS and load_annotations is not None:
-            batch_data = load_annotations(annotation_path)
+        if is_kappa and kappa_eval_dir and load_kappa_consensus_annotations is not None:
+            print(f"[manifest] [{dataset_id}] Batch [{b_id}] '{b_name}' recognized as KAPPA TEST BATCH.")
+            print(f"[manifest] [{dataset_id}] Loading multi-annotator consensus from: {kappa_eval_dir}...")
+            batch_data = load_kappa_consensus_annotations(kappa_eval_dir, task="breathy")
+            n_unanimous = batch_data.get("total_unanimous", 0)
+            n_disputed = batch_data.get("total_disputed", 0)
+            print(f"[manifest] [{dataset_id}] Kappa Consensus: {n_unanimous} unanimous intervals kept, {n_disputed} disputed/unverified intervals excluded.")
         else:
-            batch_data = _load_standalone_sharded_annotations(annotation_path)
+            if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
+                continue
+
+            if _HAS_CREAKY_TOOLS and load_annotations is not None:
+                batch_data = load_annotations(annotation_path)
+            else:
+                batch_data = _load_standalone_sharded_annotations(annotation_path)
 
         files = batch_data.get("files", {})
         if not isinstance(files, dict):
