@@ -120,7 +120,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--task", default="breathy", choices=["breathy", "creaky"])
-    parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument("--top-k", type=int, default=250, help="Number of extreme samples per class group (default: 250 -> 500 low-agreement entries)")
     args = parser.parse_args()
     if args.output_dir.exists():
         raise FileExistsError("Use a fresh report directory; no old report is overwritten")
