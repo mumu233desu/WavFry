@@ -88,6 +88,11 @@ def parse_args() -> argparse.Namespace:
         help="Override training epochs (default: inherit from config, usually 20).",
     )
     parser.add_argument(
+        "--smoketest",
+        action="store_true",
+        help="Run a fast end-to-end smoke test (1 short epoch on a representative subset of audio files).",
+    )
+    parser.add_argument(
         "--device",
         default="cuda" if torch.cuda.is_available() else "cpu",
         help="Compute device (default: cuda if available).",
@@ -101,7 +106,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_config_for_backbone(backbone_key: str, epochs_override: int | None = None) -> dict[str, Any]:
+def load_config_for_backbone(
+    backbone_key: str,
+    epochs_override: int | None = None,
+    smoketest: bool = False,
+) -> dict[str, Any]:
     meta = BACKBONE_REGISTRY[backbone_key]
     cfg_path = meta["config_file"]
     if not cfg_path.exists():
@@ -112,11 +121,72 @@ def load_config_for_backbone(backbone_key: str, epochs_override: int | None = No
 
     if epochs_override is not None:
         cfg["training"]["epochs"] = epochs_override
+    elif smoketest:
+        cfg["training"]["epochs"] = 1
+
+    if smoketest:
+        cfg["training"]["warmup_steps"] = 2
+        cfg["eval"]["eval_interval"] = 1
+        cfg["training"]["block"]["batch_size"] = 16
+        cfg["training"]["block"]["val_batch_size"] = 16
+        cfg["checkpoint"]["dir"] = f"R:/checkpoints/smoketest_backbone_{backbone_key}"
+        cfg["tensorboard"]["log_dir"] = f"R:/runs/smoketest_backbone_{backbone_key}"
 
     return cfg
 
 
-def train_single_backbone(backbone_key: str, cfg: dict[str, Any], device: str) -> Path:
+def create_smoketest_manifest_subset(df: Any) -> Any:
+    """Extract a small, balanced subset of audio files for fast smoke testing.
+
+    Guarantees:
+    - Speaker isolation between train/val/test
+    - Both positive and negative labels for each task
+    - ~10-15 files total for blazing fast execution (<10s per epoch)
+    """
+    import pandas as pd
+
+    subsets = []
+    for split in ["train", "val", "test"]:
+        sdf = df[df["batch_split"] == split]
+        chosen: list[str] = []
+        # CS-Dialogue files with positive and negative creaky labels
+        cs_df = sdf[sdf["dataset_id"] == "cs_dialogue"]
+        for p, g in cs_df.groupby("audio_path"):
+            if (g["label_creaky"] > 0.5).any() and (g["label_creaky"] <= 0.5).any():
+                chosen.append(p)
+                if len(chosen) >= 2:
+                    break
+        # Breathy dataset files with positive and negative breathy labels
+        br_df = sdf[sdf["dataset_id"].isin(["breathy_tts", "ysj_japanese", "ita_japanese"])]
+        br_chosen: list[str] = []
+        for p, g in br_df.groupby("audio_path"):
+            if (g["label_breathy"] > 0.5).any() and (g["label_breathy"] <= 0.5).any():
+                br_chosen.append(p)
+                if len(br_chosen) >= 2:
+                    break
+        if len(br_chosen) < 2:
+            for p, g in br_df.groupby("audio_path"):
+                if p not in br_chosen:
+                    br_chosen.append(p)
+                    if len(br_chosen) >= 2:
+                        break
+        subsets.append(sdf[sdf["audio_path"].isin(chosen + br_chosen)])
+
+    subset_df = pd.concat(subsets, ignore_index=True)
+    print(
+        f"[Smoketest] Subset manifest created: {len(subset_df)} total intervals across "
+        f"{subset_df['audio_path'].nunique()} audio files ({subset_df['speaker_id'].nunique()} speakers).",
+        flush=True,
+    )
+    return subset_df
+
+
+def train_single_backbone(
+    backbone_key: str,
+    cfg: dict[str, Any],
+    df: Any,
+    device: str,
+) -> Path:
     meta = BACKBONE_REGISTRY[backbone_key]
     display = meta["display_name"]
     print(f"\n{'='*70}", flush=True)
@@ -130,14 +200,6 @@ def train_single_backbone(backbone_key: str, cfg: dict[str, Any], device: str) -
     # Pre-flight check: ensure checkpoint directory exists
     ckpt_dir = Path(cfg["checkpoint"]["dir"])
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-
-    # Build manifest
-    datasets_cfg_path = ROOT / "config" / "datasets.yaml"
-    with open(datasets_cfg_path, "r", encoding="utf-8") as f:
-        datasets_cfg = yaml.safe_load(f)
-
-    df = build_manifest_multi(datasets_cfg, global_cfg=cfg)
-    print(f"[Data] Training manifest loaded: {len(df)} total rows.", flush=True)
 
     # Dynamically import required modules
     from wavfry.data import dataset as dataset_mod
@@ -171,6 +233,7 @@ def evaluate_backbone(
     backbone_key: str,
     cfg: dict[str, Any],
     ckpt_path: Path,
+    test_df: Any,
     device: str,
 ) -> dict[str, Any]:
     meta = BACKBONE_REGISTRY[backbone_key]
@@ -181,40 +244,38 @@ def evaluate_backbone(
     model = WavFryClassifier(cfg).to(device)
     if ckpt_path.exists():
         print(f"[Backbone Comparison] Loading checkpoint weights from {ckpt_path}...", flush=True)
-        ckpt_data = torch.load(ckpt_path, map_location=device)
+        ckpt_data = torch.load(ckpt_path, map_location=device, weights_only=False)
         state_dict = ckpt_data.get("model_state_dict", ckpt_data)
         model.load_state_dict(state_dict, strict=False)
     else:
         print(f"[Warning] Checkpoint not found at {ckpt_path}; evaluating raw initialized heads.", flush=True)
 
     model.eval()
-
-    # Load test manifest
-    from wavfry.data.manifest import build_manifest_multi
-    datasets_cfg_path = ROOT / "config" / "datasets.yaml"
-    with open(datasets_cfg_path, "r", encoding="utf-8") as f:
-        datasets_cfg = yaml.safe_load(f)
-
-    df = build_manifest_multi(datasets_cfg, global_cfg=cfg)
-    test_df = df[df["batch_split"] == "test"].copy()
     print(f"[Data] Test set loaded: {len(test_df)} intervals across {test_df['speaker_id'].nunique()} speakers.", flush=True)
 
     # Compute interval-level predictions
-    # Fallback to standard validation loader evaluation
-    from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, block_collate_fn
+    from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
     from torch.utils.data import DataLoader
     from wavfry.train.trainer import Trainer
 
+    block_cfg = cfg["training"]["block"]
+    common_block = dict(
+        duration_ms=block_cfg.get("duration_ms", 2000),
+        hop_ms=block_cfg.get("hop_ms", 1000),
+        max_intervals=block_cfg.get("max_intervals", 8),
+        boundary_trim_frames=block_cfg.get("boundary_trim_frames", 0),
+        seed=cfg["training"].get("seed", 42),
+    )
     test_ds = ContinuousAudioBlockDataset(
         df=test_df,
-        config=cfg,
-        is_train=False,
+        reverb_augmentor=None,
+        **common_block,
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=cfg["training"]["block"].get("val_batch_size", 128),
         shuffle=False,
-        collate_fn=block_collate_fn,
+        collate_fn=collate_block_fn,
     )
 
     # Minimal dummy trainer harness for evaluation
@@ -226,17 +287,23 @@ def evaluate_backbone(
         device=device,
     )
 
-    metrics = eval_trainer.validate(split_name="test")
+    _, metrics = eval_trainer.validate(epoch=0)
     print(f"[Result] {display} Test Metrics:", flush=True)
+    clean_metrics: dict[str, Any] = {}
     for k, v in metrics.items():
-        if isinstance(v, (int, float)):
-            print(f"  {k}: {v:.4f}", flush=True)
+        if isinstance(v, (int, float, str, bool)):
+            clean_metrics[k] = v
+            print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}", flush=True)
+        elif isinstance(v, torch.Tensor) and v.numel() == 1:
+            val_item = v.item()
+            clean_metrics[k] = val_item
+            print(f"  {k}: {val_item:.4f}", flush=True)
 
     return {
         "backbone": backbone_key,
         "display_name": display,
         "checkpoint": str(ckpt_path),
-        "metrics": metrics,
+        "metrics": clean_metrics,
     }
 
 
@@ -275,27 +342,43 @@ def format_academic_summary_table(results: list[dict[str, Any]]) -> str:
 
 def main():
     args = parse_args()
+    if args.smoketest and args.output_dir == ROOT / "exp_results" / "backbone_comparison":
+        args.output_dir = ROOT / "exp_results" / "backbone_comparison" / "smoketest"
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"{'='*75}", flush=True)
     print(f"  WavFry Backbone Comparison Suite: WavLM vs HuBERT vs wav2vec 2.0", flush=True)
     print(f"  Selected Backbones: {', '.join(args.backbones)}", flush=True)
     print(f"  Execution Mode:     {args.mode}", flush=True)
+    print(f"  Smoke Test Mode:    {args.smoketest}", flush=True)
     print(f"  Compute Device:     {args.device}", flush=True)
     print(f"  Output Directory:   {args.output_dir}", flush=True)
     print(f"{'='*75}\n", flush=True)
 
+    # Build or load multi-dataset manifest once
+    datasets_cfg_path = ROOT / "config" / "datasets.yaml"
+    with open(datasets_cfg_path, "r", encoding="utf-8") as f:
+        datasets_cfg = yaml.safe_load(f)
+
+    dummy_cfg = load_config_for_backbone("wavlm", smoketest=args.smoketest)
+    df = build_manifest_multi(datasets_cfg, global_cfg=dummy_cfg)
+
+    if args.smoketest:
+        df = create_smoketest_manifest_subset(df)
+
     all_results = []
 
     for b_key in args.backbones:
-        cfg = load_config_for_backbone(b_key, epochs_override=args.epochs)
-        ckpt_path = BACKBONE_REGISTRY[b_key]["default_ckpt"]
+        cfg = load_config_for_backbone(b_key, epochs_override=args.epochs, smoketest=args.smoketest)
+        ckpt_path = Path(cfg["checkpoint"]["dir"]) / "best_model.pt"
 
         if args.mode in ("train_and_eval", "train_only"):
-            ckpt_path = train_single_backbone(b_key, cfg, device=args.device)
+            ckpt_path = train_single_backbone(b_key, cfg, df=df, device=args.device)
 
         if args.mode in ("train_and_eval", "eval_only"):
-            eval_res = evaluate_backbone(b_key, cfg, ckpt_path=ckpt_path, device=args.device)
+            test_df = df[df["batch_split"] == "test"].copy()
+            eval_res = evaluate_backbone(b_key, cfg, ckpt_path=ckpt_path, test_df=test_df, device=args.device)
             all_results.append(eval_res)
 
     if all_results:
