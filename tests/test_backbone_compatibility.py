@@ -121,8 +121,9 @@ def test_backbone_configs_exist_and_valid():
     config_dir = Path(__file__).resolve().parents[1] / "config"
     configs = [
         ("ablation_backbone_hubert.yaml", "facebook/hubert-base-ls960"),
-        ("ablation_backbone_wav2vec2.yaml", "facebook/wav2vec2-base-960h"),
-        ("ablation_backbone_wavlm.yaml", "microsoft/wavlm-base-plus"),
+        ("ablation_backbone_wav2vec2.yaml", "facebook/wav2vec2-base"),
+        ("ablation_backbone_wavlm_base.yaml", "microsoft/wavlm-base"),
+        ("ablation_backbone_wavlm_baseplus.yaml", "microsoft/wavlm-base-plus"),
     ]
 
     for fname, expected_backbone in configs:

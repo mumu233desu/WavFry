@@ -32,10 +32,10 @@ CANONICAL_TIERS: List[str] = [
 
 DEFAULT_TIER_CONDITIONS: Dict[str, List[str]] = {
     "clean": ["clean"],
-    "mild_15db": ["cafe_15db", "car_15db", "street_15db"],
-    "moderate_5db": ["cafe_5db", "car_5db", "street_5db"],
-    "severe_0db": ["cafe_0db", "car_0db", "street_0db"],
-    "compound": ["reverb", "reverb_cafe_5db"],
+    "mild_15db": ["cafe_15db", "car_15db", "home_15db", "street_15db", "reverb_15db"],
+    "moderate_5db": ["cafe_5db", "car_5db", "home_5db", "street_5db", "reverb_5db"],
+    "severe_0db": ["cafe_0db", "car_0db", "home_0db", "street_0db", "reverb_0db"],
+    "compound": ["car_compound", "reverb_compound"],
 }
 
 

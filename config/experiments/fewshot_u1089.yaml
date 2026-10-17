@@ -4,7 +4,7 @@
 experiment:
   name: fewshot_adaptation_u1089
   target_speaker: U1089
-  output_dir: R:/experiments/fewshot_u1089
+  output_dir: exp_results/experiments/fewshot_u1089
   seed: 42
   shots:
     positive_file_key: M_22_Sichuan_EN_ZH-CN_U1089_S0_269   # 21 segments, 8 creaky
@@ -63,7 +63,7 @@ training:
   pooling_mode: mean
 
 tensorboard:
-  log_dir: R:/experiments/fewshot_u1089/runs
+  log_dir: exp_results/experiments/fewshot_u1089/runs
   log_audio_samples: false
   log_confusion_matrix: false
   log_pr_curve: false
@@ -74,6 +74,6 @@ eval:
   early_stopping_patience: 3
 
 checkpoint:
-  dir: R:/experiments/fewshot_u1089/checkpoints
+  dir: exp_results/experiments/fewshot_u1089/checkpoints
   save_mode: delta
   keep_best_count: 1

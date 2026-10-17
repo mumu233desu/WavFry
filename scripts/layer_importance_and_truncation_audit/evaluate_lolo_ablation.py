@@ -48,8 +48,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from wavfry.data import dataset as dataset_mod
 from wavfry.data import splits as splits_mod
-from wavfry.model.wavlm_classifier import WavFryClassifier
-from wavfry.eval.acoustic_degradation import get_acoustic_degradation_engine
+from wavfry.eval.acoustic_degradation import (
+    CANONICAL_EVAL_CONDITIONS,
+    get_acoustic_degradation_engine,
+    get_condition_metadata,
+)
 
 
 def parse_args():
@@ -115,10 +118,16 @@ def parse_args():
         help="Optional upper bound on batches to process (useful for rapid profiling).",
     )
     parser.add_argument(
+        "--conditions",
+        nargs="+",
+        default=None,
+        help="List of acoustic degradation conditions (default: all 18 canonical conditions; smoketest defaults to clean).",
+    )
+    parser.add_argument(
         "--noise-condition",
         type=str,
         default=None,
-        help="Acoustic degradation condition for robust LOLO layer audit (e.g., 'cafe_5db', 'car_0db', 'reverb', 'street_5db'). Defaults to clean.",
+        help="Legacy alias for a single acoustic degradation condition.",
     )
     return parser.parse_args()
 
@@ -705,52 +714,102 @@ def main():
     num_layers = model.num_layers + 1
     conditions = build_lolo_conditions(num_layers, group_tiers=args.group_tiers)
 
+    if args.conditions is not None:
+        eval_conditions = args.conditions
+    elif args.noise_condition is not None:
+        eval_conditions = [args.noise_condition]
+    elif args.smoketest:
+        eval_conditions = ["clean"]
+    else:
+        eval_conditions = list(CANONICAL_EVAL_CONDITIONS)
+
     print("\n" + "=" * 78)
     print("      WavFry LOLO (Leave-One-Layer-Out) Multi-Task Evaluator")
     print(f"  Checkpoint: {ckpt_path.name}")
     print(f"  Tasks: {eval_tasks} | Split: {args.split.upper()} | Paradigm: {paradigm.upper()}")
-    print(f"  Conditions: {len(conditions)} | Device: {device} | Single-Pass Caching: ENABLED")
+    print(f"  Conditions ({len(eval_conditions)}): {', '.join(eval_conditions)}")
+    print(f"  Layer Conditions: {len(conditions)} | Device: {device} | Single-Pass Caching: ENABLED")
     print("=" * 78)
 
-    task_results = evaluate_lolo_single_pass(
-        model=model,
-        loader=loader,
-        device=device,
-        paradigm=paradigm,
-        conditions=conditions,
-        eval_tasks=eval_tasks,
-        max_batches=args.max_batches,
-        noise_condition=args.noise_condition,
-    )
+    all_tidy_rows: List[Dict[str, Any]] = []
+    full_summary_json: Dict[str, Any] = {
+        "checkpoint": ckpt_path.name,
+        "split": args.split,
+        "paradigm": paradigm,
+        "tasks": eval_tasks,
+        "conditions": {},
+    }
 
-    # Flatten results for CSV
-    all_rows: List[Dict[str, Any]] = []
-    for t_name, rows in task_results.items():
-        all_rows.extend(rows)
+    start_suite = time.time()
+    for c_idx, cond in enumerate(eval_conditions):
+        print(f"\n[{c_idx + 1}/{len(eval_conditions)}] Running LOLO under condition: {cond}...", flush=True)
+        task_results = evaluate_lolo_single_pass(
+            model=model,
+            loader=loader,
+            device=device,
+            paradigm=paradigm,
+            conditions=conditions,
+            eval_tasks=eval_tasks,
+            max_batches=args.max_batches,
+            noise_condition=cond,
+        )
+        full_summary_json["conditions"][cond] = task_results
+        meta = get_condition_metadata(cond)
 
-    out_path = Path(args.output) if Path(args.output).is_absolute() else (PROJECT_ROOT / args.output)
-    if args.noise_condition and args.output == "data/experiments/lolo_ablation_results.csv":
-        out_path = out_path.with_name(f"lolo_ablation_results_{args.noise_condition}.csv")
+        for t_name, rows in task_results.items():
+            for r in rows:
+                all_tidy_rows.append({
+                    "Model": ckpt_path.name,
+                    "Task": t_name,
+                    "Condition": cond,
+                    "Scenario": meta["Scenario"],
+                    "SNR_dB": meta["SNR_dB"],
+                    "Tier": meta["Tier"],
+                    "Has_RIR": meta["Has_RIR"],
+                    "Layer": r.get("layer_idx", -1),
+                    "Layer-Name": r.get("ablated_layer", r.get("condition")),
+                    "Mix-Weight": round(float(r.get("scalar_mix_weight", 0.0)), 4),
+                    "PR-AUC": round(float(r.get("auc_pr", 0.0)), 4),
+                    "Delta-PR-AUC": round(float(r.get("delta_auc_pr", 0.0)), 4),
+                    "Drop (%)": round(float(r.get("drop_pct", 0.0)), 2),
+                    "F1-Score": round(float(r.get("f1", 0.0)), 4),
+                    "ROC-AUC": round(float(r.get("auc_roc", 0.0)), 4),
+                })
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    res_df = pd.DataFrame(all_rows)
-    res_df.to_csv(out_path, index=False)
-    print(f"\n[Saved] Multi-task LOLO Ablation CSV saved to: {out_path}")
+    elapsed_suite = time.time() - start_suite
+    print(f"\n[Completed] LOLO suite finished in {elapsed_suite:.1f}s.")
 
-    md_path = out_path.with_suffix(".md")
+    out_base = Path(args.output).parent if Path(args.output).is_absolute() else (PROJECT_ROOT / Path(args.output).parent)
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    # 1. Primary Tidy CSV with TitleCase LaTeX-aligned headers
+    csv_path = out_base / "lolo_ablation_matrix_detail.csv"
+    pd.DataFrame(all_tidy_rows).to_csv(csv_path, index=False, encoding="utf-8")
+    print(f"[Saved] Standardized Tidy CSV saved to: {csv_path}")
+
+    # 2. Hierarchical Machine-Readable JSON
+    json_path = out_base / "lolo_ablation_summary.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(full_summary_json, f, indent=2, ensure_ascii=False)
+    print(f"[Saved] Hierarchical JSON saved to: {json_path}")
+
+    # 3. Human-Friendly Markdown Report Byproduct (renders clean condition or first condition summary)
+    md_path = out_base / "lolo_ablation_report.md"
+    first_cond = "clean" if "clean" in full_summary_json["conditions"] else eval_conditions[0]
     generate_markdown_summary(
         md_path=md_path,
         ckpt_name=ckpt_path.name,
         split_name=args.split,
         paradigm_name=paradigm,
-        task_results=task_results,
+        task_results=full_summary_json["conditions"][first_cond],
     )
-    print(f"[Saved] LOLO Multi-Task Markdown summary saved to: {md_path}")
+    print(f"[Saved] Markdown Report byproduct saved to: {md_path}")
 
-    # Print summary console table
-    for t_name, rows in task_results.items():
+    # Print summary console table for primary condition
+    prim_results = full_summary_json["conditions"][first_cond]
+    for t_name, rows in prim_results.items():
         base_r = next(r for r in rows if r["condition"] == "full_model")
-        print(f"\n>>> Summary for {t_name.upper()} (Baseline PR-AUC: {base_r['auc_pr']:.4f}, F1: {base_r['f1']:.4f}):")
+        print(f"\n>>> Summary for {t_name.upper()} under '{first_cond}' (Baseline PR-AUC: {base_r['auc_pr']:.4f}, F1: {base_r['f1']:.4f}):")
         lolo_sorted = sorted([r for r in rows if r["condition"].startswith("leave_out_layer_")], key=lambda x: x["delta_auc_pr"], reverse=True)
         for rank, r in enumerate(lolo_sorted[:5], 1):
             print(f"    Rank {rank}: {r['ablated_layer']:<16} ΔPR-AUC: +{r['delta_auc_pr']:.4f} (-{r['drop_pct']:.1f}%) | Weight: {r['scalar_mix_weight']*100:.2f}%")

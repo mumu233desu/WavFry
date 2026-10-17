@@ -154,36 +154,92 @@ def run_gender_fairness_audit(
         "Disparity": disparity,
     }
 
-    # 4. Save JSON and Distribution CSV
+    # 4. Save JSON, Tidy Detail CSV, and Table 4 Presentation CSV
     json_path = output_dir / "gender_metrics.json"
     dist_csv_path = output_dir / "gender_fairness_distribution.csv"
+    detail_csv_path = output_dir / "gender_fairness_detail.csv"
+    table4_csv_path = output_dir / "table4_gender_fairness.csv"
+    md_path = output_dir / "table4_gender_fairness.md"
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(metrics_summary, f, indent=2)
 
-    export_cols = [
-        "interval_key",
-        "dataset_id",
-        "file_key",
-        "speaker_id",
-        "gender",
-        "Gender",
-        "label_creaky",
-        "prob_creaky",
-    ]
-    avail_cols = [c for c in export_cols if c in valid_gender_df.columns]
+    col_mapping = {
+        "interval_key": "Interval-Key",
+        "dataset_id": "Dataset-ID",
+        "file_key": "File-Key",
+        "speaker_id": "Speaker-ID",
+        "Gender": "Gender",
+        "label_creaky": "Label-Creaky",
+        "prob_creaky": "Prob-Creaky",
+        "label_breathy": "Label-Breathy",
+        "prob_breathy": "Prob-Breathy",
+    }
+    avail_cols = [c for c in col_mapping.keys() if c in valid_gender_df.columns]
+    detail_df = valid_gender_df[avail_cols].rename(columns=col_mapping)
+    detail_df.to_csv(detail_csv_path, index=False, encoding="utf-8")
     valid_gender_df[avail_cols].to_csv(dist_csv_path, index=False, encoding="utf-8")
-
-    logger.info(f"Saved Table 4 metrics to {json_path}")
-    logger.info(f"Saved distribution data for violin plot to {dist_csv_path}")
 
     # Build Table 4 presentation DataFrame
     table4_rows = [
-        {"Group": "Overall", **metrics_overall},
-        {"Group": "Female", **metrics_female},
-        {"Group": "Male", **metrics_male},
+        {
+            "Group": "Overall",
+            "N": metrics_overall["N"],
+            "Positive-Rate": metrics_overall["Positive_Rate"],
+            "Accuracy": metrics_overall["Accuracy"],
+            "Precision": metrics_overall["Precision"],
+            "Recall": metrics_overall["Recall"],
+            "F1-Score": metrics_overall["F1-Score"],
+            "PR-AUC": metrics_overall["PR-AUC"],
+            "ROC-AUC": metrics_overall["ROC-AUC"],
+        },
+        {
+            "Group": "Female",
+            "N": metrics_female["N"],
+            "Positive-Rate": metrics_female["Positive_Rate"],
+            "Accuracy": metrics_female["Accuracy"],
+            "Precision": metrics_female["Precision"],
+            "Recall": metrics_female["Recall"],
+            "F1-Score": metrics_female["F1-Score"],
+            "PR-AUC": metrics_female["PR-AUC"],
+            "ROC-AUC": metrics_female["ROC-AUC"],
+        },
+        {
+            "Group": "Male",
+            "N": metrics_male["N"],
+            "Positive-Rate": metrics_male["Positive_Rate"],
+            "Accuracy": metrics_male["Accuracy"],
+            "Precision": metrics_male["Precision"],
+            "Recall": metrics_male["Recall"],
+            "F1-Score": metrics_male["F1-Score"],
+            "PR-AUC": metrics_male["PR-AUC"],
+            "ROC-AUC": metrics_male["ROC-AUC"],
+        },
     ]
     table4_df = pd.DataFrame(table4_rows)
+    table4_df.to_csv(table4_csv_path, index=False, encoding="utf-8")
+
+    # 5. Markdown Report Byproduct
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("# Table 4: Speaker Gender Fairness & Demographic Disparity Audit\n\n")
+        f.write("- **Condition**: `Clean` (Strict clean-only to prevent noise spectral masking demographic confounds)\n")
+        f.write(f"- **Evaluated Clean Intervals**: Female = {metrics_female['N']}, Male = {metrics_male['N']} (Total = {metrics_overall['N']})\n\n")
+        f.write("| Group | N | Positive Rate | Accuracy | Precision | Recall | F1-Score | PR-AUC | ROC-AUC |\n")
+        f.write("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
+        for r in table4_rows:
+            f.write(
+                f"| **{r['Group']}** | {r['N']} | {r['Positive-Rate']:.4f} | {r['Accuracy']:.4f} | "
+                f"{r['Precision']:.4f} | {r['Recall']:.4f} | **{r['F1-Score']:.4f}** | **{r['PR-AUC']:.4f}** | {r['ROC-AUC']:.4f} |\n"
+            )
+        f.write("\n### Demographic Disparity ($|\\text{Female} - \\text{Male}|$)\n\n")
+        f.write(f"- **$\\Delta$ PR-AUC**: `{disparity['Delta_PR_AUC']:.4f}`\n")
+        f.write(f"- **$\\Delta$ F1-Score**: `{disparity['Delta_F1']:.4f}`\n")
+        f.write(f"- **$\\Delta$ Accuracy**: `{disparity['Delta_Accuracy']:.4f}`\n")
+        f.write(f"- **$\\Delta$ ROC-AUC**: `{disparity['Delta_ROC_AUC']:.4f}`\n")
+
+    logger.info(f"Saved Table 4 metrics to {json_path}")
+    logger.info(f"Saved Table 4 CSV to {table4_csv_path}")
+    logger.info(f"Saved Table 4 Markdown report to {md_path}")
 
     return metrics_summary, table4_df
 

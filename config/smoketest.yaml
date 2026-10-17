@@ -74,13 +74,13 @@ eval:
   early_stopping_patience: 0
 
 tensorboard:
-  log_dir: R:/runs/smoketest
+  log_dir: exp_results/runs/smoketest
   log_audio_samples: true
   log_confusion_matrix: false
   log_pr_curve: false
 
 checkpoint:
-  dir: R:/checkpoints/smoketest
+  dir: exp_results/checkpoints/smoketest
   save_mode: delta
   keep_best_count: 1
 

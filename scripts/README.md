@@ -43,6 +43,7 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 为彻底杜绝各实验随意剪裁场景引发的 **Cherry-picking 质疑**，全工程建立**全局唯一、全篇论文严格一致的声学退化标准资产体系**：
 
 ### 2.1 物理退化全景资产（共 19 个独立测试环境）
+
 1. **纯净基准 (Clean)**：无加噪、无混响原声；
 2. **5 类真实加性环境噪声 $\times$ 3 档 SNR**（共 15 个条件）：
    - `cafe`（食堂/咖啡厅人群交谈声，Babble）: `15dB`, `5dB`, `0dB`
@@ -58,7 +59,9 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
    - `room_compound` = `room_rir` + `reverb_ambient @ 5dB`（真实大空间现场环境）
 
 ### 2.2 论文统一展现的 5 档宏观声学梯度（The 5 Canonical Degradation Tiers）
+
 为兼顾**数据完整性**与**可视化高可读性**，全篇折线图与主表格统一收敛至 5 档梯度：
+
 - **Tier 0**: `Clean`（分布内基准）
 - **Tier 1**: `Mild (15 dB Avg over 5 noises)`
 - **Tier 2**: `Moderate (5 dB Avg over 5 noises)`
@@ -73,38 +76,38 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 ### 第一部分：嘎裂声（Creaky Voice）核心基准对比与鲁棒性
 
-| 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Table 1 & Figure 2: 主流前人基线横向对比与退化衰减曲线**<br>(Unified Baseline Benchmark) | **横向超越 4 大前人检测器**（Praat, Kane, DeepFry, CreaPy），且在 5 档声学退化下保持断层领先。<br>• **Figure 2**: 5 模型主折线，带浅色阴影带（Shaded Band 呈现 5 噪声方差）；<br>• **Table 1**: 5 梯度量化大表（附录附 19 条件明细）。 | **`scripts/baseline_comparison/evaluate_qut_baselines.py`**<br>(纯数据产出，解耦绘图) | `data/experiments/baselines/table1_baseline_comparison.csv`<br>`vowel_robustness_metrics.json` | `uv run python scripts/baseline_comparison/evaluate_qut_baselines.py` | 🟢 **管线就绪，待终版重刷**<br>• 已实现并验证增量缓存；<br>• 待新数据终版模型训练完成后，一键导出最终表格与矢量图。 |
-| **Table 2: 发音人性别公平性分析**<br>(Gender Demographic Fairness) | 评估模型在女性 vs 男性下的检测公平性，证明无发音人性别人群系统偏见（差异 < 2%）。<br>*(已剔除异构外部语料中不存在的三大方言区)* | **`scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py`** | `data/experiments/fairness/gender_fairness_distribution.csv`<br>`gender_metrics.json` | `uv run python scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 纯净的性别公平性脚本已落盘并跑通；<br>• 待终版模型产出后统计导出。 |
+| 论文拟收录图表                                                                   | 核心学术论点 / 实验目的                                                                                                                                                         | 唯一权威主入口脚本                                                                   | 产出成果与文件位置                                                                                      | 标准 `uv run` 执行命令                                                                                    | TODO 状态 / 前置依赖                                                      |
+|:------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------- |
+| **Table 1 & Figure 2: 主流前人基线横向对比与退化衰减曲线**<br>(Unified Baseline Benchmark) | **横向超越 4 大前人检测器**（Praat, Kane, DeepFry, CreaPy），且在 5 档声学退化下保持断层领先。<br>• **Figure 2**: 5 模型主折线，带浅色阴影带（Shaded Band 呈现 5 噪声方差）；<br>• **Table 1**: 5 梯度量化大表（附录附 19 条件明细）。 | **`scripts/baseline_comparison/evaluate_qut_baselines.py`**<br>(纯数据产出，解耦绘图) | `data/experiments/baselines/table1_baseline_comparison.csv`<br>`vowel_robustness_metrics.json` | `uv run python scripts/baseline_comparison/evaluate_qut_baselines.py`                               | 🟢 **管线就绪，待终版重刷**<br>• 已实现并验证增量缓存；<br>• 待新数据终版模型训练完成后，一键导出最终表格与矢量图。 |
+| **Table 2: 发音人性别公平性分析**<br>(Gender Demographic Fairness)                  | 评估模型在女性 vs 男性下的检测公平性，证明无发音人性别人群系统偏见（差异 < 2%）。<br>*(已剔除异构外部语料中不存在的三大方言区)*                                                                                              | **`scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py`**       | `data/experiments/fairness/gender_fairness_distribution.csv`<br>`gender_metrics.json`          | `uv run python scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 纯净的性别公平性脚本已落盘并跑通；<br>• 待终版模型产出后统计导出。         |
 
 ---
 
 ### 第二部分：气声（Breathy Voice）弱监督拓展与统计显著性
 
-| 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Table 3: 核心模块正交消融表**<br>(Component Ablation Table) | 验证关键模块的不可或缺性：<br>• 基线 (纯强监督)<br>• + 朴素 MIL 弱监督<br>• + VSDC 背景抑制网络<br>• + QUT-NOISE 真实退化增强 | **`scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py`** | `docs/weak_label_training_technical_specification.md`<br>`component_ablation_summary.csv` | 整理各消融臂权重后调用标准评测 | 🟡 **待终版重训后填入**<br>• 已剔除 4 阶段内部演进流水账；<br>• 待终版消融模型训练后填入规范正交数据。 |
+| 论文拟收录图表                                                                      | 核心学术论点 / 实验目的                                                                                                      | 唯一权威主入口脚本                                                                     | 产出成果与文件位置                                                                                                       | 标准 `uv run` 执行命令                                                                                                                             | TODO 状态 / 前置依赖                                                                             |
+|:---------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------ |:----------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------ |
+| **Table 3: 核心模块正交消融表**<br>(Component Ablation Table)                         | 验证关键模块的不可或缺性：<br>• 基线 (纯强监督)<br>• + 朴素 MIL 弱监督<br>• + VSDC 背景抑制网络<br>• + QUT-NOISE 真实退化增强                          | **`scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py`** | `docs/weak_label_training_technical_specification.md`<br>`component_ablation_summary.csv`                       | 整理各消融臂权重后调用标准评测                                                                                                                              | 🟡 **待终版重训后填入**<br>• 已剔除 4 阶段内部演进流水账；<br>• 待终版消融模型训练后填入规范正交数据。                             |
 | **Table 4: 跨退化梯度发音人配对 Bootstrap 显著性检验**<br>(Significance Audit across Tiers) | **硬核统计推断**：$B=1000$ 轮重采样证实气声增益在 5 档声学梯度（Clean 至 Compound）下均保持显著（95% CI > 0, $p \le 0.05$）；嘎裂声主任务 $p > 0.05$（零负迁移）。 | **`scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py`** | `data/experiments/statistical_bootstrap_audit/paired_bootstrap_suite_report.csv`<br>`paired_bootstrap_audit.md` | `uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py --model-a <weak_on> --model-b <weak_off> --run-suite` | 🟡 **待增加 `--run-suite`**<br>• 增加一键遍历 5 档梯度模式；<br>• 待新数据终版模型（Weak-On vs Weak-Off）训练完成后统一执行。 |
 
 ---
 
 ### 第三部分：双任务解耦、层敏感度与表征几何机理剖析
 
-| 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Table 5 & Figure 4: LOLO 微观逐层消融敏感度矩阵**<br>(Micro Layer Ablation) | 揭示双任务在 WavLM 13 层中的**语音学生理层级差异**：嘎裂声强烈依赖底层时域微细脉冲（L1~L3）；气声更依赖中层共振峰与高层语义（L4~L8）。 | **`scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py`** | `data/experiments/lolo_ablation_evaluation/lolo_ablation_report.csv`<br>`lolo_ablation_summary.json` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 当前已在中间模型跑通验证；<br>• 加数据重训后，需在终版 Checkpoint 上一键重跑固化。 |
-| **Table 6 & Figure 5: 宏观自顶向下层截断与剪枝边界**<br>(Depth Truncation Pareto) | 自顶向下依次丢弃顶层 $k$ 个 Transformer 块（$k=1..12$），论证保留前 6~7 层即可无损保持干净集双任务精度，给出端侧轻量化部署上限。 | **`scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py`** | `data/experiments/topk_layer_truncation_evaluation/topk_layer_truncation_report.csv`<br>`topk_layer_truncation_report.md` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 当前已跑通并验证 Pareto 边界；<br>• 待终版模型产出后重新执行一次确认端侧裁剪层数。 |
-| **Table 8 & Figure 7: CKA 表征几何与跨退化保真度**<br>(Representation CKA & Stability) | 构建 13×13 线性 CKA 双任务自相似度热力图（展示生理分块）；计算在标准声学退化下的**逐层 CKA 保真度条形图**，量化预训练几何抗扰能力。 | **`scripts/representation_and_calibration_audit/evaluate_representation_cka.py`** | `data/experiments/representation_cka_audit/layer_cka_heatmap.pdf`<br>`cka_layer_fidelity_bar.pdf` | `uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py --checkpoint <ckpt> --compare-noise` | 🟢 **管线就绪，待终版执行**<br>• 已剔除冗余混乱的置信度校准图；<br>• 待终版模型重训后执行出图。 |
+| 论文拟收录图表                                                                     | 核心学术论点 / 实验目的                                                                    | 唯一权威主入口脚本                                                                             | 产出成果与文件位置                                                                                                                 | 标准 `uv run` 执行命令                                                                                                                | TODO 状态 / 前置依赖                                                            |
+|:--------------------------------------------------------------------------- |:-------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------- |
+| **Table 5 & Figure 4: LOLO 微观逐层消融敏感度矩阵**<br>(Micro Layer Ablation)          | 揭示双任务在 WavLM 13 层中的**语音学生理层级差异**：嘎裂声强烈依赖底层时域微细脉冲（L1~L3）；气声更依赖中层共振峰与高层语义（L4~L8）。  | **`scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py`**         | `data/experiments/lolo_ablation_evaluation/lolo_ablation_report.csv`<br>`lolo_ablation_summary.json`                      | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py --checkpoint <ckpt>`                     | 🟢 **管线就绪，待终版重刷**<br>• 当前已在中间模型跑通验证；<br>• 加数据重训后，需在终版 Checkpoint 上一键重跑固化。 |
+| **Table 6 & Figure 5: 宏观自顶向下层截断与剪枝边界**<br>(Depth Truncation Pareto)         | 自顶向下依次丢弃顶层 $k$ 个 Transformer 块（$k=1..12$），论证保留前 6~7 层即可无损保持干净集双任务精度，给出端侧轻量化部署上限。 | **`scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py`** | `data/experiments/topk_layer_truncation_evaluation/topk_layer_truncation_report.csv`<br>`topk_layer_truncation_report.md` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py --checkpoint <ckpt>`             | 🟢 **管线就绪，待终版重刷**<br>• 当前已跑通并验证 Pareto 边界；<br>• 待终版模型产出后重新执行一次确认端侧裁剪层数。   |
+| **Table 8 & Figure 7: CKA 表征几何与跨退化保真度**<br>(Representation CKA & Stability) | 构建 13×13 线性 CKA 双任务自相似度热力图（展示生理分块）；计算在标准声学退化下的**逐层 CKA 保真度条形图**，量化预训练几何抗扰能力。     | **`scripts/representation_and_calibration_audit/evaluate_representation_cka.py`**     | `data/experiments/representation_cka_audit/layer_cka_heatmap.pdf`<br>`cka_layer_fidelity_bar.pdf`                         | `uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py --checkpoint <ckpt> --compare-noise` | 🟢 **管线就绪，待终版执行**<br>• 已剔除冗余混乱的置信度校准图；<br>• 待终版模型重训后执行出图。                 |
 
 ---
 
 ### 第四部分：语音学生理声学指标可解释性与边缘部署
 
-| 论文拟收录图表 | 核心学术论点 / 实验目的 | 唯一权威主入口脚本 | 产出成果与文件位置 | 标准 `uv run` 执行命令 | TODO 状态 / 前置依赖 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`acoustic_correlations_metrics.json` | `uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py --checkpoint <ckpt>` | 🟢 **管线就绪，待终版重刷**<br>• 统一调用 Parselmouth 全样本批处理与增量 CSV 缓存；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并由专用绘图脚本导出出版级小提琴图。 |
-| **Table 9: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF) | 汇报 ONNX 导出后在 CPU 与 GPU 上的单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。 | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`** | `deployments/wavfry_multitask.onnx` 及导出验证报告。 | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` | 🟢 **管线就绪，待终版导出实测**<br>• 导出包装器已支持多任务与帧级头；<br>• 待终版 Checkpoint 训练完毕后，导出最终 ONNX 并实测 CPU/GPU 推理延迟与 RTF。 |
+| 论文拟收录图表                                                                                                      | 核心学术论点 / 实验目的                                                                                                                                                                                                                                   | 唯一权威主入口脚本                                                                       | 产出成果与文件位置                                                                                             | 标准 `uv run` 执行命令                                                                                                                          | TODO 状态 / 前置依赖                                                                                             |
+|:------------------------------------------------------------------------------------------------------------ |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------- |
+| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`acoustic_correlations_metrics.json` | `uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py --checkpoint <ckpt>`                             | 🟢 **管线就绪，待终版重刷**<br>• 统一调用 Parselmouth 全样本批处理与增量 CSV 缓存；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并由专用绘图脚本导出出版级小提琴图。 |
+| **Table 9: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF)                                                           | 汇报 ONNX 导出后在 CPU 与 GPU 上的单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。                                                                                                                                                                       | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`**          | `deployments/wavfry_multitask.onnx` 及导出验证报告。                                                          | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` | 🟢 **管线就绪，待终版导出实测**<br>• 导出包装器已支持多任务与帧级头；<br>• 待终版 Checkpoint 训练完毕后，导出最终 ONNX 并实测 CPU/GPU 推理延迟与 RTF。       |
 
 ---
 
@@ -144,6 +147,7 @@ scripts/
 ## 5. 🚀 论文终版评测复现流（Final Reproduction Pipeline）
 
 ### 🌟 顶层一键聚合评测入口（Master Orchestrator，推荐）
+
 当未来加入扩充数据（如修复后的 MELI、BreathyTTS 等）训练好终版模型检查点（`best_model.pt`）后，推荐直接运行顶层聚合总管脚本，一键完成全表、全图、全审计与离线绘图：
 
 ```bash
@@ -164,6 +168,7 @@ uv run python scripts/run_paper_evaluations.py \
 ### 分步独立执行流水线（Modular Step-by-Step）
 
 ### Step 1: 嘎裂声前人基线横向对比与抗噪曲线 (Table 1 & Figure 2)
+
 ```bash
 uv run python scripts/baseline_comparison/evaluate_qut_baselines.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
@@ -171,6 +176,7 @@ uv run python scripts/baseline_comparison/evaluate_qut_baselines.py \
 ```
 
 ### Step 2: 发音人配对显著性检验与性别公平性 (Table 2 & Table 4)
+
 ```bash
 # 1. 跨 5 档声学梯度的发音人非参数配对 Bootstrap 检验
 uv run python scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py \
@@ -187,6 +193,7 @@ uv run python scripts/statistical_bootstrap_audit/evaluate_gender_fairness.py \
 ```
 
 ### Step 3: 双任务层敏感度、截断边界与 CKA 几何保真度 (Table 5, Table 6, Table 8, Figure 4, 5, 7)
+
 ```bash
 # 1. LOLO 微观逐层剥离消融
 uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py \
@@ -213,6 +220,7 @@ uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlat
 ```
 
 ### Step 4: 边缘部署模型导出与推断延迟验证 (Table 9)
+
 ```bash
 uv run python scripts/export_deployment.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \

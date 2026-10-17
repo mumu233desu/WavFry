@@ -8,6 +8,9 @@ import torch
 
 from wavfry.eval.acoustic_degradation import (
     AcousticDegradationEngine,
+    CANONICAL_EVAL_CONDITIONS,
+    CANONICAL_NOISE_TYPES,
+    CANONICAL_SNR_LADDER,
     PARADIGM_A_CONDITIONS,
     PARADIGM_A_NOISE_TYPES,
     PARADIGM_A_SNR_LADDER,
@@ -38,20 +41,59 @@ def test_parse_condition_str():
     assert c4.has_reverb is True
     assert c4.noise_type is None
 
-    # Reverb + Noise composite
-    c5 = parse_condition_str("reverb_cafe_5db")
-    assert c5.has_reverb is True
-    assert c5.noise_type == "cafe"
-    assert c5.snr_db == 5.0
+    # Authentic compound conditions (RIR strictly scenario-matched, default 15dB SNR)
+    c_room = parse_condition_str("reverb_compound")
+    assert c_room.has_reverb is True
+    assert c_room.noise_type == "reverb"
+    assert c_room.snr_db == 15.0
+
+    c_car = parse_condition_str("car_compound")
+    assert c_car.has_reverb is True
+    assert c_car.noise_type == "car"
+    assert c_car.snr_db == 15.0
+
+    # Explicit compound SNR override
+    c_car_5 = parse_condition_str("car_compound_5db")
+    assert c_car_5.has_reverb is True
+    assert c_car_5.noise_type == "car"
+    assert c_car_5.snr_db == 5.0
 
 
-def test_paradigm_a_constants():
-    assert len(PARADIGM_A_NOISE_TYPES) == 3
-    assert "cafe" in PARADIGM_A_NOISE_TYPES
-    assert "car" in PARADIGM_A_NOISE_TYPES
-    assert "street" in PARADIGM_A_NOISE_TYPES
-    assert PARADIGM_A_SNR_LADDER == [15.0, 5.0, 0.0]
-    assert len(PARADIGM_A_CONDITIONS) == 12
+def test_canonical_constants():
+    assert len(CANONICAL_NOISE_TYPES) == 5
+    for expected in ["cafe", "car", "home", "reverb", "street"]:
+        assert expected in CANONICAL_NOISE_TYPES
+    assert CANONICAL_SNR_LADDER == [15.0, 5.0, 0.0]
+    assert len(CANONICAL_EVAL_CONDITIONS) == 18
+    assert "clean" in CANONICAL_EVAL_CONDITIONS
+    assert "car_compound" in CANONICAL_EVAL_CONDITIONS
+    assert "reverb_compound" in CANONICAL_EVAL_CONDITIONS
+    # Check backward compatibility
+    assert len(PARADIGM_A_CONDITIONS) == 18
+
+
+def test_rir_scenario_strict_matching():
+    engine = AcousticDegradationEngine()
+    x = torch.randn(2, 16000)
+
+    # Valid scenario-matched combinations
+    out_car = engine.apply_tensor(x, "car_compound", seed=42)
+    assert out_car.shape == x.shape
+    assert not torch.all(out_car == x)
+
+    out_room = engine.apply_tensor(x, "room_compound", seed=42)
+    assert out_room.shape == x.shape
+    assert not torch.all(out_room == x)
+
+    # Pure RIR conditions
+    out_reverb = engine.apply_tensor(x, "reverb", seed=42)
+    assert out_reverb.shape == x.shape
+    out_car_rir = engine.apply_tensor(x, "car_rir", seed=42)
+    assert out_car_rir.shape == x.shape
+
+    # Unphysical cross-scenario RIR mixing must raise ValueError
+    with pytest.raises(ValueError, match="Physical Acoustic Invariant Violation"):
+        engine.apply_tensor(x, "reverb_cafe_5db", seed=42)
 
 
 def test_apply_tensor_clean_noop():

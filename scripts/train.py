@@ -471,9 +471,13 @@ def main():
         global_best_speaker = None
         
         # Optimization: Pre-load the backbone model once to avoid redundant loading in each fold
-        print(f"Pre-loading backbone: {config['model']['backbone']}...")
+        backbone_id = config['model'].get('backbone', config['model'].get('wavlm_model', 'microsoft/wavlm-base-plus'))
+        print(f"Pre-loading backbone: {backbone_id}...")
         from transformers import AutoModel
-        preloaded_wavlm = AutoModel.from_pretrained(config['model']['backbone'])
+        try:
+            preloaded_wavlm = AutoModel.from_pretrained(backbone_id, local_files_only=True)
+        except Exception:
+            preloaded_wavlm = AutoModel.from_pretrained(backbone_id)
         # Keep on CPU to save GPU memory during the full LOOCV process
         preloaded_wavlm.cpu() 
         

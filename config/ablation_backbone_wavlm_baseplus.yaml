@@ -103,7 +103,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: R:/runs/ablation_backbone_wavlm
+  log_dir: exp_results/runs/ablation_backbone_wavlm_baseplus
   log_audio_samples: true
   audio_sample_count: 4
   log_confusion_matrix: true
@@ -111,7 +111,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/ablation_backbone_wavlm
+  dir: exp_results/checkpoints/ablation_backbone_wavlm_baseplus
   save_mode: delta
   keep_best_count: 3
 

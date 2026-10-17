@@ -12,7 +12,7 @@ import pandas as pd
 from wavfry.model.wavlm_classifier import WavFryClassifier
 from wavfry.data.paradigm_block import ContinuousAudioBlockDataset
 from wavfry.train.trainer import Trainer
-from wavfry.data.manifest import adapter_ysj_textgrid
+from wavfry.data.manifest import adapter_sharded_textgrid_cache
 
 
 def _make_mock_wavlm():
@@ -313,7 +313,7 @@ def test_manifest_mllm_breathy_split_gating(tmp_path):
         },
     }
 
-    records = adapter_ysj_textgrid(ds_cfg)
+    records = adapter_sharded_textgrid_cache(ds_cfg)
     rec_by_file_and_id = {(r["file_key"], f"{r['start_s']}|{r['end_s']}|{r['phone']}"): r for r in records}
 
     # In val split: mllm_breathy interval is filtered out (both labels NaN)

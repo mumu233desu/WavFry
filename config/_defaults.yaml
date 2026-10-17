@@ -131,7 +131,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/
+  dir: exp_results/checkpoints/
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
   keep_best_count: 1                 # 保留验证集指标最好的前 N 个 ckpt
 

@@ -42,8 +42,10 @@ from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
 from wavfry.eval.acoustic_degradation import (
     AcousticDegradationEngine,
+    CANONICAL_EVAL_CONDITIONS,
     PARADIGM_A_CONDITIONS,
     get_acoustic_degradation_engine,
+    get_condition_metadata,
 )
 from scripts.representation_and_calibration_audit.calibration_core import (
     compute_reliability_diagram_bins,
@@ -123,13 +125,19 @@ def parse_args():
     parser.add_argument(
         "--eval-domains",
         nargs="+",
-        default=["clean"],
-        help="List of acoustic domains to evaluate: 'clean', 'cafe_5db', 'reverb', etc.",
+        default=None,
+        help="List of acoustic domains to evaluate: 'clean', 'cafe_5db', etc. Defaults to all 18 canonical conditions (or clean if --quick).",
+    )
+    parser.add_argument(
+        "--conditions",
+        nargs="+",
+        default=None,
+        help="Alias for --eval-domains.",
     )
     parser.add_argument(
         "--paradigm-a",
         action="store_true",
-        help="Execute complete Paradigm A Factorial Matrix (3 Noise Scenarios [Cafe, Car, Street] x 3 SNR levels [15, 5, 0 dB] + Clean & Reverb controls).",
+        help="Execute complete factorial matrix across all canonical conditions.",
     )
     return parser.parse_args()
 
@@ -346,13 +354,19 @@ def main():
     loader, paradigm = prepare_dataloader(config, manifest_path, args.split, args.batch_size)
 
     eval_tasks = ["creaky", "breathy"] if args.task == "all" else [args.task]
-    if args.paradigm_a:
-        domains = PARADIGM_A_CONDITIONS
-        print(f"[Paradigm A] Activated complete 3x3 Factorial Matrix + Controls ({len(domains)} conditions).")
-    else:
+    if args.conditions:
+        domains = args.conditions
+    elif args.eval_domains:
         domains = args.eval_domains
+    elif args.paradigm_a:
+        domains = list(CANONICAL_EVAL_CONDITIONS)
+    elif args.quick:
+        domains = ["clean"]
+    else:
+        domains = list(CANONICAL_EVAL_CONDITIONS)
 
     all_metrics_rows: List[Dict[str, Any]] = []
+    all_tidy_rows: List[Dict[str, Any]] = []
     task_domain_bins: Dict[str, Dict[str, Any]] = {t: {} for t in eval_tasks}
 
     report_md_lines = [
@@ -360,8 +374,8 @@ def main():
         f"- **Checkpoint**: `{ckpt_path.name}`",
         f"- **Split**: `{args.split}` | **Evaluation Paradigm**: `{paradigm}`",
         f"- **Confidence Bins**: `{args.bins}`",
-        f"- **Evaluated Domains**: `{', '.join(domains)}`",
-        f"- **Protocol**: `{'Paradigm A (3x3 Factorial Matrix + Controls)' if args.paradigm_a else 'Custom Domain Selection'}`",
+        f"- **Evaluated Domains ({len(domains)})**: `{', '.join(domains)}`",
+        f"- **Protocol**: `{'Full Canonical Matrix' if len(domains) == len(CANONICAL_EVAL_CONDITIONS) else 'Custom Domain Selection'}`",
         f"- **Timestamp**: `{time.strftime('%Y-%m-%d %H:%M:%S')}`",
         "",
         "---",
@@ -378,6 +392,7 @@ def main():
             max_samples=max_samples,
         )
 
+        meta = get_condition_metadata(domain)
         for task_name in eval_tasks:
             probs, labels = domain_preds[task_name]
             bin_data = compute_reliability_diagram_bins(probs, labels, num_bins=args.bins)
@@ -387,16 +402,36 @@ def main():
             mce = bin_data["mce"]
             brier = bin_data["brier_score"]
             n_samples = bin_data["total_samples"]
+            ece_pct = round(ece * 100, 2)
+            mce_pct = round(mce * 100, 2)
+            grade = "🟢 Well-Calibrated (< 5%)" if ece_pct < 5.0 else ("🟡 Moderate (5-10%)" if ece_pct < 10.0 else "🔴 Miscalibrated (> 10%)")
 
             all_metrics_rows.append({
                 "task": task_name,
                 "domain": domain,
                 "n_samples": n_samples,
                 "ece": round(ece, 5),
-                "ece_pct": round(ece * 100, 2),
+                "ece_pct": ece_pct,
                 "mce": round(mce, 5),
-                "mce_pct": round(mce * 100, 2),
+                "mce_pct": mce_pct,
                 "brier_score": round(brier, 5),
+            })
+
+            all_tidy_rows.append({
+                "Model": ckpt_path.name,
+                "Task": task_name,
+                "Condition": domain,
+                "Scenario": meta["Scenario"],
+                "SNR_dB": meta["SNR_dB"],
+                "Tier": meta["Tier"],
+                "Has_RIR": meta["Has_RIR"],
+                "N-Samples": n_samples,
+                "ECE (%)": ece_pct,
+                "MCE (%)": mce_pct,
+                "Brier-Score": round(brier, 5),
+                "ECE": round(ece, 5),
+                "MCE": round(mce, 5),
+                "Reliability-Assessment": grade,
             })
 
             # Plot single-domain Reliability Diagram for clean condition
@@ -411,7 +446,7 @@ def main():
 
     # 3. Process Paradigm A outputs and Domain Shift comparisons
     for task_name in eval_tasks:
-        # Check if any Paradigm A conditions exist
+        # Check if any factorial conditions exist
         has_paradigm_a = any(c in task_domain_bins[task_name] for c in ("cafe_15db", "cafe_5db", "car_5db", "street_5db"))
         if has_paradigm_a:
             p_a_table_md, p_a_rows = format_paradigm_a_summary_table(task_domain_bins[task_name], task_name)
@@ -423,12 +458,22 @@ def main():
                 "",
             ])
 
-            # Export Paradigm A CSV
+            # Export Paradigm A CSV with TitleCase LaTeX headers
             pa_csv_path = output_dir / f"paradigm_a_factorial_matrix_{task_name}.csv"
-            with open(pa_csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["task", "condition", "scenario", "snr_db", "ece_pct", "mce_pct", "brier_score", "n_samples"])
-                writer.writeheader()
-                writer.writerows(p_a_rows)
+            pa_tidy = [
+                {
+                    "Task": r["task"],
+                    "Condition": r["condition"],
+                    "Scenario": r["scenario"],
+                    "SNR_dB": r["snr_db"],
+                    "ECE (%)": r["ece_pct"],
+                    "MCE (%)": r["mce_pct"],
+                    "Brier-Score": r["brier_score"],
+                    "N-Samples": r["n_samples"],
+                }
+                for r in p_a_rows
+            ]
+            pd.DataFrame(pa_tidy).to_csv(pa_csv_path, index=False, encoding="utf-8")
             print(f"[Done] Exported Paradigm A Factorial CSV to {pa_csv_path}")
 
             # Plot publication-grade SNR decay curves
@@ -453,12 +498,12 @@ def main():
             "| Domain | Evaluated Samples | ECE (%) | MCE (%) | Brier Score | Reliability Assessment |",
             "| :--- | :---: | :---: | :---: | :---: | :--- |",
         ])
-        for row in all_metrics_rows:
-            if row["task"] == task_name:
-                ece_val = row["ece_pct"]
-                grade = "🟢 Well-Calibrated (< 5%)" if ece_val < 5.0 else ("🟡 Moderate (5-10%)" if ece_val < 10.0 else "🔴 Miscalibrated (> 10%)")
+        for row in all_tidy_rows:
+            if row["Task"] == task_name:
+                ece_val = row["ECE (%)"]
+                grade = row["Reliability-Assessment"]
                 report_md_lines.append(
-                    f"| **{row['domain'].capitalize()}** | {row['n_samples']:,} | **{ece_val:.2f}%** | {row['mce_pct']:.2f}% | {row['brier_score']:.4f} | {grade} |"
+                    f"| **{row['Condition'].capitalize()}** | {row['N-Samples']:,} | **{ece_val:.2f}%** | {row['MCE (%)']:.2f}% | {row['Brier-Score']:.4f} | {grade} |"
                 )
         report_md_lines.extend([
             "",
@@ -469,16 +514,45 @@ def main():
             "",
         ])
 
-    # 4. Save CSV table
-    csv_path = output_dir / "ece_calibration_metrics.csv"
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["task", "domain", "n_samples", "ece", "ece_pct", "mce", "mce_pct", "brier_score"]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(all_metrics_rows)
-    print(f"[Done] Exported ECE metrics CSV to {csv_path}")
+    # 4. Save Standardized Dual Machine-Readable Outputs
+    # 4a. Primary Tidy CSV with TitleCase LaTeX-aligned headers
+    csv_path = output_dir / "calibration_metrics_detail.csv"
+    pd.DataFrame(all_tidy_rows).to_csv(csv_path, index=False, encoding="utf-8")
+    legacy_csv_path = output_dir / "ece_calibration_metrics.csv"
+    pd.DataFrame(all_metrics_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
+    print(f"[Done] Exported Primary Calibration Detail CSV to {csv_path}")
 
-    # 5. Save Markdown report
+    # 4b. Hierarchical JSON summary
+    def _to_json_compat(val: Any) -> Any:
+        if isinstance(val, np.ndarray):
+            return val.tolist()
+        if isinstance(val, (np.floating, float)):
+            return float(val)
+        if isinstance(val, (np.integer, int)):
+            return int(val)
+        if isinstance(val, dict):
+            return {k: _to_json_compat(v) for k, v in val.items()}
+        if isinstance(val, (list, tuple)):
+            return [_to_json_compat(v) for v in val]
+        return val
+
+    json_path = output_dir / "calibration_metrics.json"
+    calib_json = {
+        "checkpoint": ckpt_path.name,
+        "split": args.split,
+        "paradigm": paradigm,
+        "bins": args.bins,
+        "tasks": eval_tasks,
+        "conditions": domains,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "metrics": all_tidy_rows,
+        "bin_data": _to_json_compat(task_domain_bins),
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(calib_json, f, indent=2, ensure_ascii=False)
+    print(f"[Done] Exported Hierarchical JSON to {json_path}")
+
+    # 5. Save Markdown report byproduct
     md_path = output_dir / "calibration_audit_report.md"
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(report_md_lines))

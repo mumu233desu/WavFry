@@ -94,7 +94,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: R:/runs/csl_frozen_wavlm_base_plus
+  log_dir: exp_results/runs/csl_frozen_wavlm_base_plus
   log_audio_samples: true
   audio_sample_count: 8
   log_confusion_matrix: true
@@ -102,7 +102,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/csl_frozen_wavlm_base_plus
+  dir: exp_results/checkpoints/csl_frozen_wavlm_base_plus
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
   keep_best_count: 1                 # 每个 speaker 只保留指标最好的 N 个 ckpt
 

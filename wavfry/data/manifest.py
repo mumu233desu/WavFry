@@ -779,13 +779,15 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
-def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    """Adapter for YSJ Japanese MFA TextGrid corpus with _breathy_cache and manifest_slices.csv metadata.
+def adapter_sharded_textgrid_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generic adapter for TextGrid corpora managed by the sharded cache protocol (_creaky_cache / _breathy_cache).
+
+    Compatible with any dataset annotated with 04_creaky_tools (MELI, YSJ, BreathyTTS, ITA, etc.).
 
     Expected adapter_params:
       audio_dir: Path to directory containing audio (.flac/.wav) files.
       textgrid_dir: Path to directory containing .TextGrid files.
-      cache_dir: (Optional) Path to _breathy_cache directory. Defaults to <textgrid_dir>/_breathy_cache.
+      cache_dir: (Optional) Path to cache directory. Defaults to <textgrid_dir>/_breathy_cache or _creaky_cache.
       manifest_csv: (Optional) Path to manifest_slices.csv.
       language: (Optional) Language code, default 'ja'.
       phone_tier_name: (Optional) default 'phones'.
@@ -890,21 +892,41 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
         return []
 
     label_schema = ds_cfg.get("label_schema", {})
-    has_breathy_schema = bool(label_schema.get("breathy", True))
-    has_creaky_schema = bool(label_schema.get("creaky", False))
+    if not label_schema:
+        has_breathy_schema = True
+        breathy_silence_as_neg = False
+        has_creaky_schema = False
+    else:
+        breathy_spec = label_schema.get("breathy", False)
+        has_breathy_schema = (
+            bool(breathy_spec.get("enabled", True))
+            if isinstance(breathy_spec, dict)
+            else bool(breathy_spec)
+        )
+        breathy_silence_as_neg = (
+            isinstance(breathy_spec, dict)
+            and bool(breathy_spec.get("silence_as_negative", False))
+        )
+        creaky_spec = label_schema.get("creaky", False)
+        has_creaky_schema = (
+            bool(creaky_spec.get("enabled", True))
+            if isinstance(creaky_spec, dict)
+            else bool(creaky_spec)
+        )
+    anno_task = "creaky" if (has_creaky_schema and not has_breathy_schema) else "breathy"
 
     records: list[dict[str, Any]] = []
     missing_audio: list[str] = []
     seen_file_splits: dict[str, tuple[int | None, str]] = {}
 
     for b_id, b_name, b_split, annotation_path, b_entry in batch_items:
-        is_kappa = (b_entry is not None) and is_kappa_batch(b_entry, cache_dir=cache_dir, task="breathy")
-        kappa_eval_dir = get_kappa_eval_dir(cache_dir, batch_id=b_id, task="breathy") if (is_kappa and b_id is not None) else None
+        is_kappa = (b_entry is not None) and is_kappa_batch(b_entry, cache_dir=cache_dir, task=anno_task)
+        kappa_eval_dir = get_kappa_eval_dir(cache_dir, batch_id=b_id, task=anno_task) if (is_kappa and b_id is not None) else None
 
         if is_kappa and kappa_eval_dir and load_kappa_consensus_annotations is not None:
             print(f"[manifest] [{dataset_id}] Batch [{b_id}] '{b_name}' recognized as KAPPA TEST BATCH.")
             print(f"[manifest] [{dataset_id}] Loading multi-annotator consensus from: {kappa_eval_dir}...")
-            batch_data = load_kappa_consensus_annotations(kappa_eval_dir, task="breathy")
+            batch_data = load_kappa_consensus_annotations(kappa_eval_dir, task=anno_task)
             n_unanimous = batch_data.get("total_unanimous", 0)
             n_disputed = batch_data.get("total_disputed", 0)
             print(f"[manifest] [{dataset_id}] Kappa Consensus: {n_unanimous} unanimous intervals kept, {n_disputed} disputed/unverified intervals excluded.")
@@ -970,13 +992,32 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 if (end_s - start_s) * 1000.0 < min_duration_ms:
                     continue
 
+                phone_type = "vowel"
+                if classify_phone_label is not None and get_phone_inventory is not None:
+                    try:
+                        inv = get_phone_inventory(language)
+                        p_t = classify_phone_label(phone, inv)
+                        if hasattr(p_t, "value"):
+                            phone_type = p_t.value
+                        elif p_t:
+                            phone_type = str(p_t)
+                    except Exception:
+                        phone_type = "silence" if phone.upper() in {"SP", "SIL", "SILENCE", "AP", "EP"} else "vowel"
+                elif phone.upper() in {"SP", "SIL", "SILENCE", "AP", "EP"}:
+                    phone_type = "silence"
+
+                is_silence = (phone_type == "silence") or (phone.upper() in {"SP", "SIL", "SILENCE", "AP", "EP"})
+
                 if not has_breathy_schema:
-                    l_breathy = float("nan")
+                    if breathy_silence_as_neg and is_silence:
+                        l_breathy = 0.0
+                    else:
+                        l_breathy = float("nan")
                 elif state == "breathy":
                     l_breathy = 1.0
                 elif allow_mllm_pseudo_labels and state == "mllm_breathy" and b_split == "train":
                     l_breathy = 1.0
-                elif state in ("non_breathy", "modal", "creaky"):
+                elif state in ("non_breathy", "modal", "creaky", "non_creaky"):
                     l_breathy = 0.0
                 else:
                     l_breathy = float("nan")
@@ -985,7 +1026,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     l_creaky = float("nan")
                 elif state == "creaky":
                     l_creaky = 1.0
-                elif state in ("non_breathy", "modal", "breathy"):
+                elif state in ("non_creaky", "non_breathy", "modal", "breathy"):
                     l_creaky = 0.0
                 else:
                     l_creaky = float("nan")
@@ -993,7 +1034,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 if math.isnan(l_breathy) and math.isnan(l_creaky):
                     continue
 
-                label_val = l_breathy if not math.isnan(l_breathy) else l_creaky
+                label_val = l_creaky if has_creaky_schema else l_breathy
 
                 records.append({
                     "dataset_id": dataset_id,
@@ -1007,7 +1048,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                     "gender": gender,
                     "language": language,
                     "phone": phone,
-                    "phone_type": "vowel",
+                    "phone_type": phone_type,
                     "annotation_granularity": granularity,
                     "label_creaky": l_creaky,
                     "label_breathy": l_breathy,
@@ -1033,7 +1074,7 @@ def adapter_ysj_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
                 "Set adapter_params.lenient_missing=true to downgrade to a warning."
             )
 
-    print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from YSJ TextGrid ({cache_dir}).")
+    print(f"[manifest] [{dataset_id}] Extracted {len(records)} intervals from sharded TextGrid cache ({cache_dir}).")
     return records
 
 
@@ -1045,8 +1086,7 @@ ADAPTERS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "capev_csv": adapter_capev_csv,
     "generic_csv": adapter_generic_csv,
     "breathy_cache": adapter_breathy_cache,
-    "ysj_textgrid": adapter_ysj_textgrid,
-    "mfa_textgrid_sharded": adapter_ysj_textgrid,
+    "sharded_textgrid_cache": adapter_sharded_textgrid_cache,
 }
 
 
@@ -1239,3 +1279,8 @@ def build_manifest(config: dict[str, Any]) -> pd.DataFrame:
     }
     datasets_cfg = {"datasets": [ds_cfg]}
     return build_manifest_multi(datasets_cfg, global_cfg=config)
+
+
+if __name__ == "__main__":
+    from scripts.build_manifest import main
+    main()

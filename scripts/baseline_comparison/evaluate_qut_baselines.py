@@ -290,15 +290,25 @@ def run_baseline_evaluation(
 
     table1_df = pd.DataFrame(table1_rows)
 
-    # 4. Save JSON and CSV
+    # 4. Save JSON, CSV, and Markdown byproduct
     json_path = output_dir / "vowel_robustness_metrics.json"
     csv_path = output_dir / "table1_baseline_comparison.csv"
+    md_path = output_dir / "table1_baseline_comparison.md"
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(metrics_json, f, indent=2)
     table1_df.to_csv(csv_path, index=False, encoding="utf-8")
 
-    logger.info(f"Saved Table 1 data to {csv_path}")
+    # Generate Markdown report
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("# Table 1: Baseline Comparison under Acoustic Degradation (F1-Score)\n\n")
+        f.write("- **Tiers**: Clean, Mild (15dB), Moderate (5dB), Severe (0dB), and Compound (Noise+RIR)\n")
+        f.write("- **Canonical Conditions**: 5 Noise Scenarios (Cafe, Car, Home, Reverb, Street) + 2 Strictly Matched RIR Compounds\n\n")
+        f.write(table1_df.to_markdown(index=False))
+        f.write("\n\n---\n*Note: Metrics represent macro-averaged F1-Score across evaluation intervals.*\n")
+
+    logger.info(f"Saved Table 1 CSV data to {csv_path}")
+    logger.info(f"Saved Table 1 Markdown report to {md_path}")
     logger.info(f"Saved Figure 2 JSON metrics to {json_path}")
 
     return metrics_json, table1_df

@@ -6,7 +6,7 @@ from pathlib import Path
 from wavfry.data.manifest import (
     _speaker_id,
     _language_from_file_key,
-    adapter_ysj_textgrid,
+    adapter_sharded_textgrid_cache,
     ADAPTERS,
 )
 from wavfry.data.splits import isolate_split_speakers
@@ -28,12 +28,11 @@ def test_wavfry_speaker_and_language_token_extraction():
 
 
 def test_adapter_registration():
-    assert "ysj_textgrid" in ADAPTERS
-    assert "mfa_textgrid_sharded" in ADAPTERS
-    assert ADAPTERS["ysj_textgrid"] is adapter_ysj_textgrid
+    assert "sharded_textgrid_cache" in ADAPTERS
+    assert ADAPTERS["sharded_textgrid_cache"] is adapter_sharded_textgrid_cache
 
 
-def test_adapter_ysj_textgrid_with_manifest_and_filtering(tmp_path: Path):
+def test_adapter_sharded_textgrid_cache_with_manifest_and_filtering(tmp_path: Path):
     audio_dir = tmp_path / "audio"
     tg_dir = tmp_path / "textgrid"
     cache_dir = tg_dir / "_breathy_cache"
@@ -111,7 +110,7 @@ def test_adapter_ysj_textgrid_with_manifest_and_filtering(tmp_path: Path):
         },
         "label_schema": {"creaky": False, "breathy": True},
     }
-    records_a = adapter_ysj_textgrid(cfg_a)
+    records_a = adapter_sharded_textgrid_cache(cfg_a)
     assert len(records_a) == 4  # 2 from f1 + 1 from f2 + 1 from f3_noisy
     assert {r["speaker_id"] for r in records_a} == {"C0023", "C0001"}
     assert {r["gender"] for r in records_a} == {"M", "X", "F"}
@@ -131,7 +130,7 @@ def test_adapter_ysj_textgrid_with_manifest_and_filtering(tmp_path: Path):
         },
         "label_schema": {"creaky": False, "breathy": True},
     }
-    records_b = adapter_ysj_textgrid(cfg_b)
+    records_b = adapter_sharded_textgrid_cache(cfg_b)
     assert len(records_b) == 3
     assert all(r["speaker_id"] == "C0023" for r in records_b)
     assert {r["file_key"] for r in records_b} == {f1, f2}
@@ -150,7 +149,7 @@ def test_adapter_ysj_textgrid_with_manifest_and_filtering(tmp_path: Path):
         },
         "label_schema": {"creaky": False, "breathy": True},
     }
-    records_c = adapter_ysj_textgrid(cfg_c)
+    records_c = adapter_sharded_textgrid_cache(cfg_c)
     assert len(records_c) == 2
     assert all(r["file_key"] == f1 for r in records_c)
     assert all(r["gender"] == "M" for r in records_c)

@@ -25,24 +25,39 @@ import soundfile as sf
 import torch
 import torchaudio
 
-# Standard Factorial Evaluation Protocol (Paradigm A)
-PARADIGM_A_NOISE_TYPES: List[str] = ["cafe", "car", "street"]
-PARADIGM_A_SNR_LADDER: List[float] = [15.0, 5.0, 0.0]
+# Canonical Factorial Evaluation Protocol (5 Noise Scenarios x 3 SNRs + 2 Compounds + Clean)
+CANONICAL_NOISE_TYPES: List[str] = ["cafe", "car", "home", "reverb", "street"]
+CANONICAL_SNR_LADDER: List[float] = [15.0, 5.0, 0.0]
 
-PARADIGM_A_CONDITIONS: List[str] = [
+# Canonical 18 evaluation conditions:
+# 1 Clean + 15 Factorial Noises (5 scenarios x 3 SNRs) + 2 Scenario-Matched Compounds @ 15dB
+CANONICAL_EVAL_CONDITIONS: List[str] = [
     "clean",
+    # 5 noise scenarios x 3 SNRs (15 dB, 5 dB, 0 dB)
     "cafe_15db",
     "cafe_5db",
     "cafe_0db",
     "car_15db",
     "car_5db",
     "car_0db",
+    "home_15db",
+    "home_5db",
+    "home_0db",
+    "reverb_15db",
+    "reverb_5db",
+    "reverb_0db",
     "street_15db",
     "street_5db",
     "street_0db",
-    "reverb",
-    "reverb_cafe_5db",
+    # 2 strictly scenario-matched physical compound environments @ 15dB
+    "car_compound",
+    "reverb_compound",
 ]
+
+# Backward-compatible aliases
+PARADIGM_A_NOISE_TYPES: List[str] = CANONICAL_NOISE_TYPES
+PARADIGM_A_SNR_LADDER: List[float] = CANONICAL_SNR_LADDER
+PARADIGM_A_CONDITIONS: List[str] = CANONICAL_EVAL_CONDITIONS
 
 # Default directories for processed QUT-NOISE and RIRs
 DEFAULT_NOISE_DIR = Path("E:/Corpus/Noise/QUT-NOISE_processed/noise")
@@ -54,44 +69,64 @@ class ParsedCondition:
     raw_name: str
     is_clean: bool = False
     has_reverb: bool = False
-    noise_type: Optional[str] = None  # 'cafe', 'car', 'street', 'pink', 'white'
+    noise_type: Optional[str] = None  # 'cafe', 'car', 'street', 'home', 'reverb', 'pink', 'white'
     snr_db: Optional[float] = None
 
 
 def parse_condition_str(condition: str) -> ParsedCondition:
     """
-    Parse condition string into structured parameters.
+    Parse condition string into structured parameters following the Canonical Degradation Protocol.
     Examples:
         - 'clean' -> is_clean=True
         - 'cafe_15db' -> noise_type='cafe', snr_db=15.0
-        - 'reverb' -> has_reverb=True
-        - 'reverb_cafe_5db' -> has_reverb=True, noise_type='cafe', snr_db=5.0
-        - 'white_0db' -> noise_type='white', snr_db=0.0
+        - 'car_5db' -> noise_type='car', snr_db=5.0
+        - 'home_0db' -> noise_type='home', snr_db=0.0
+        - 'reverb_15db' -> noise_type='reverb', snr_db=15.0 (authentic swimming pool/carpark ambient noise)
+        - 'street_5db' -> noise_type='street', snr_db=5.0
+        - 'reverb' / 'room_rir' -> has_reverb=True (swimming pool & carpark RIR), noise_type=None
+        - 'car_rir' -> has_reverb=True (car cabin RIR), noise_type='car', snr_db=None
+        - 'car_compound' -> has_reverb=True (car cabin RIR), noise_type='car', snr_db=15.0 (or parsed if given)
+        - 'reverb_compound' / 'room_compound' -> has_reverb=True (room RIR), noise_type='reverb', snr_db=15.0
     """
     norm = condition.strip().lower()
     if norm in ("clean", "none", "default"):
         return ParsedCondition(raw_name=condition, is_clean=True)
 
-    has_reverb = "reverb" in norm
-
     # Extract SNR if present: e.g. '_15db', '15db', '-5db'
     snr_match = re.search(r"(-?\d+(?:\.\d+)?)db", norm)
     snr_db = float(snr_match.group(1)) if snr_match else None
 
-    # Identify noise type
+    # 1. Canonical compound conditions (RIR + matched additive noise, default 15dB)
+    if "compound" in norm:
+        compound_snr = snr_db if snr_db is not None else 15.0
+        if "car" in norm:
+            return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="car", snr_db=compound_snr)
+        elif any(k in norm for k in ("reverb", "room")):
+            return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="reverb", snr_db=compound_snr)
+
+    # 2. Pure RIR conditions (Spatial RIR only, no noise)
+    if norm in ("reverb", "reverb_rir", "room_rir"):
+        return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type=None, snr_db=None)
+    if norm == "car_rir":
+        return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="car", snr_db=None)
+
+    # 3. Identify additive noise type: cafe, car, street, home, reverb, pink, white
     noise_type = None
-    for candidate in ("cafe", "car", "street", "home", "pink", "white"):
+    for candidate in ("cafe", "car", "street", "home", "pink", "white", "reverb"):
         if candidate in norm:
+            if candidate == "reverb" and any(other in norm for other in ("cafe", "car", "street", "home", "pink", "white")):
+                continue
             noise_type = candidate
             break
-
-    # If reverb only and no noise type specified
-    if has_reverb and noise_type is None and snr_db is None:
-        return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True)
 
     # If no noise type found but SNR found, default to pink noise
     if noise_type is None and snr_db is not None:
         noise_type = "pink"
+
+    # has_reverb is only True if 'reverb' is explicitly in norm and it's not pure ambient noise
+    has_reverb = False
+    if "reverb" in norm and noise_type != "reverb":
+        has_reverb = True
 
     return ParsedCondition(
         raw_name=condition,
@@ -100,6 +135,55 @@ def parse_condition_str(condition: str) -> ParsedCondition:
         noise_type=noise_type,
         snr_db=snr_db,
     )
+
+
+def get_condition_metadata(condition: str) -> Dict[str, Any]:
+    """
+    Extract standardized LaTeX/TitleCase metadata dictionary for an acoustic condition.
+    Returns:
+        {
+            "Condition": str,
+            "Scenario": str,
+            "SNR_dB": Optional[float],
+            "Has_RIR": bool,
+            "Tier": str,
+        }
+    """
+    parsed = parse_condition_str(condition)
+    if parsed.is_clean:
+        return {
+            "Condition": "clean",
+            "Scenario": "clean",
+            "SNR_dB": None,
+            "Has_RIR": False,
+            "Tier": "Clean",
+        }
+
+    scen = parsed.noise_type or ("car" if "car" in parsed.raw_name else "reverb")
+    snr = parsed.snr_db
+    has_rir = parsed.has_reverb
+
+    if "compound" in parsed.raw_name or has_rir:
+        tier = "Compound"
+    elif snr is not None:
+        if abs(snr - 15.0) < 1e-3:
+            tier = "Mild"
+        elif abs(snr - 5.0) < 1e-3:
+            tier = "Moderate"
+        elif abs(snr - 0.0) < 1e-3:
+            tier = "Severe"
+        else:
+            tier = f"{snr:.0f}dB"
+    else:
+        tier = "Degraded"
+
+    return {
+        "Condition": parsed.raw_name,
+        "Scenario": scen,
+        "SNR_dB": snr,
+        "Has_RIR": has_rir,
+        "Tier": tier,
+    }
 
 
 class AcousticDegradationEngine:
@@ -122,6 +206,7 @@ class AcousticDegradationEngine:
         self.rir_dir = Path(rir_dir) if rir_dir else DEFAULT_RIR_DIR
 
         self._noise_pool: Dict[str, List[torch.Tensor]] = {}
+        self._rir_pool_by_scenario: Dict[str, List[torch.Tensor]] = {}
         self._rir_pool: List[torch.Tensor] = []
 
         self._load_noise_sources()
@@ -133,7 +218,12 @@ class AcousticDegradationEngine:
             print(f"[AcousticDegradation] Notice: Noise directory {self.noise_dir} not found. Fallback to synthetic.")
             return
 
-        for scenario in ("cafe", "car", "street", "home"):
+        # QUT-NOISE consists of 5 canonical scenarios: cafe, car, home, reverb (pool/carpark), street
+        scenarios = sorted([d.name.lower() for d in self.noise_dir.iterdir() if d.is_dir()])
+        if not scenarios:
+            scenarios = ["cafe", "car", "home", "reverb", "street"]
+
+        for scenario in scenarios:
             scen_dir = self.noise_dir / scenario
             if not scen_dir.is_dir():
                 continue
@@ -158,32 +248,46 @@ class AcousticDegradationEngine:
         print(f"[AcousticDegradation] Loaded {total_files} real noise files across {list(self._noise_pool.keys())}.")
 
     def _load_rir_sources(self):
-        """Scan and pre-load RIR impulse responses."""
+        """Scan and pre-load RIR impulse responses grouped by scenario."""
         if not self.rir_dir.is_dir():
             print(f"[AcousticDegradation] Notice: RIR directory {self.rir_dir} not found. Fallback to synthetic.")
             return
 
-        rir_files = sorted(list(self.rir_dir.rglob("*.flac")) + list(self.rir_dir.rglob("*.wav")))
-        for fpath in rir_files:
-            try:
-                wf, sr = sf.read(str(fpath), always_2d=False, dtype="float32")
-                if wf.ndim > 1:
-                    wf = np.mean(wf, axis=1)
-                if sr != self.sample_rate:
-                    tensor_wf = torch.from_numpy(wf).unsqueeze(0)
-                    tensor_wf = torchaudio.functional.resample(tensor_wf, sr, self.sample_rate)
-                    wf = tensor_wf.squeeze(0).numpy()
+        self._rir_pool_by_scenario = {}
+        self._rir_pool = []
 
-                # Normalize RIR to unit energy
-                rir_tensor = torch.from_numpy(wf)
-                energy = torch.sum(rir_tensor ** 2)
-                if energy > 1e-9:
-                    rir_tensor = rir_tensor / torch.sqrt(energy)
-                self._rir_pool.append(rir_tensor)
-            except Exception as e:
-                print(f"[AcousticDegradation] Warning loading RIR {fpath}: {e}")
+        # QUT-NOISE impulses are structured by scenario: 'car' (cabin RIR) and 'reverb' (swimming pool & carpark RIR)
+        scenario_dirs = [d for d in self.rir_dir.iterdir() if d.is_dir()]
+        if not scenario_dirs:
+            scenario_dirs = [self.rir_dir]
 
-        print(f"[AcousticDegradation] Loaded {len(self._rir_pool)} real RIR impulse responses.")
+        for sdir in scenario_dirs:
+            scen_name = sdir.name.lower() if sdir != self.rir_dir else "general"
+            self._rir_pool_by_scenario[scen_name] = []
+            rir_files = sorted(list(sdir.glob("*.flac")) + list(sdir.glob("*.wav")))
+            for fpath in rir_files:
+                try:
+                    wf, sr = sf.read(str(fpath), always_2d=False, dtype="float32")
+                    if wf.ndim > 1:
+                        wf = np.mean(wf, axis=1)
+                    if sr != self.sample_rate:
+                        tensor_wf = torch.from_numpy(wf).unsqueeze(0)
+                        tensor_wf = torchaudio.functional.resample(tensor_wf, sr, self.sample_rate)
+                        wf = tensor_wf.squeeze(0).numpy()
+
+                    # Normalize RIR to unit energy
+                    rir_tensor = torch.from_numpy(wf)
+                    energy = torch.sum(rir_tensor ** 2)
+                    if energy > 1e-9:
+                        rir_tensor = rir_tensor / torch.sqrt(energy)
+
+                    self._rir_pool_by_scenario[scen_name].append(rir_tensor)
+                    self._rir_pool.append(rir_tensor)
+                except Exception as e:
+                    print(f"[AcousticDegradation] Warning loading RIR {fpath}: {e}")
+
+        counts_str = ", ".join(f"{k}: {len(v)}" for k, v in self._rir_pool_by_scenario.items())
+        print(f"[AcousticDegradation] Loaded {len(self._rir_pool)} real RIR impulse responses ({counts_str}).")
 
     def _generate_synthetic_rir(self, rt60: float = 0.4, device: torch.device = torch.device("cpu")) -> torch.Tensor:
         """Fallback synthetic room impulse response with exponential decay."""
@@ -278,10 +382,28 @@ class AcousticDegradationEngine:
         # Step 1: Apply RIR reverberation if requested (causal linear convolution)
         if parsed.has_reverb:
             seed_clean = int(seed % (2**32 - 1)) if seed is not None else None
-            if len(self._rir_pool) > 0:
+            # Physical Acoustic Invariant: QUT-NOISE RIRs are strictly scenario-bound.
+            # - 'car' RIR (cabin impulse) can ONLY be applied to 'car' scenarios ('car_rir', 'car_compound').
+            # - 'reverb' RIR (pool/carpark impulse) can ONLY be used for 'reverb'/'room' scenarios ('room_rir', 'reverb', 'room_compound', 'reverb_compound').
+            # Cross-scenario RIR mixing (e.g. reverb RIR on cafe/street/home noise) is physically invalid and strictly forbidden.
+            if parsed.noise_type == "car" or parsed.raw_name in ("car_rir", "car_compound"):
+                rir_pool = self._rir_pool_by_scenario.get("car", [])
+            elif (
+                parsed.noise_type in ("reverb", None)
+                or parsed.raw_name in ("reverb", "reverb_rir", "room_rir", "room_compound", "reverb_compound")
+            ):
+                rir_pool = self._rir_pool_by_scenario.get("reverb", [])
+            else:
+                raise ValueError(
+                    f"Physical Acoustic Invariant Violation: QUT-NOISE RIRs are strictly scenario-matched. "
+                    f"Measured impulses exist ONLY for 'car' (cabin) and 'reverb' (swimming pool/carpark). "
+                    f"Condition '{parsed.raw_name}' attempts to apply RIR to '{parsed.noise_type}', which is unphysical and forbidden."
+                )
+
+            if len(rir_pool) > 0:
                 rng = np.random.RandomState(seed_clean) if seed_clean is not None else np.random
-                rir_idx = rng.randint(0, len(self._rir_pool))
-                rir = self._rir_pool[rir_idx].to(orig_device).float()
+                rir_idx = rng.randint(0, len(rir_pool))
+                rir = rir_pool[rir_idx].to(orig_device).float()
             else:
                 rir = self._generate_synthetic_rir(rt60=0.4, device=orig_device).float()
 
@@ -289,7 +411,7 @@ class AcousticDegradationEngine:
             # Mathematically exact linear causal convolution via FFT convolution, truncated to original length
             reverbed = torchaudio.functional.fftconvolve(wf, rir_tensor, mode="full")[:, :t_len]
 
-            if len(self._rir_pool) > 0:
+            if len(rir_pool) > 0:
                 # Real-world impulse responses already preserve physical direct sound + reflection ratio
                 wf = reverbed
             else:

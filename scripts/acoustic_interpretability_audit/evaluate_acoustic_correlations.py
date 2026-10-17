@@ -330,6 +330,33 @@ def run_acoustic_correlation_audit(
 
         table8b_data[task_name] = task_results
 
+    # Add physiological acoustic meaning descriptions
+    meaning_map = {
+        ("creaky", "SHR"): "Subharmonic-to-Harmonic Ratio (Glottal period doubling / creak)",
+        ("creaky", "Jitter"): "Cycle-to-cycle F0 perturbation / vocal fry irregularity",
+        ("creaky", "Shimmer"): "Cycle-to-cycle amplitude perturbation",
+        ("creaky", "H1*-H2*"): "Negative spectral tilt (steep glottal closure / medial compression)",
+        ("breathy", "CPPS"): "Cepstral Peak Prominence Smoothed (Harmonic periodicity vs aspiration)",
+        ("breathy", "HNR"): "Harmonics-to-Noise Ratio (Turbulence aspiration noise)",
+        ("breathy", "H1*-H2*"): "Positive spectral tilt (incomplete glottal closure / glottal chink)",
+    }
+
+    tidy_table8b_rows = []
+    for t_name, rows in table8b_data.items():
+        for r in rows:
+            meaning = meaning_map.get((t_name, r["Feature"]), "Acoustic-physical parameter")
+            tidy_table8b_rows.append({
+                "Task": t_name,
+                "Feature": r["Feature"],
+                "Expected-Trend": r["Expected"],
+                "Spearman-Rho": r["Spearman_rho"],
+                "Spearman-p": r["Spearman_p"],
+                "Pearson-R": r["Pearson_r"],
+                "Pearson-p": r["Pearson_p"],
+                "N-Samples": r["N"],
+                "Physiological-Acoustic-Meaning": meaning,
+            })
+
     # 5. Add Quantile Stratification Bins for Figure 8 Plotting
     bins = [0.0, 0.25, 0.50, 0.75, 1.0]
     bin_labels = ["[0.0, 0.25)", "[0.25, 0.50)", "[0.50, 0.75)", "[0.75, 1.0]"]
@@ -344,14 +371,51 @@ def run_acoustic_correlation_audit(
 
     # 6. Save JSON & CSV
     json_path = output_dir / "acoustic_correlations_metrics.json"
-    csv_path = output_dir / "acoustic_correlations.csv"
+    summary_json_path = output_dir / "acoustic_correlations_summary.json"
+    legacy_csv_path = output_dir / "acoustic_correlations.csv"
+    table8b_csv_path = output_dir / "table8b_acoustic_correlations.csv"
+    md_path = output_dir / "table8b_acoustic_correlations.md"
 
+    # Export machine-readable JSON
+    summary_json_payload = {
+        "condition": "clean",
+        "description": "Physical acoustic interpretability evaluated strictly under clean conditions to prevent Praat pitch extraction breakdown.",
+        "tasks": table8b_data,
+        "tidy_records": tidy_table8b_rows,
+    }
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(table8b_data, f, indent=2)
+    with open(summary_json_path, "w", encoding="utf-8") as f:
+        json.dump(summary_json_payload, f, indent=2)
 
-    merged_df.to_csv(csv_path, index=False, encoding="utf-8")
-    logger.info(f"Saved Table 8b correlation metrics to {json_path}")
-    logger.info(f"Saved Figure 8 distribution CSV to {csv_path}")
+    # Export machine-readable CSVs
+    pd.DataFrame(tidy_table8b_rows).to_csv(table8b_csv_path, index=False, encoding="utf-8")
+    merged_df.to_csv(legacy_csv_path, index=False, encoding="utf-8")
+
+    # Export Markdown Report Byproduct
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("# Table 8b: Acoustic-Physical Interpretability & Gold-Standard Parameter Correlations\n\n")
+        f.write("- **Condition**: `Clean` (Strict clean-only to prevent Praat pitch/harmonic tracking breakdown under noise)\n")
+        f.write("- **Gold-Standard Tools**: Parselmouth / Praat physical acoustic extractors\n\n")
+
+        for t_name, rows in table8b_data.items():
+            f.write(f"## Task: `{t_name.upper()}`\n\n")
+            f.write("| Acoustic Feature | Expected Trend | Spearman $\\rho$ | Spearman $p$ | Pearson $r$ | Pearson $p$ | N | Physiological Mechanism |\n")
+            f.write("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |\n")
+            for r in rows:
+                meaning = meaning_map.get((t_name, r["Feature"]), "")
+                p_rho_str = f"{r['Spearman_p']:.2e}" if r['Spearman_p'] < 0.001 else f"{r['Spearman_p']:.4f}"
+                p_r_str = f"{r['Pearson_p']:.2e}" if r['Pearson_p'] < 0.001 else f"{r['Pearson_p']:.4f}"
+                f.write(
+                    f"| **{r['Feature']}** | `{r['Expected']}` | **{r['Spearman_rho']:+.4f}** | {p_rho_str} | "
+                    f"{r['Pearson_r']:+.4f} | {p_r_str} | {r['N']} | {meaning} |\n"
+                )
+            f.write("\n---\n\n")
+
+    logger.info(f"Saved Table 8b correlation metrics to {json_path} and {summary_json_path}")
+    logger.info(f"Saved Table 8b CSV to {table8b_csv_path}")
+    logger.info(f"Saved Figure 8 distribution CSV to {legacy_csv_path}")
+    logger.info(f"Saved Table 8b Markdown report to {md_path}")
 
     return table8b_data, merged_df
 

@@ -152,7 +152,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: R:/runs/ablation_weak_on_vsdc
+  log_dir: exp_results/runs/ablation_weak_on_vsdc
   log_audio_samples: true
   audio_sample_count: 4
   log_confusion_matrix: true
@@ -160,7 +160,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/ablation_weak_on_vsdc
+  dir: exp_results/checkpoints/ablation_weak_on_vsdc
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
   keep_best_count: 3                 # 保留验证集指标最好的前 N 个 ckpt
 

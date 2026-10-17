@@ -48,7 +48,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from wavfry.data import dataset as dataset_mod
 from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
-from wavfry.eval.acoustic_degradation import get_acoustic_degradation_engine
+from wavfry.eval.acoustic_degradation import (
+    CANONICAL_EVAL_CONDITIONS,
+    get_acoustic_degradation_engine,
+    get_condition_metadata,
+)
 
 
 def parse_args():
@@ -109,10 +113,16 @@ def parse_args():
         help="Optional upper bound on batches to process (useful for rapid profiling).",
     )
     parser.add_argument(
+        "--conditions",
+        nargs="+",
+        default=None,
+        help="List of acoustic degradation conditions (default: all 18 canonical conditions; smoketest defaults to clean).",
+    )
+    parser.add_argument(
         "--noise-condition",
         type=str,
         default=None,
-        help="Acoustic degradation condition for robust Top-k depth truncation audit (e.g., 'cafe_5db', 'car_0db', 'reverb', 'street_5db'). Defaults to clean.",
+        help="Legacy alias for a single acoustic degradation condition.",
     )
     return parser.parse_args()
 
@@ -625,32 +635,45 @@ def generate_reports(
     split_name: str,
     paradigm_name: str,
     task_results: Dict[str, List[Dict[str, Any]]],
+    all_tidy_rows: Optional[List[Dict[str, Any]]] = None,
+    full_summary_json: Optional[Dict[str, Any]] = None,
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "topk_layer_truncation_report.csv"
+    detail_csv_path = output_dir / "topk_layer_truncation_detail.csv"
+    legacy_csv_path = output_dir / "topk_layer_truncation_report.csv"
     md_path = output_dir / "topk_layer_truncation_report.md"
     json_path = output_dir / "topk_layer_truncation_summary.json"
 
-    # 1. Flatten CSV
-    all_rows = []
-    for t_name, rows in task_results.items():
-        all_rows.extend(rows)
-    pd.DataFrame(all_rows).to_csv(csv_path, index=False)
-    print(f"\n[Saved] Top-k Truncation CSV report saved to: {csv_path}")
+    # 1. Primary Tidy CSV with TitleCase LaTeX-aligned headers
+    if all_tidy_rows is not None and len(all_tidy_rows) > 0:
+        pd.DataFrame(all_tidy_rows).to_csv(detail_csv_path, index=False, encoding="utf-8")
+        pd.DataFrame(all_tidy_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
+        print(f"\n[Saved] Top-k Truncation Detail CSV saved to: {detail_csv_path}")
+    else:
+        all_rows = []
+        for t_name, rows in task_results.items():
+            all_rows.extend(rows)
+        pd.DataFrame(all_rows).to_csv(detail_csv_path, index=False, encoding="utf-8")
+        pd.DataFrame(all_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
+        print(f"\n[Saved] Top-k Truncation Detail CSV saved to: {detail_csv_path}")
 
-    # 2. JSON summary
-    summary_data = {
-        "checkpoint": ckpt_name,
-        "split": split_name,
-        "paradigm": paradigm_name,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "tasks": task_results,
-    }
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(summary_data, f, indent=2, ensure_ascii=False)
+    # 2. Hierarchical Machine-Readable JSON summary
+    if full_summary_json is not None:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(full_summary_json, f, indent=2, ensure_ascii=False)
+    else:
+        summary_data = {
+            "checkpoint": ckpt_name,
+            "split": split_name,
+            "paradigm": paradigm_name,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "tasks": task_results,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
     print(f"[Saved] Top-k Truncation JSON summary saved to: {json_path}")
 
-    # 3. Markdown Report
+    # 3. Markdown Report Byproduct
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("# WavFry Top-k Layer Truncation & Depth Sensitivity Audit Report\n\n")
         f.write(f"- **Evaluated Checkpoint**: `{ckpt_name}`\n")
@@ -746,40 +769,94 @@ def main():
     num_layers = model.num_layers + 1
     conditions = build_truncation_conditions(num_layers)
 
+    if args.conditions:
+        eval_conditions = args.conditions
+    elif args.noise_condition:
+        eval_conditions = [args.noise_condition]
+    elif args.smoketest:
+        eval_conditions = ["clean"]
+    else:
+        eval_conditions = list(CANONICAL_EVAL_CONDITIONS)
+
     print("\n" + "=" * 80)
     print("      WavFry Top-k Layer Truncation & Depth Sensitivity Audit")
     print(f"  Checkpoint: {ckpt_path.name}")
     print(f"  Tasks: {eval_tasks} | Split: {args.split.upper()} | Paradigm: {paradigm.upper()}")
-    print(f"  Conditions: {len(conditions)} | Device: {device} | Single-Pass Caching: ENABLED")
+    print(f"  Conditions ({len(eval_conditions)}): {', '.join(eval_conditions)}")
+    print(f"  Layer Conditions: {len(conditions)} | Device: {device} | Single-Pass Caching: ENABLED")
     print("=" * 80)
 
-    task_results = evaluate_truncation_single_pass(
-        model=model,
-        loader=loader,
-        device=device,
-        paradigm=paradigm,
-        conditions=conditions,
-        eval_tasks=eval_tasks,
-        max_batches=args.max_batches,
-        noise_condition=args.noise_condition,
-    )
+    all_tidy_rows: List[Dict[str, Any]] = []
+    full_summary_json: Dict[str, Any] = {
+        "checkpoint": ckpt_path.name,
+        "split": args.split,
+        "paradigm": paradigm,
+        "tasks": eval_tasks,
+        "conditions": {},
+    }
+
+    start_suite = time.time()
+    for c_idx, cond in enumerate(eval_conditions):
+        print(f"\n[{c_idx + 1}/{len(eval_conditions)}] Running Top-k Truncation under condition: {cond}...", flush=True)
+        task_results = evaluate_truncation_single_pass(
+            model=model,
+            loader=loader,
+            device=device,
+            paradigm=paradigm,
+            conditions=conditions,
+            eval_tasks=eval_tasks,
+            max_batches=args.max_batches,
+            noise_condition=cond,
+        )
+        full_summary_json["conditions"][cond] = task_results
+        meta = get_condition_metadata(cond)
+
+        for t_name, rows in task_results.items():
+            for r in rows:
+                all_tidy_rows.append({
+                    "Model": ckpt_path.name,
+                    "Task": t_name,
+                    "Condition": cond,
+                    "Scenario": meta["Scenario"],
+                    "SNR_dB": meta["SNR_dB"],
+                    "Tier": meta["Tier"],
+                    "Has_RIR": meta["Has_RIR"],
+                    "Condition-ID": r["condition_id"],
+                    "Name": r["name"],
+                    "Category": r.get("category", ""),
+                    "Drop-K": r["drop_k"],
+                    "Kept-Layers": r["kept_layers_count"],
+                    "Retained-Weight-Mass": round(float(r["retained_weight_mass"]), 4),
+                    "PR-AUC": round(float(r["auc_pr"]), 4),
+                    "Delta-PR-AUC": round(float(r["delta_auc_pr"]), 4),
+                    "Drop (%)": round(float(r["drop_pct"]), 2),
+                    "F1-Score": round(float(r["f1"]), 4),
+                    "ROC-AUC": round(float(r["auc_roc"]), 4),
+                    "Best-Threshold": round(float(r["best_threshold"]), 4),
+                    "N-Samples": r.get("n_samples", 0),
+                    "N-Pos": r.get("n_pos", 0),
+                })
+
+    elapsed_suite = time.time() - start_suite
+    print(f"\n[Completed] Top-k Truncation suite finished in {elapsed_suite:.1f}s.")
 
     output_dir = Path(args.output_dir) if Path(args.output_dir).is_absolute() else (PROJECT_ROOT / args.output_dir)
-    if args.noise_condition:
-        output_dir = output_dir / args.noise_condition
+    first_cond = "clean" if "clean" in full_summary_json["conditions"] else eval_conditions[0]
     generate_reports(
         output_dir=output_dir,
         ckpt_name=ckpt_path.name,
         split_name=args.split,
         paradigm_name=paradigm,
-        task_results=task_results,
+        task_results=full_summary_json["conditions"][first_cond],
+        all_tidy_rows=all_tidy_rows,
+        full_summary_json=full_summary_json,
     )
 
-    # Console summary printout
+    # Console summary printout for primary condition
     print("\n" + "=" * 80)
-    print("                 TOP-K TRUNCATION EXECUTIVE SUMMARY")
+    print(f"       TOP-K TRUNCATION EXECUTIVE SUMMARY ({first_cond.upper()})")
     print("=" * 80)
-    for t_name, rows in task_results.items():
+    for t_name, rows in full_summary_json["conditions"][first_cond].items():
         base_r = next(r for r in rows if r["condition_id"] == "full_model_baseline")
         print(f"\n>>> Task: {t_name.upper()} (Baseline PR-AUC: {base_r['auc_pr']:.4f}, F1: {base_r['f1']:.4f})")
         for r in rows:

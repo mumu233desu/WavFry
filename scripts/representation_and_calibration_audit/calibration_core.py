@@ -344,6 +344,8 @@ def format_paradigm_a_summary_table(
     scenarios = [
         ("cafe", "Cafe (Non-stationary Babble)"),
         ("car", "Car (Low-freq Rumble)"),
+        ("home", "Home (Indoor Domestic)"),
+        ("reverb", "Reverb (Ambient Pool/Carpark)"),
         ("street", "Street (Dynamic Traffic)"),
     ]
     snr_levels = [15.0, 5.0, 0.0]
@@ -411,7 +413,11 @@ def format_paradigm_a_summary_table(
     for ref_key, ref_label in [
         ("clean", "Clean (In-Distribution Reference)"),
         ("reverb", "Reverb Only (Spatial RIR)"),
-        ("reverb_cafe_5db", "Composite (Reverb + Cafe 5dB)"),
+        ("car_rir", "Car RIR (Spatial Cabin RIR)"),
+        ("car_compound", "Car Compound (Cabin RIR + Car 15dB)"),
+        ("reverb_compound", "Reverb Compound (Pool RIR + Reverb 15dB)"),
+        ("room_compound", "Room Compound (Alias for Reverb Compound)"),
+        ("reverb_cafe_5db", "Composite (Legacy Reverb + Cafe 5dB)"),
     ]:
         if ref_key in domain_results:
             d = domain_results[ref_key]
@@ -439,19 +445,21 @@ def plot_snr_decay_curves(
     output_path: Union[str, Path],
 ) -> Optional[plt.Figure]:
     """
-    Render publication-grade SNR degradation curves across Cafe, Car, and Street.
+    Render publication-grade SNR degradation curves across all 5 QUT-NOISE scenarios.
     X-axis: SNR in descending order (Clean/Inf -> 15 dB -> 5 dB -> 0 dB).
     Y-axis: ECE (%).
     """
     scenarios = [
         ("cafe", "Cafe (Babble)", "#e67e22", "s"),
         ("car", "Car (Rumble)", "#2980b9", "o"),
+        ("home", "Home (Domestic)", "#27ae60", "D"),
+        ("reverb", "Reverb (Ambient)", "#16a085", "v"),
         ("street", "Street (Traffic)", "#8e44ad", "^"),
     ]
     snr_levels = [15.0, 5.0, 0.0]
 
     plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
-    fig, ax = plt.subplots(figsize=(6.5, 4.8))
+    fig, ax = plt.subplots(figsize=(7.2, 5.0))
 
     # Reference clean baseline if available
     if "clean" in domain_results:
@@ -485,7 +493,7 @@ def plot_snr_decay_curves(
                 label=scen_label,
             )
 
-    # Reverb reference lines (convolutional room acoustics benchmark, separate from additive SNR axis)
+    # Spatial RIR and Compound reference lines
     if "reverb" in domain_results:
         rev_ece = domain_results["reverb"]["ece"] * 100.0
         ax.axhline(
@@ -493,16 +501,26 @@ def plot_snr_decay_curves(
             color="#16a085",
             linestyle=":",
             linewidth=1.8,
-            label=f"Reverb Ref ({rev_ece:.2f}%)",
+            label=f"Reverb RIR Ref ({rev_ece:.2f}%)",
         )
-    if "reverb_cafe_5db" in domain_results:
-        rev_cafe_ece = domain_results["reverb_cafe_5db"]["ece"] * 100.0
+    if "car_compound" in domain_results:
+        car_comp_ece = domain_results["car_compound"]["ece"] * 100.0
         ax.axhline(
-            rev_cafe_ece,
+            car_comp_ece,
+            color="#d35400",
+            linestyle="-.",
+            linewidth=1.8,
+            label=f"Car Compound 15dB ({car_comp_ece:.2f}%)",
+        )
+    comp_key = "reverb_compound" if "reverb_compound" in domain_results else ("room_compound" if "room_compound" in domain_results else None)
+    if comp_key:
+        comp_ece = domain_results[comp_key]["ece"] * 100.0
+        ax.axhline(
+            comp_ece,
             color="#c0392b",
             linestyle="-.",
             linewidth=1.8,
-            label=f"Composite (Reverb+Cafe 5dB: {rev_cafe_ece:.2f}%)",
+            label=f"Reverb Compound 15dB ({comp_ece:.2f}%)",
         )
 
     ax.set_xlim(16.0, -1.0)  # Invert X axis so noise increases to the right

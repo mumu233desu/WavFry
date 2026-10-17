@@ -45,7 +45,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from wavfry.data import splits as splits_mod
 from wavfry.model.wavlm_classifier import WavFryClassifier
-from wavfry.eval.acoustic_degradation import get_acoustic_degradation_engine
+from wavfry.eval.acoustic_degradation import (
+    CANONICAL_EVAL_CONDITIONS,
+    get_acoustic_degradation_engine,
+    get_condition_metadata,
+)
 from scripts.representation_and_calibration_audit.cka_core import (
     compute_cross_condition_cka,
     compute_layer_cka_matrix,
@@ -119,16 +123,22 @@ def parse_args():
         help="Also extract representations under additive noise to evaluate cross-condition degradation stability.",
     )
     parser.add_argument(
-        "--noise-snr-db",
-        type=float,
-        default=10.0,
-        help="SNR level in dB for cross-condition noise evaluation when --compare-noise is set.",
+        "--noise-conditions",
+        nargs="+",
+        default=None,
+        help="List of noise conditions to evaluate stability against clean representations (default: all 17 degraded canonical conditions if --compare-noise is set).",
+    )
+    parser.add_argument(
+        "--conditions",
+        nargs="+",
+        default=None,
+        help="Alias for --noise-conditions.",
     )
     parser.add_argument(
         "--noise-condition",
         type=str,
         default=None,
-        help="Acoustic degradation condition for stability audit (e.g., 'cafe_5db', 'car_0db', 'reverb', 'street_5db'). Defaults to 'cafe_{snr}db'.",
+        help="Single acoustic degradation condition for stability audit (legacy alias).",
     )
     parser.add_argument(
         "--unbiased",
@@ -237,32 +247,29 @@ def prepare_dataloader(
     return loader, paradigm
 
 
-def extract_layer_representations(
+def extract_condition_representations(
     model: WavFryClassifier,
     loader: DataLoader,
     device: torch.device,
     target_task: str,
     max_samples: Optional[int] = None,
-    compare_noise: bool = False,
-    noise_snr_db: float = 10.0,
-    noise_condition: Optional[str] = None,
-) -> Tuple[Dict[int, np.ndarray], Optional[Dict[int, np.ndarray]], int]:
+    condition: Optional[str] = None,
+) -> Tuple[Dict[int, np.ndarray], int]:
     """
-    Extract pooled hidden state vectors for each layer (0 to 12) across target intervals.
+    Extract pooled hidden state vectors for each layer (0 to 12) across target intervals
+    under a specific acoustic condition (None or 'clean' for clean audio).
     """
     model.eval()
     num_layers = 13  # CNN L0 + 12 Transformer layers
-
-    clean_features: Dict[int, List[np.ndarray]] = {l: [] for l in range(num_layers)}
-    noisy_features: Dict[int, List[np.ndarray]] = {l: [] for l in range(num_layers)} if compare_noise else None
-
+    features: Dict[int, List[np.ndarray]] = {l: [] for l in range(num_layers)}
     total_samples = 0
     start_time = time.time()
     task_idx = model.tasks.index(target_task) if target_task in model.tasks else 0
+    cond_str = condition if condition else "clean"
+    is_clean = (cond_str == "clean")
+    engine = None if is_clean else get_acoustic_degradation_engine()
 
-    degradation_condition = noise_condition if noise_condition else f"cafe_{int(noise_snr_db)}db"
-    print(f"[Extraction] Extracting representations for task '{target_task}' (degradation: {degradation_condition if compare_noise else 'none'})...")
-    engine = get_acoustic_degradation_engine() if compare_noise else None
+    print(f"[Extraction] Extracting representations for task '{target_task}' under condition '{cond_str}'...", flush=True)
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
@@ -273,26 +280,19 @@ def extract_layer_representations(
             valid = valid.to(device)
             lengths = lengths.to(device)
 
+            if not is_clean:
+                batch_seed = 42 + batch_idx * 1009
+                waveforms = engine.apply_tensor(waveforms, cond_str, seed=batch_seed)
+
             wavlm_dtype = next(model.wavlm.parameters()).dtype
             x_in = waveforms.to(wavlm_dtype) if waveforms.dtype != wavlm_dtype else waveforms
             max_len = waveforms.shape[1]
             lengths_clamped = lengths.clamp(min=1, max=max_len)
             attention_mask = (torch.arange(max_len, device=device).unsqueeze(0) < lengths_clamped.unsqueeze(1)).long()
 
-            # Clean forward pass
-            outputs_clean = model.wavlm(x_in, attention_mask=attention_mask, output_hidden_states=True)
-            clean_states = [h.detach() for h in outputs_clean.hidden_states]  # 13 x [B, T, D]
+            outputs = model.wavlm(x_in, attention_mask=attention_mask, output_hidden_states=True)
+            hidden_states = [h.detach() for h in outputs.hidden_states]
 
-            # Noisy / degraded forward pass (if requested)
-            noisy_states = None
-            if compare_noise:
-                batch_seed = 42 + batch_idx * 1009
-                noisy_waveforms = engine.apply_tensor(waveforms, degradation_condition, seed=batch_seed)
-                x_noisy = noisy_waveforms.to(wavlm_dtype) if noisy_waveforms.dtype != wavlm_dtype else noisy_waveforms
-                outputs_noisy = model.wavlm(x_noisy, attention_mask=attention_mask, output_hidden_states=True)
-                noisy_states = [h.detach() for h in outputs_noisy.hidden_states]
-
-            # Extract interval representations
             B = waveforms.shape[0]
             for b in range(B):
                 slot_valid_b = valid[b]
@@ -303,7 +303,6 @@ def extract_layer_representations(
                     if not slot_valid_b[slot_idx]:
                         continue
 
-                    # Check if sample is valid for target task
                     if labels_b.ndim > 1 and labels_b.shape[-1] > task_idx:
                         lab_val = labels_b[slot_idx, task_idx].item()
                     else:
@@ -312,19 +311,14 @@ def extract_layer_representations(
                     if np.isnan(lab_val):
                         continue
 
-                    # Frame range
                     start_f = int(bounds_b[slot_idx, 0].item())
                     end_f = int(bounds_b[slot_idx, 1].item())
                     if end_f <= start_f:
                         end_f = start_f + 1
 
-                    # Pool across frames for each layer
                     for l in range(num_layers):
-                        h_l_clean = clean_states[l][b, start_f:end_f, :].mean(dim=0).cpu().numpy()
-                        clean_features[l].append(h_l_clean)
-                        if compare_noise and noisy_states is not None:
-                            h_l_noisy = noisy_states[l][b, start_f:end_f, :].mean(dim=0).cpu().numpy()
-                            noisy_features[l].append(h_l_noisy)
+                        h_l = hidden_states[l][b, start_f:end_f, :].mean(dim=0).cpu().numpy()
+                        features[l].append(h_l)
 
                     total_samples += 1
                     if max_samples and total_samples >= max_samples:
@@ -333,18 +327,36 @@ def extract_layer_representations(
                     break
 
             if max_samples and total_samples >= max_samples:
-                print(f"[Extraction] Reached sample budget cap ({max_samples} samples).")
+                print(f"[Extraction] Reached sample budget cap ({max_samples} samples).", flush=True)
                 break
 
     elapsed = time.time() - start_time
-    print(f"[Extraction] Extracted {total_samples} interval vectors in {elapsed:.1f}s.")
+    print(f"[Extraction] Extracted {total_samples} interval vectors in {elapsed:.1f}s for '{cond_str}'.", flush=True)
+    arrays = {l: np.array(vecs, dtype=np.float64) for l, vecs in features.items()}
+    return arrays, total_samples
 
-    clean_arrays = {l: np.array(vecs, dtype=np.float64) for l, vecs in clean_features.items()}
-    noisy_arrays = (
-        {l: np.array(vecs, dtype=np.float64) for l, vecs in noisy_features.items()}
-        if compare_noise else None
+
+def extract_layer_representations(
+    model: WavFryClassifier,
+    loader: DataLoader,
+    device: torch.device,
+    target_task: str,
+    max_samples: Optional[int] = None,
+    compare_noise: bool = False,
+    noise_snr_db: float = 10.0,
+    noise_condition: Optional[str] = None,
+) -> Tuple[Dict[int, np.ndarray], Optional[Dict[int, np.ndarray]], int]:
+    """Legacy wrapper for dual clean/noisy representation extraction."""
+    clean_arrays, n_samples = extract_condition_representations(
+        model, loader, device, target_task, max_samples=max_samples, condition="clean"
     )
-    return clean_arrays, noisy_arrays, total_samples
+    noisy_arrays = None
+    if compare_noise:
+        cond = noise_condition if noise_condition else f"cafe_{int(noise_snr_db)}db"
+        noisy_arrays, _ = extract_condition_representations(
+            model, loader, device, target_task, max_samples=max_samples, condition=cond
+        )
+    return clean_arrays, noisy_arrays, n_samples
 
 
 def plot_cka_heatmap(
@@ -399,7 +411,7 @@ def plot_noise_stability_curve(
     stability_dict: Dict[int, float],
     layer_names: List[str],
     task_name: str,
-    snr_db: float,
+    condition_name: str,
     output_path: Path,
 ) -> None:
     """Render layer-wise CKA representation fidelity under acoustic degradation."""
@@ -417,7 +429,7 @@ def plot_noise_stability_curve(
         color="#2b5c8f",
         linewidth=2.2,
         markersize=7,
-        label=f"Clean vs. Noisy (SNR = {snr_db:.0f} dB)",
+        label=f"Clean vs. {condition_name}",
     )
     ax.axhline(0.8, color="#27ae60", linestyle=":", alpha=0.8, label="High Fidelity Threshold (CKA > 0.8)")
 
@@ -427,7 +439,7 @@ def plot_noise_stability_curve(
     ax.set_xlabel("SSL Layer Index", fontsize=11, fontweight="bold")
     ax.set_ylabel("Representation CKA Stability", fontsize=11, fontweight="bold")
     ax.set_title(
-        f"Acoustic Degradation Representation Stability\nTask: {task_name.capitalize()} (Clean vs. {snr_db:.0f}dB Noise)",
+        f"Acoustic Degradation Representation Stability\nTask: {task_name.capitalize()} (Clean vs. {condition_name})",
         fontsize=12,
         fontweight="bold",
         pad=10,
@@ -469,12 +481,26 @@ def main():
     loader, paradigm = prepare_dataloader(config, manifest_path, args.split, args.batch_size)
 
     eval_tasks = ["creaky", "breathy"] if args.task == "all" else [args.task]
+    if args.noise_conditions:
+        noise_conds = args.noise_conditions
+    elif args.conditions:
+        noise_conds = args.conditions
+    elif args.noise_condition:
+        noise_conds = [args.noise_condition]
+    elif args.quick:
+        noise_conds = ["cafe_15db"]
+    else:
+        noise_conds = [c for c in CANONICAL_EVAL_CONDITIONS if c != "clean"]
+
     summary_report: Dict[str, Any] = {
         "checkpoint": str(ckpt_path),
         "split": args.split,
         "max_samples": max_samples,
         "tasks": {},
+        "noise_conditions": noise_conds if args.compare_noise else [],
     }
+
+    all_stability_tidy_rows: List[Dict[str, Any]] = []
 
     report_md_lines = [
         "# WavFry Representation CKA (Centered Kernel Alignment) Audit Report",
@@ -488,15 +514,13 @@ def main():
 
     for task_name in eval_tasks:
         print(f"\n==================== Running CKA Audit: Task {task_name.upper()} ====================")
-        clean_reps, noisy_reps, n_samples = extract_layer_representations(
+        clean_reps, n_samples = extract_condition_representations(
             model=model,
             loader=loader,
             device=device,
             target_task=task_name,
             max_samples=max_samples,
-            compare_noise=args.compare_noise,
-            noise_snr_db=args.noise_snr_db,
-            noise_condition=args.noise_condition,
+            condition="clean",
         )
 
         # 3. Compute 13x13 CKA Matrix
@@ -504,18 +528,63 @@ def main():
         heatmap_path = output_dir / f"cka_layers_heatmap_{task_name}"
         plot_cka_heatmap(cka_matrix, layer_names, task_name, heatmap_path)
 
+        # Export Layer CKA Matrix CSV with TitleCase LaTeX headers
+        matrix_csv_path = output_dir / f"cka_layers_matrix_{task_name}.csv"
+        matrix_rows = []
+        for r_idx in range(len(layer_names)):
+            for c_idx in range(len(layer_names)):
+                matrix_rows.append({
+                    "Task": task_name,
+                    "Layer-A": layer_names[r_idx],
+                    "Layer-B": layer_names[c_idx],
+                    "Linear-CKA": round(float(cka_matrix[r_idx, c_idx]), 4),
+                })
+        pd.DataFrame(matrix_rows).to_csv(matrix_csv_path, index=False, encoding="utf-8")
+        print(f"[Done] Exported Layer CKA Matrix CSV to {matrix_csv_path}")
+
         task_summary: Dict[str, Any] = {
             "n_samples": n_samples,
             "layer_names": layer_names,
             "cka_matrix": cka_matrix.tolist(),
+            "noise_stability": {},
         }
 
-        # 4. Optional Noise Stability
-        if args.compare_noise and noisy_reps is not None:
-            stability_dict = compute_cross_condition_cka(clean_reps, noisy_reps, unbiased=args.unbiased)
-            stability_path = output_dir / f"cka_cross_noise_stability_{task_name}"
-            plot_noise_stability_curve(stability_dict, layer_names, task_name, args.noise_snr_db, stability_path)
-            task_summary["noise_stability"] = {str(k): v for k, v in stability_dict.items()}
+        # 4. Multi-Condition Noise Stability (if requested)
+        if args.compare_noise and noise_conds:
+            for c_idx, cond in enumerate(noise_conds):
+                noisy_reps, _ = extract_condition_representations(
+                    model=model,
+                    loader=loader,
+                    device=device,
+                    target_task=task_name,
+                    max_samples=max_samples,
+                    condition=cond,
+                )
+                stability_dict = compute_cross_condition_cka(clean_reps, noisy_reps, unbiased=args.unbiased)
+                task_summary["noise_stability"][cond] = {str(k): v for k, v in stability_dict.items()}
+                meta = get_condition_metadata(cond)
+
+                for l in sorted(clean_reps.keys()):
+                    score = stability_dict[l]
+                    status = "🟢 High Resilience (CKA > 0.85)" if score > 0.85 else ("🟡 Moderate (0.65-0.85)" if score > 0.65 else "🔴 Severe Degradation (< 0.65)")
+                    all_stability_tidy_rows.append({
+                        "Model": ckpt_path.name,
+                        "Task": task_name,
+                        "Condition": cond,
+                        "Scenario": meta["Scenario"],
+                        "SNR_dB": meta["SNR_dB"],
+                        "Tier": meta["Tier"],
+                        "Has_RIR": meta["Has_RIR"],
+                        "Layer": l,
+                        "Layer-Name": layer_names[l],
+                        "CKA-Stability": round(float(score), 4),
+                        "Fidelity-Status": status,
+                    })
+
+                # Plot stability curve for primary condition (e.g. first condition)
+                if c_idx == 0:
+                    stability_path = output_dir / f"cka_cross_noise_stability_{task_name}"
+                    plot_noise_stability_curve(stability_dict, layer_names, task_name, cond, stability_path)
 
         summary_report["tasks"][task_name] = task_summary
 
@@ -524,6 +593,7 @@ def main():
             f"## Task: `{task_name.upper()}` (Evaluated Samples: {n_samples})",
             "",
             f"- **Heatmap File**: `cka_layers_heatmap_{task_name}.pdf` / `.png`",
+            f"- **Matrix CSV**: `cka_layers_matrix_{task_name}.csv`",
             "",
             "### Layer CKA Inter-Correlation (Sample Key Strata)",
             "| Layer Pair | Linear CKA | Acoustic Interpretation |",
@@ -535,10 +605,11 @@ def main():
             "",
         ])
 
-        if args.compare_noise and noisy_reps is not None:
-            stab = task_summary.get("noise_stability", {})
+        if args.compare_noise and noise_conds:
+            first_cond = noise_conds[0]
+            stab = task_summary.get("noise_stability", {}).get(first_cond, {})
             report_md_lines.extend([
-                f"### Representation Stability under {args.noise_snr_db:.0f}dB Noise",
+                f"### Representation Stability under `{first_cond}`",
                 "| Layer | CKA Stability (Clean vs. Noisy) | Fidelity Status |",
                 "| :--- | :---: | :--- |",
             ])
@@ -551,13 +622,19 @@ def main():
         report_md_lines.append("---")
         report_md_lines.append("")
 
+    # Export Tidy Stability CSV if noise comparison was active
+    if all_stability_tidy_rows:
+        stab_csv_path = output_dir / "cka_stability_detail.csv"
+        pd.DataFrame(all_stability_tidy_rows).to_csv(stab_csv_path, index=False, encoding="utf-8")
+        print(f"[Done] Exported CKA Stability Detail CSV to {stab_csv_path}")
+
     # Save summary JSON
     json_path = output_dir / "cka_matrices.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary_report, f, indent=2)
     print(f"[Done] Exported CKA JSON metrics to {json_path}")
 
-    # Save Markdown report
+    # Save Markdown report byproduct
     md_path = output_dir / "cka_audit_report.md"
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(report_md_lines))

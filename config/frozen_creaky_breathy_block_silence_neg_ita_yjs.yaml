@@ -109,7 +109,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: R:/runs/frozen_creaky_breathy_block_silence_neg_ita_yjs
+  log_dir: exp_results/runs/frozen_creaky_breathy_block_silence_neg_ita_yjs
   log_audio_samples: true
   audio_sample_count: 8
   log_confusion_matrix: true
@@ -117,7 +117,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/frozen_creaky_breathy_block_silence_neg_ita_yjs
+  dir: exp_results/checkpoints/frozen_creaky_breathy_block_silence_neg_ita_yjs
   save_mode: delta                   # delta（只存微调权重）| full（完整模型）
   keep_best_count: 3                 # 保留验证集指标最好的前 N 个 ckpt
 

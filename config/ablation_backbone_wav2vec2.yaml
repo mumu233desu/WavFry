@@ -13,7 +13,7 @@ data:
 
 # ── 模型 ──────────────────────────────────────────────
 model:
-  backbone: facebook/wav2vec2-base-960h
+  backbone: facebook/wav2vec2-base
   fine_tune_layers: "none"
   use_scalar_mix: true
   dropout: 0.1
@@ -103,7 +103,7 @@ eval:
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
-  log_dir: R:/runs/ablation_backbone_wav2vec2
+  log_dir: exp_results/runs/ablation_backbone_wav2vec2
   log_audio_samples: true
   audio_sample_count: 4
   log_confusion_matrix: true
@@ -111,7 +111,7 @@ tensorboard:
 
 # ── Checkpoint ────────────────────────────────────────
 checkpoint:
-  dir: R:/checkpoints/ablation_backbone_wav2vec2
+  dir: exp_results/checkpoints/ablation_backbone_wav2vec2
   save_mode: delta
   keep_best_count: 3
 

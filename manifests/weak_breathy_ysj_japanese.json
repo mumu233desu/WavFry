@@ -1,24 +1,22 @@
 {
-  "fingerprint": "5b37d971278bc664c74a3d739920dbdda5ae5ff68b111c410173c7a0047953e3",
+  "fingerprint": "67d7d9ff0542da4fbed78c3ac0868299c52a1f333e0ce8befee388c736665c75",
   "rows": 1362,
   "status": {
-    "unknown": 1121,
-    "eligible": 153,
-    "review": 57,
-    "redundant": 31
+    "unknown": 1071,
+    "eligible": 151,
+    "redundant": 84,
+    "review": 56
   },
   "partition_status": {
     "test/eligible": 1,
-    "test/redundant": 3,
+    "test/redundant": 1,
     "test/review": 1,
-    "test/unknown": 19,
+    "test/unknown": 21,
     "train/eligible": 150,
     "train/redundant": 1,
     "train/review": 55,
     "train/unknown": 1032,
-    "val/eligible": 2,
-    "val/redundant": 27,
-    "val/review": 1,
-    "val/unknown": 70
+    "val/redundant": 82,
+    "val/unknown": 18
   }
 }
