@@ -99,7 +99,7 @@ eval:
   primary_task: creaky
   primary_metric: auc_pr
   early_stopping_patience: 3
-  eval_interval: 2
+  eval_interval: 1
 
 # ── TensorBoard ───────────────────────────────────────
 tensorboard:
@@ -138,7 +138,6 @@ augmentation:
       real_world: 0.7
     real_world_dir: E:/Corpus/Noise/QUT-NOISE_processed/noise
     scenarios: [cafe, car, home, reverb, street]
-    type: pink
     pink_low_cutoff_hz: 10.0
     snr_db_start: 30.0
     snr_db_end: 10.0
