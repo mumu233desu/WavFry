@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 
 from wavfry.data.utterance_bag import BagBatchSampler, UtteranceBagDataset, collate_utterance_bags
 from wavfry.data.weak_manifest import manifest_digest, validate_source_stamps
+from wavfry.data.path_resolver import resolve_corpus_path
 
 
 def dataset_rows(dataset):
@@ -76,6 +77,8 @@ def create_weak_loader(config, model, manual_train, manual_val):
     if not path.is_absolute():
         path = Path(__file__).resolve().parents[2] / path
     weak = pd.read_csv(path, dtype={"file_key": str, "speaker_id": str, "dataset_id": str})
+    if 'audio_path' in weak.columns:
+        weak['audio_path'] = weak['audio_path'].apply(resolve_corpus_path)
     train = guard_weak_partitions(weak, manual_train, manual_val)
     if manual_train is not None and not manual_train.empty and 'audio_path' in manual_train:
         manual_paths = {str(Path(p).resolve()).casefold(): float(label)

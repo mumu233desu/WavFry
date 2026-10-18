@@ -21,6 +21,8 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+from wavfry.data.path_resolver import resolve_corpus_path
+
 # Standard 5 Evaluation Tiers and Representative Conditions
 CANONICAL_TIERS: List[str] = [
     "clean",
@@ -239,7 +241,7 @@ def dump_model_predictions(
     unique_paths = manifest["audio_path"].unique()
     for p in unique_paths:
         try:
-            wf, sr = sf.read(str(p), dtype="float32", always_2d=False)
+            wf, sr = sf.read(str(resolve_corpus_path(p)), dtype="float32", always_2d=False)
             if wf.ndim > 1:
                 wf = np.mean(wf, axis=1)
             if sr != sample_rate:

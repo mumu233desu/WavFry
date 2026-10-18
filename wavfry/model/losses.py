@@ -91,10 +91,13 @@ def pool_frame_logits(logits, mask, mode="lse", topk_ratio=0.2, temperature=1.0)
 def get_loss_fn(config, pos_weight=None):
     loss_type = config['training'].get('loss', 'focal')
     if loss_type == 'focal':
+        # Standard canonical Focal Loss (Lin et al., ICCV 2017):
+        # Class imbalance is controlled exclusively by focal_alpha (alpha_t).
+        # We do NOT pass pos_weight to avoid compounding a 9x * 3x = 27x positive-class bias.
         return FocalLoss(
             alpha=config['training'].get('focal_alpha', 0.75),
             gamma=config['training'].get('focal_gamma', 2.0),
-            pos_weight=pos_weight,
+            pos_weight=None,
         )
     elif loss_type == 'weighted_bce':
         return nn.BCEWithLogitsLoss(pos_weight=pos_weight)

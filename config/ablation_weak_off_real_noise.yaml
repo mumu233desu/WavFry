@@ -87,7 +87,7 @@ training:
       topk_ratio: 0.2
       
       interval_from_frame:
-        enabled: true
+        enabled: false
         mode: linear_softmax
         temperature: 1.0
         topk_ratio: 0.2

@@ -63,13 +63,13 @@ training:
       temperature: 1.0
       topk_ratio: 0.2
       interval_from_frame:
-        enabled: true
+        enabled: false
         mode: linear_softmax
         temperature: 1.0
         topk_ratio: 0.2
 
   weak_supervision:
-    enabled: false
+    enabled: true
     manifest: manifests/weak_breathy.csv
     task: breathy
     candidate_scope: vowels
@@ -78,17 +78,38 @@ training:
     samples_per_epoch: 447
     max_windows: 64
 
+  # ── VSDC-Net 弱监督时序定位增强配置 ───────────────────────
   vsdc:
-    enabled: false
+    enabled: true
     mil_pooling: linear_softmax
+
     bas_net:
-      enabled: false
+      enabled: true
+      hidden_dim: 256
+      loss_weight_base: 0.1
+      loss_weight_supp: 0.1
+      loss_weight_supp_zero: 0.1
+      loss_weight_sparse: 0.005
+      loss_weight_head_align: 0.1
+
     speaker_contrast:
-      enabled: false
+      enabled: true
+      temperature: 0.07
+      topk_anchors: 2
+      proj_dim: 128
+      loss_weight: 0.2
+
     mean_teacher:
-      enabled: false
+      enabled: true
+      ema_decay: 0.98
+      median_window: 3
+      temp_sharp: 0.5
+      conf_margin: 0.35
+      loss_weight: 1.0
+
     curriculum:
-      enabled: false
+      enabled: true
+      stage_epochs: [3, 7]
 
   pooling_mode: attn
   topk_ratio: 0.2
@@ -98,7 +119,7 @@ training:
 eval:
   primary_task: creaky
   primary_metric: auc_pr
-  early_stopping_patience: 3
+  early_stopping_patience: 5
   eval_interval: 1
 
 # ── TensorBoard ───────────────────────────────────────

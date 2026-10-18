@@ -18,6 +18,8 @@ from torch.utils.data import Dataset
 logger = logging.getLogger(__name__)
 _WARNED_INTERVALS: set[str] = set()
 
+from wavfry.data.path_resolver import resolve_corpus_path
+
 
 class BlockIndex:
     """Build deterministic overlapping blocks without crossing audio files."""
@@ -224,6 +226,7 @@ class ContinuousAudioBlockDataset(Dataset):
 
     def _get_audio_waveform(self, audio_path: str) -> tuple[torch.Tensor, float]:
         """Fetch resampled 16kHz mono audio waveform and duration, with RAM LRU caching."""
+        audio_path = resolve_corpus_path(audio_path)
         if self.cache_waveforms and audio_path in self.waveform_cache:
             waveform, duration = self.waveform_cache[audio_path]
             self.waveform_cache.move_to_end(audio_path)

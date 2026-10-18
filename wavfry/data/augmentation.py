@@ -12,6 +12,8 @@ import torchaudio.functional as F
 
 logger = logging.getLogger("wavfry.augmentation")
 
+from wavfry.data.path_resolver import resolve_corpus_path
+
 
 def generate_pink_noise(
     B: int,
@@ -85,7 +87,7 @@ class ReverbAugmentor:
         self.max_epochs = int(config.get("max_epochs", 20))
         self.schedule_power = float(config.get("schedule_power", 2.0))
 
-        rir_dir_str = config.get("rir_dir", "E:/Corpus/Noise/QUT-NOISE_processed/impulses")
+        rir_dir_str = resolve_corpus_path(config.get("rir_dir", "E:/Corpus/Noise/QUT-NOISE_processed/impulses"))
         self.rir_dir = Path(rir_dir_str)
         self.scenarios = config.get("scenarios", ["car", "reverb"])
 
@@ -343,7 +345,7 @@ class AudioAugmentor:
         self.real_world_pool: Optional[RealWorldNoisePool] = None
         sources = self.noise_cfg.get("sources", {})
         if self.noise_cfg.get("enabled", False) and float(sources.get("real_world", 0.0)) > 0:
-            noise_dir = self.noise_cfg.get("real_world_dir", "E:/Corpus/Noise/QUT-NOISE_processed/noise")
+            noise_dir = resolve_corpus_path(self.noise_cfg.get("real_world_dir", "E:/Corpus/Noise/QUT-NOISE_processed/noise"))
             scenarios = self.noise_cfg.get("scenarios", ["cafe", "car", "home", "reverb", "street"])
             self.real_world_pool = RealWorldNoisePool(noise_dir=noise_dir, scenarios=scenarios)
 

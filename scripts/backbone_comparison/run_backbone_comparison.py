@@ -143,6 +143,11 @@ def load_config_for_backbone(
         cfg["training"]["block"]["val_batch_size"] = 16
         cfg["checkpoint"]["dir"] = f"exp_results/checkpoints/smoketest_backbone_{backbone_key}"
         cfg["tensorboard"]["log_dir"] = f"exp_results/runs/smoketest_backbone_{backbone_key}"
+        if cfg.get("training", {}).get("weak_supervision", {}).get("enabled", False):
+            cfg["training"]["weak_supervision"]["start_epoch"] = 1
+            cfg["training"]["weak_supervision"]["samples_per_epoch"] = 4
+        if cfg.get("training", {}).get("vsdc", {}).get("enabled", False):
+            cfg["training"]["vsdc"]["curriculum"]["stage_epochs"] = [1, 1]
 
     return cfg
 
@@ -645,6 +650,11 @@ def main():
         print(f"[Manifest] Loading canonical multi-dataset manifest from {canonical_manifest}...", flush=True)
         import pandas as pd
         df = pd.read_csv(canonical_manifest)
+        from wavfry.data.path_resolver import resolve_corpus_path
+        if 'audio_path' in df.columns:
+            df['audio_path'] = df['audio_path'].apply(resolve_corpus_path)
+        if 'tg_path' in df.columns:
+            df['tg_path'] = df['tg_path'].apply(resolve_corpus_path)
     else:
         dummy_cfg = load_config_for_backbone("wavlm", smoketest=args.smoketest)
         df = build_manifest_multi(datasets_cfg, global_cfg=dummy_cfg)

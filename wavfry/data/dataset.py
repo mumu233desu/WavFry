@@ -6,6 +6,7 @@ import platform
 from pathlib import Path
 
 from .continuous_non_creaky_sampling import ContinuousNonCreakyWindowGenerator
+from wavfry.data.path_resolver import resolve_corpus_path
 
 
 class CreakyVowelDataset(Dataset):
@@ -64,7 +65,7 @@ class CreakyVowelDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        audio_path = row['audio_path']
+        audio_path = resolve_corpus_path(row['audio_path'])
         start_s = row['start_s']
         end_s = row['end_s']
 

@@ -389,6 +389,11 @@ def main():
         data = list(reader)
     pd.set_option("mode.string_storage", "python")
     df = pd.DataFrame(data)
+    from wavfry.data.path_resolver import resolve_corpus_path
+    if 'audio_path' in df.columns:
+        df['audio_path'] = df['audio_path'].apply(resolve_corpus_path)
+    if 'tg_path' in df.columns:
+        df['tg_path'] = df['tg_path'].apply(resolve_corpus_path)
     # Convert numeric columns
     for col in ['start_s', 'end_s', 'label', 'label_creaky', 'label_breathy']:
         if col in df.columns:

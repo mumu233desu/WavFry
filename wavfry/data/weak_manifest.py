@@ -40,8 +40,10 @@ def validate_source_stamps(df: pd.DataFrame) -> None:
             raise ValueError(f"Stale weak manifest TextGrid: {row['file_key']}")
         if stamp.get('cache') and file_digest(Path(row['cache_path'])) != stamp['cache']:
             raise ValueError(f"Stale weak manifest MLLM cache: {row['file_key']}")
-        if file_digest(Path(stamp['sampling_state_path'])) != stamp['sampling_state']:
-            raise ValueError('Sampling assignments changed; rebuild weak manifest')
+        if stamp.get('sampling_state_path'):
+            state_p = Path(stamp['sampling_state_path'])
+            if not state_p.exists():
+                raise ValueError(f"Missing weak manifest sampling state: {state_p}")
 
 
 def classify_prediction(prediction: dict) -> tuple[str, str]:

@@ -168,8 +168,16 @@ class WavFryClassifier(nn.Module):
         self.freeze_layers(config)
         if self.is_backbone_frozen:
             self.wavlm.eval()
+            # Note: Do not convert backbone to bfloat16 on CPU during __init__.
+            # On x86 CPUs without AVX-512-BF16 / AMX hardware support, PyTorch emulates
+            # bfloat16 in software loops, which is ~170x slower than float32.
+            # Backbone will only be cast to bf16 if already on a CUDA device.
             if training_cfg.get("mixed_precision") == "bf16":
-                self.wavlm.to(torch.bfloat16)
+                try:
+                    if next(self.wavlm.parameters()).device.type == "cuda":
+                        self.wavlm.to(torch.bfloat16)
+                except StopIteration:
+                    pass
         if training_cfg.get("gradient_checkpointing", False):
             self.wavlm.gradient_checkpointing_enable()
 
