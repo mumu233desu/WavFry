@@ -22,7 +22,7 @@
 
 ### 第一步：系统基础依赖与 Rust/Cargo 工具链安装
 
-`deepfilternet` 包含基于 Rust 编写的底层 C-ABI 扩展库 `deepfilterlib`。在无预编译 Wheel 或 Python 3.12+ 环境下，`maturin` 构建工具必须依赖 `cargo`。
+`deepfilternet` 包含基于 Rust 编写的底层 C-ABI 扩展库 `deepfilterlib`，`maturin` 构建工具必须依赖 `cargo` 进行本地编译。
 
 ```bash
 # 1. 更新 APT 并安装基础工具
@@ -40,10 +40,6 @@ source "$HOME/.cargo/env"
 cargo --version
 uv --version
 ```
-
-> [!TIP]
-> **免编译极速技巧（强烈推荐）**：
-> `deepfilterlib` 官方提供了针对 **Python 3.11** 的预编译二进制 Wheel（`manylinux_x86_64`）。如果在后续执行 `uv sync` 时显式指定 Python 3.11（例如 `uv sync --python 3.11`），`uv` 会直接拉取预编译 Wheel，**耗时只需 0.5 秒，无需等待源码编译**。但安装了 `cargo` 即可双重保险。
 
 ---
 
@@ -98,12 +94,8 @@ source ~/.bashrc
 ```bash
 cd /root/WavFry
 
-# 推荐显式使用 Python 3.11（直接享受官方二进制预编译 Wheel）
-uv python install 3.11
-uv sync --python 3.11
-
-# 若使用当前默认 Python，由于已安装 Cargo，uv 会自动拉起 maturin 完成本地编译
-# uv sync
+# 同步虚拟环境与依赖（已安装 Cargo，uv 会自动拉起 maturin 完成 deepfilterlib 本地编译）
+uv sync
 ```
 
 ---
