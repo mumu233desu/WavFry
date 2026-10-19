@@ -24,10 +24,8 @@
 
 `deepfilternet` 包含基于 Rust 编写的底层 C-ABI 扩展库 `deepfilterlib`，`maturin` 构建工具必须依赖 `cargo` 进行本地编译。
 
-# 1. 扩容容器共享内存（防止多进程 DataLoader 报 Bus Error）
-mount -o remount,size=16G /dev/shm 2>/dev/null || true
-
-# 2. 更新 APT 并安装基础工具
+```bash
+# 1. 更新 APT 并安装基础工具
 apt-get update && apt-get install -y unzip git tmux build-essential curl
 
 # 3. 安装 uv（超高速 Python 包与环境管理器）
