@@ -147,5 +147,18 @@ def resolve_num_workers(cfg_value):
     if cfg_value == "auto":
         if platform.system() == "Windows":
             return 0
+        # In Linux/Docker environments, check if /dev/shm is constrained (< 4 GB)
+        try:
+            import shutil
+            shm_usage = shutil.disk_usage("/dev/shm")
+            if shm_usage.total < 4 * 1024 * 1024 * 1024:
+                import logging
+                logging.getLogger("wavfry.data").info(
+                    f"Container /dev/shm capacity ({shm_usage.total / 1e6:.1f}MB) is below 4GB. "
+                    "Automatically falling back to num_workers=0 to prevent shared memory Bus error."
+                )
+                return 0
+        except Exception:
+            pass
         return 4
     return int(cfg_value)

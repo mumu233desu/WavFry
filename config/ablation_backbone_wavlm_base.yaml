@@ -7,10 +7,10 @@
 # ── 数据 ──────────────────────────────────────────────
 data:
   isolate_split_speakers: true
-  num_workers: auto
+  num_workers: 0
   pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
+  prefetch_factor: null
+  persistent_workers: false
 
 # ── 模型 ──────────────────────────────────────────────
 model:
