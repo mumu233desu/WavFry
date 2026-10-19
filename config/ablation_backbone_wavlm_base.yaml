@@ -50,8 +50,8 @@ training:
       enabled: false
 
   block:
-    batch_size: 64
-    val_batch_size: 128
+    batch_size: 128
+    val_batch_size: 256
     duration_ms: 2000
     hop_ms: 1000
     max_intervals: 12
