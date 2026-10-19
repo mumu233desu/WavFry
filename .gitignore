@@ -1,6 +1,7 @@
 runs/
 checkpoints/
 manifests/*.csv
+!manifests/weak_breathy.csv
 __pycache__/
 *.pt
 *.ckpt
