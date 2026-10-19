@@ -49,9 +49,15 @@ YSJ_TRANSCRIPTS_PATH = Path(r"E:\Corpus\Breathy\YSJ\transcripts.tsv")
 OUTPUT_DIR = Path(r"manifests\test_annot_mllm\ysj_listen_cases").resolve()
 CACHE_DIR = Path(r"manifests\test_annot_mllm\ysj_cache").resolve()
 
-DEFAULT_ENDPOINT = "http://127.0.0.1:8045"
-DEFAULT_KEY = "ENV_LOCAL_LLM_KEY_PLACEHOLDER"
-DEFAULT_MODEL = "gemini-3.8-flash-high"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+DEFAULT_ENDPOINT = os.environ.get("LOCAL_LLM_ENDPOINT", "http://127.0.0.1:8045")
+DEFAULT_KEY = os.environ.get("LOCAL_LLM_KEY", "")
+DEFAULT_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemini-3.8-flash-high")
 
 
 def load_ysj_transcripts() -> Dict[str, str]:

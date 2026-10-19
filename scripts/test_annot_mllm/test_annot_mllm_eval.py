@@ -33,9 +33,15 @@ except ImportError:
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-DEFAULT_ENDPOINT = "http://127.0.0.1:8045"
-DEFAULT_KEY = "ENV_LOCAL_LLM_KEY_PLACEHOLDER"
-DEFAULT_MODEL = "gemini-3.8-flash-high"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+DEFAULT_ENDPOINT = os.environ.get("LOCAL_LLM_ENDPOINT", "http://127.0.0.1:8045")
+DEFAULT_KEY = os.environ.get("LOCAL_LLM_KEY", "")
+DEFAULT_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemini-3.8-flash-high")
 DEFAULT_MANIFEST = Path("manifests/test_annot_mllm/benchmark_manifest.json")
 CACHE_DIR = Path("manifests/test_annot_mllm/api_cache")
 REPORT_PATH = Path("manifests/test_annot_mllm/eval_report.json")

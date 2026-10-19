@@ -48,9 +48,15 @@ except ImportError:
 
 # ── Defaults and Corpus Configuration ──────────────────────────────────────────
 
-DEFAULT_ENDPOINT = "http://127.0.0.1:8045"
-DEFAULT_KEY = "ENV_LOCAL_LLM_KEY_PLACEHOLDER"
-DEFAULT_MODEL = "gemini-3.8-flash-high"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+DEFAULT_ENDPOINT = os.environ.get("LOCAL_LLM_ENDPOINT", "http://127.0.0.1:8045")
+DEFAULT_KEY = os.environ.get("LOCAL_LLM_KEY", "")
+DEFAULT_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemini-3.8-flash-high")
 DEFAULT_VOWEL_COVERAGE = 0.8
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_LOG_INTERVAL = 20

@@ -30,10 +30,16 @@ import yaml
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
 logger = logging.getLogger("script_generator")
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Local LLM service configuration (Strict: No fallback)
-LOCAL_LLM_ENDPOINT = "http://127.0.0.1:8045"
-LOCAL_LLM_KEY = "ENV_LOCAL_LLM_KEY_PLACEHOLDER"
-LOCAL_LLM_MODEL = "gemini-3.8-flash-high"
+LOCAL_LLM_ENDPOINT = os.environ.get("LOCAL_LLM_ENDPOINT", "http://127.0.0.1:8045")
+LOCAL_LLM_KEY = os.environ.get("LOCAL_LLM_KEY", "")
+LOCAL_LLM_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemini-3.8-flash-high")
 
 
 def load_contexts(config_path: Path) -> List[Dict[str, Any]]:

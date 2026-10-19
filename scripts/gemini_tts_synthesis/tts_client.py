@@ -25,9 +25,15 @@ import torchaudio
 
 logger = logging.getLogger("gemini_tts_client")
 
-DEFAULT_TTS_ENDPOINT = "https://openrouter.ai/api/v1"
-DEFAULT_TTS_KEY = "ENV_OPENROUTER_API_KEY_PLACEHOLDER"
-DEFAULT_TTS_MODEL = "google/gemini-3.8-flash-tts"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+DEFAULT_TTS_ENDPOINT = os.environ.get("OPENROUTER_ENDPOINT", "https://openrouter.ai/api/v1")
+DEFAULT_TTS_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+DEFAULT_TTS_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-3.8-flash-tts")
 
 
 class GeminiTTSClient:

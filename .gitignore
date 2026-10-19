@@ -14,7 +14,12 @@ scratch/
 .pytest_cache/
 /data/
 pretrained/
-artifacts/
 .zcode/
+artifacts/
 *.wav
 *.flac
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
