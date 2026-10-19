@@ -43,6 +43,27 @@ uv --version
 
 ---
 
+### （可选/推荐）一键配置 ZeroTier 自建内网穿透与固定 IP SSH 直连
+
+如果你希望脱离网页端控制台、直接使用本地 Windows 终端或 VS Code Remote-SSH 进行丝滑开发与监控，代码库已内置一键组网与固定 IP 脚本：
+
+```bash
+cd /root/WavFry
+# 赋予执行权限并运行（可传入自定义 SSH 密码，默认为 wavfry123456）
+bash scripts/setup_zerotier_ssh.sh [你的SSH密码]
+```
+
+**该脚本的核心特性**：
+1. **自动部署自建 Planet**：已内置你的专属 Planet 文件，无需手动上传或公网中继；
+2. **节点身份持久化与永久固定 IP**：节点密钥自动备份至 `/data/zerotier/`。容器关机或销毁重建后，重新执行脚本会自动恢复同一 Node ID，**ZeroTier 控制器分配的局域网 IP（`172.25.0.x`）保持完全固定不变**，无需反复修改本地 SSH 配置或在控制台重新授权；
+3. **SSH 自动就绪**：自动配置 `openssh-server`、启用 root 密码登录并生成 host key。完成后会直接在终端打印：
+   ```bash
+   ssh root@172.25.0.X
+   ```
+
+
+---
+
 ### 第二步：解压数据集到本地高速盘 `/root/Corpus`
 
 原始压缩包位于云盘 `/data`，直接解压到本地高速盘 `/root/Corpus`：
