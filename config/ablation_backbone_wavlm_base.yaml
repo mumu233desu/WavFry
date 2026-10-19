@@ -7,10 +7,9 @@
 # ── 数据 ──────────────────────────────────────────────
 data:
   isolate_split_speakers: true
-  num_workers: 0
+  num_workers: auto
   pin_memory: true
-  prefetch_factor: null
-  persistent_workers: false
+  prefetch_factor: 2
 
 # ── 模型 ──────────────────────────────────────────────
 model:
@@ -51,8 +50,8 @@ training:
       enabled: false
 
   block:
-    batch_size: 256
-    val_batch_size: 256
+    batch_size: 64
+    val_batch_size: 128
     duration_ms: 2000
     hop_ms: 1000
     max_intervals: 12
