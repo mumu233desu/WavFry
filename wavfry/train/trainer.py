@@ -785,12 +785,14 @@ class Trainer:
                     all_logits[task].append(logits_dict[task].detach())
                     all_labels[task].append(labels_dict[task].detach())
 
-            if (i + 1) % 50 == 0 or (i + 1) == batch_count:
+            train_print_interval = max(5, batch_count // 4)
+            if (i + 1) % train_print_interval == 0 or (i + 1) == batch_count:
                 loss_val = loss.detach().item()
                 if not self.quiet:
                     pbar.set_postfix({'loss': f"{loss_val:.4f}"})
                 else:
-                    print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{batch_count} - Batch Loss: {loss_val:.4f}", flush=True)
+                    vram_str = f" - VRAM: {torch.cuda.memory_allocated() / (1024 * 1024):.0f}MB" if torch.cuda.is_available() else ""
+                    print(f"  [Epoch {epoch:02d} Train] Step {i+1}/{batch_count} - Batch Loss: {loss_val:.4f}{vram_str}", flush=True)
 
         # Flush remaining gradients
         if (i + 1) % self.config['training']['gradient_accumulation_steps'] != 0:
@@ -887,8 +889,10 @@ class Trainer:
                             val_frame_loss_sums[task] = val_frame_loss_sums[task] + self._current_losses[f'{task}_frame']
                             val_frame_loss_counts[task] += 1
 
-                if self.quiet and ((i + 1) % 50 == 0 or (i + 1) == len(self.val_loader)):
-                    print(f"  [Epoch {epoch:02d} Val] Step {i+1}/{len(self.val_loader)}", flush=True)
+                val_print_interval = max(3, len(self.val_loader) // 3)
+                if self.quiet and ((i + 1) % val_print_interval == 0 or (i + 1) == len(self.val_loader)):
+                    vram_str = f" - VRAM: {torch.cuda.memory_allocated() / (1024 * 1024):.0f}MB" if torch.cuda.is_available() else ""
+                    print(f"  [Epoch {epoch:02d} Val] Step {i+1}/{len(self.val_loader)}{vram_str}", flush=True)
 
                 if self._current_frame_proxy is not None:
                     frame_proxy_values.append(self._current_frame_proxy)
