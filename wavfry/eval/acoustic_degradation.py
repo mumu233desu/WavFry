@@ -25,6 +25,8 @@ import soundfile as sf
 import torch
 import torchaudio
 
+from wavfry.data.path_resolver import resolve_corpus_path
+
 # Canonical Factorial Evaluation Protocol (5 Noise Scenarios x 3 SNRs + 2 Compounds + Clean)
 CANONICAL_NOISE_TYPES: List[str] = ["cafe", "car", "home", "reverb", "street"]
 CANONICAL_SNR_LADDER: List[float] = [15.0, 5.0, 0.0]
@@ -59,7 +61,18 @@ PARADIGM_A_NOISE_TYPES: List[str] = CANONICAL_NOISE_TYPES
 PARADIGM_A_SNR_LADDER: List[float] = CANONICAL_SNR_LADDER
 PARADIGM_A_CONDITIONS: List[str] = CANONICAL_EVAL_CONDITIONS
 
-# Default directories for processed QUT-NOISE and RIRs
+
+def get_default_noise_dir() -> Path:
+    raw = "E:/Corpus/Noise/QUT-NOISE_processed/noise"
+    return Path(resolve_corpus_path(raw) or raw)
+
+
+def get_default_rir_dir() -> Path:
+    raw = "E:/Corpus/Noise/QUT-NOISE_processed/impulses"
+    return Path(resolve_corpus_path(raw) or raw)
+
+
+# Backward-compatible default path objects (resolved dynamically if possible)
 DEFAULT_NOISE_DIR = Path("E:/Corpus/Noise/QUT-NOISE_processed/noise")
 DEFAULT_RIR_DIR = Path("E:/Corpus/Noise/QUT-NOISE_processed/impulses")
 
@@ -202,8 +215,10 @@ class AcousticDegradationEngine:
         self.sample_rate = sample_rate
         self.cache_in_memory = cache_in_memory
 
-        self.noise_dir = Path(noise_dir) if noise_dir else DEFAULT_NOISE_DIR
-        self.rir_dir = Path(rir_dir) if rir_dir else DEFAULT_RIR_DIR
+        target_noise = noise_dir if noise_dir is not None else get_default_noise_dir()
+        target_rir = rir_dir if rir_dir is not None else get_default_rir_dir()
+        self.noise_dir = Path(resolve_corpus_path(target_noise) or target_noise)
+        self.rir_dir = Path(resolve_corpus_path(target_rir) or target_rir)
 
         self._noise_pool: Dict[str, List[torch.Tensor]] = {}
         self._rir_pool_by_scenario: Dict[str, List[torch.Tensor]] = {}
@@ -518,9 +533,13 @@ class AcousticDegradationEngine:
 _GLOBAL_ENGINE: Optional[AcousticDegradationEngine] = None
 
 
-def get_acoustic_degradation_engine() -> AcousticDegradationEngine:
+def get_acoustic_degradation_engine(
+    noise_dir: Optional[Union[str, Path]] = None,
+    rir_dir: Optional[Union[str, Path]] = None,
+    reset: bool = False,
+) -> AcousticDegradationEngine:
     """Retrieve or lazily initialize the shared global degradation engine."""
     global _GLOBAL_ENGINE
-    if _GLOBAL_ENGINE is None:
-        _GLOBAL_ENGINE = AcousticDegradationEngine()
+    if _GLOBAL_ENGINE is None or reset or noise_dir is not None or rir_dir is not None:
+        _GLOBAL_ENGINE = AcousticDegradationEngine(noise_dir=noise_dir, rir_dir=rir_dir)
     return _GLOBAL_ENGINE

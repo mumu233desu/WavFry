@@ -30,9 +30,9 @@ def get_active_corpus_root() -> Optional[str]:
         return _CACHED_CORPUS_ROOT
 
     if os.name == "nt":
-        candidates = ("E:/Corpus", "/data/Corpus", "/Corpus")
+        candidates = ("E:/Corpus", "/data/Corpus", "/root/Corpus", "/Corpus")
     else:
-        candidates = ("/data/Corpus", "/Corpus", "E:/Corpus")
+        candidates = ("/data/Corpus", "/root/Corpus", "/Corpus", "E:/Corpus")
 
     for candidate in candidates:
         if os.path.exists(candidate):
