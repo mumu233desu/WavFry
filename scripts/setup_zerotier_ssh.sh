@@ -15,10 +15,17 @@ echo " Target Network ID : ${NETWORK_ID}"
 echo " SSH Root Password : ${PASSWORD}"
 echo "=========================================================="
 
+# 0. Bypass systemd/dbus service auto-start timeout in Docker containers
+echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
+chmod +x /usr/sbin/policy-rc.d
+
 # 1. Install OpenSSH Server & prerequisites
 echo "[1/6] Installing OpenSSH Server and network utilities..."
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-server curl gpg sudo >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
+    openssh-server curl gpg sudo >/dev/null
 
 # 2. Configure SSH service for Root Password Login
 echo "[2/6] Configuring SSH daemon..."
@@ -28,7 +35,8 @@ sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 # Ensure SSH host keys are generated in fresh containers
 ssh-keygen -A 2>/dev/null || true
-service ssh restart 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
+# Directly launch sshd (bypasses systemctl/dbus wait in containers)
+/usr/sbin/sshd 2>/dev/null || service ssh restart 2>/dev/null || true
 echo "      SSH service is running."
 
 # 3. Check / Create TUN Device for Container
@@ -58,8 +66,11 @@ if ! command -v zerotier-one >/dev/null 2>&1; then
     }
 fi
 
+# Clean up policy override now that all packages are installed
+rm -f /usr/sbin/policy-rc.d 2>/dev/null || true
+
 # Stop service to deploy planet & identities
-service zerotier-one stop 2>/dev/null || pkill -9 zerotier-one 2>/dev/null || true
+pkill -9 zerotier-one 2>/dev/null || true
 sleep 1
 mkdir -p /var/lib/zerotier-one /data/zerotier
 
@@ -88,8 +99,8 @@ else
     fi
 fi
 
-# Start ZeroTier daemon
-service zerotier-one start 2>/dev/null || zerotier-one -d 2>/dev/null || true
+# Start ZeroTier daemon (daemon mode directly, avoiding systemctl wait)
+zerotier-one -d 2>/dev/null || service zerotier-one start 2>/dev/null || true
 sleep 2
 
 # Backup identity if not backed up yet
