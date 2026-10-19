@@ -115,6 +115,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Acoustic evaluation conditions (default: all 18 canonical conditions; pass 'all' or specific conditions).",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from latest checkpoint (latest.pt) if available.",
+    )
     return parser.parse_args()
 
 
@@ -209,20 +214,42 @@ def train_single_backbone(
     cfg: dict[str, Any],
     df: Any,
     device: str,
+    resume: bool = False,
 ) -> Path:
     meta = BACKBONE_REGISTRY[backbone_key]
     display = meta["display_name"]
+    ckpt_dir = Path(cfg["checkpoint"]["dir"])
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    best_ckpt = ckpt_dir / "best_model.pt"
+    latest_ckpt = ckpt_dir / "latest.pt"
+
+    target_epochs = int(cfg["training"]["epochs"])
+
+    # If resume is requested and training was already completed, skip training
+    if resume and latest_ckpt.exists():
+        try:
+            hist_file = ckpt_dir / "epoch_history.json"
+            if hist_file.exists():
+                with open(hist_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                completed_epochs = max((h.get("epoch", 0) for h in history), default=0)
+                if completed_epochs >= target_epochs and best_ckpt.exists():
+                    print(
+                        f"[Backbone Comparison] {display} already completed all {completed_epochs}/{target_epochs} epochs. "
+                        f"Skipping training and using existing checkpoint {best_ckpt}!",
+                        flush=True,
+                    )
+                    return best_ckpt
+        except Exception as e:
+            logger.warning(f"Could not verify completion status from history: {e}")
+
     print(f"\n{'='*70}", flush=True)
     print(f"[Backbone Comparison] Starting training for: {display} ({meta['hf_model_id']})", flush=True)
-    print(f"[Backbone Comparison] Epochs: {cfg['training']['epochs']} | Device: {device}", flush=True)
+    print(f"[Backbone Comparison] Epochs: {target_epochs} | Device: {device} | Resume: {resume}", flush=True)
     print(f"{'='*70}\n", flush=True)
 
     # Import train runner dynamically from scripts/train.py
     from scripts import train as train_module
-
-    # Pre-flight check: ensure checkpoint directory exists
-    ckpt_dir = Path(cfg["checkpoint"]["dir"])
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Dynamically import required modules
     from wavfry.data import dataset as dataset_mod
@@ -240,13 +267,12 @@ def train_single_backbone(
         model_mod=model_mod,
         trainer_mod=trainer_mod,
         fold_idx=0,
+        resume=resume,
     )
     elapsed = time.time() - start_time
     print(f"[Backbone Comparison] Training finished for {display} in {elapsed / 60:.2f} mins.", flush=True)
 
-    best_ckpt = ckpt_dir / "best_model.pt"
     if not best_ckpt.exists():
-        latest_ckpt = ckpt_dir / "latest.pt"
         if latest_ckpt.exists():
             best_ckpt = latest_ckpt
     return best_ckpt
@@ -669,7 +695,7 @@ def main():
         ckpt_path = Path(cfg["checkpoint"]["dir"]) / "best_model.pt"
 
         if args.mode in ("train_and_eval", "train_only"):
-            ckpt_path = train_single_backbone(b_key, cfg, df=df, device=args.device)
+            ckpt_path = train_single_backbone(b_key, cfg, df=df, device=args.device, resume=args.resume)
 
         if args.mode in ("train_and_eval", "eval_only"):
             test_df = df[df["batch_split"] == "test"].copy()
