@@ -1,0 +1,35 @@
+# ==============================================================================
+# WavFry Dependencies Specification (pip install -r requirements.txt)
+# Compatible with Python >= 3.10, < 3.13
+# ==============================================================================
+
+# Core Modeling & Transformers
+transformers>=4.40.0
+bitsandbytes>=0.49.2
+
+# Acoustic Signal Processing & Speech Phonetics
+soundfile>=0.12.1
+tgt>=1.5
+praat-parselmouth>=0.4.7
+deepfilternet>=0.5.6
+
+# Machine Learning, Metrics & Optimization
+scikit-learn>=1.4.0
+scipy>=1.11.0
+
+# Data Manipulation & I/O
+pandas>=2.0.0,<3.0.0
+numpy>=1.26.0
+pyyaml>=6.0.1
+tqdm>=4.66.0
+setuptools<81
+
+# Experiment Visualization & Tracking
+tensorboard>=2.16.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Note on PyTorch:
+# In cloud environments, PyTorch + CUDA is typically pre-installed in the base image.
+# If PyTorch is missing, install it matching your CUDA version (e.g., cu124):
+# pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
