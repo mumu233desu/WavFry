@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import math
@@ -14,6 +15,8 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+from wavfry.data.path_resolver import resolve_corpus_path
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +162,12 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
             raise KeyError(
                 f"adapter_cs_dialogue_textgrid requires audio_dirs and textgrid_dirs for {language!r}"
             )
-        if not Path(audio_dirs[language]).is_dir():
-            raise FileNotFoundError(f"Audio dir not found for {language}: {audio_dirs[language]}")
-        if not Path(textgrid_dirs[language]).is_dir():
-            raise FileNotFoundError(f"TextGrid dir not found for {language}: {textgrid_dirs[language]}")
+        audio_dir_path = Path(resolve_corpus_path(audio_dirs[language]) or "")
+        textgrid_dir_path = Path(resolve_corpus_path(textgrid_dirs[language]) or "")
+        if not audio_dir_path.is_dir():
+            raise FileNotFoundError(f"Audio dir not found for {language}: {audio_dir_path}")
+        if not textgrid_dir_path.is_dir():
+            raise FileNotFoundError(f"TextGrid dir not found for {language}: {textgrid_dir_path}")
 
     inventory_by_language = {
         lang: get_phone_inventory(lang) for lang in include_languages
@@ -174,8 +179,8 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
     stats: Counter[str] = Counter()
 
     for store_language in sorted(include_languages):
-        textgrid_dir = Path(textgrid_dirs[store_language])
-        audio_dir = Path(audio_dirs[store_language])
+        textgrid_dir = Path(resolve_corpus_path(textgrid_dirs[store_language]) or "")
+        audio_dir = Path(resolve_corpus_path(audio_dirs[store_language]) or "")
 
         # Sampling state is co-located with TextGrid cache: <textgrid_dir>/_creaky_cache/sampling_state.json
         sampling_state_path = textgrid_dir / "_creaky_cache" / "sampling_state.json"
@@ -642,9 +647,9 @@ def adapter_breathy_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]:
     language = params.get("language", "und")
     min_duration_ms = float(params.get("min_duration_ms", 30.0))
 
-    audio_dir = Path(params.get("audio_dir", ""))
-    cache_dir = Path(params.get("cache_dir", "")) if params.get("cache_dir") else (audio_dir / "_breathy_cache")
-    textgrid_dir = Path(params.get("textgrid_dir", "")) if params.get("textgrid_dir") else None
+    audio_dir = Path(resolve_corpus_path(params.get("audio_dir", "")) or "")
+    cache_dir = Path(resolve_corpus_path(params.get("cache_dir", "")) or "") if params.get("cache_dir") else (audio_dir / "_breathy_cache")
+    textgrid_dir = Path(resolve_corpus_path(params.get("textgrid_dir", "")) or "") if params.get("textgrid_dir") else None
 
     manifest_file = cache_dir / "manual_breathy_annotations.json"
     if not manifest_file.exists() and not (manifest_file.with_name(manifest_file.name + ".d")).exists():
@@ -807,10 +812,10 @@ def adapter_sharded_textgrid_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any
     lenient = bool(params.get("lenient_missing", False))
     allow_mllm_pseudo_labels = bool(params.get("allow_mllm_pseudo_labels", False))
 
-    audio_dir = Path(params.get("audio_dir", ""))
-    textgrid_dir = Path(params.get("textgrid_dir", ""))
-    cache_dir = Path(params.get("cache_dir", "")) if params.get("cache_dir") else (textgrid_dir / "_breathy_cache")
-    manifest_csv = Path(params.get("manifest_csv", "")) if params.get("manifest_csv") else None
+    audio_dir = Path(resolve_corpus_path(params.get("audio_dir", "")) or "")
+    textgrid_dir = Path(resolve_corpus_path(params.get("textgrid_dir", "")) or "")
+    cache_dir = Path(resolve_corpus_path(params.get("cache_dir", "")) or "") if params.get("cache_dir") else (textgrid_dir / "_breathy_cache")
+    manifest_csv = Path(resolve_corpus_path(params.get("manifest_csv", "")) or "") if params.get("manifest_csv") else None
 
     # Load slice metadata from manifest_csv if present
     slice_meta: dict[str, dict[str, Any]] = {}
@@ -1168,9 +1173,27 @@ def build_manifest_multi(
     all_records: list[dict[str, Any]] = []
     active_tasks: set[str] = set()
 
-    for ds in datasets_cfg.get("datasets", []):
-        if not ds.get("enabled", True):
+    for ds_orig in datasets_cfg.get("datasets", []):
+        if not ds_orig.get("enabled", True):
             continue
+
+        ds = copy.deepcopy(ds_orig)
+        params = ds.get("adapter_params", {})
+        if isinstance(params, dict):
+            for k, v in list(params.items()):
+                if isinstance(v, (str, Path)):
+                    params[k] = resolve_corpus_path(str(v))
+                elif isinstance(v, dict):
+                    params[k] = {
+                        sub_k: resolve_corpus_path(str(sub_v)) if isinstance(sub_v, (str, Path)) else sub_v
+                        for sub_k, sub_v in v.items()
+                    }
+                elif isinstance(v, list):
+                    params[k] = [
+                        resolve_corpus_path(str(item)) if isinstance(item, (str, Path)) else item
+                        for item in v
+                    ]
+            ds["adapter_params"] = params
 
         adapter_name = ds.get("annotation_adapter")
         if adapter_name not in ADAPTERS:
@@ -1196,6 +1219,11 @@ def build_manifest_multi(
         all_records.extend(records)
 
     df = pd.DataFrame(all_records, columns=MANIFEST_COLUMNS)
+    if not df.empty:
+        if "audio_path" in df.columns:
+            df["audio_path"] = df["audio_path"].apply(resolve_corpus_path)
+        if "tg_path" in df.columns:
+            df["tg_path"] = df["tg_path"].apply(lambda p: resolve_corpus_path(p) if p else "")
     _apply_split_strategies(df, datasets_cfg)
 
     # Sort tasks in the model's canonical order (creaky first), not alphabetically
