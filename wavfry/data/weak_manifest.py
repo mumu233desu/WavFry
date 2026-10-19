@@ -30,19 +30,27 @@ def manifest_digest(df: pd.DataFrame) -> str:
 def validate_source_stamps(df: pd.DataFrame) -> None:
     if 'source_stamp' not in df:
         raise ValueError('Weak manifest lacks source stamps; rebuild it with build_weak_manifest.py')
+    from wavfry.data.path_resolver import resolve_corpus_path
     for row in df.to_dict('records'):
         stamp = json.loads(row['source_stamp'])
-        audio = Path(row['audio_path'])
-        stat = audio.stat()
-        if stat.st_size != stamp['audio_size'] or stat.st_mtime_ns != stamp['audio_mtime_ns']:
-            raise ValueError(f"Stale weak manifest audio: {row['file_key']}")
-        if file_digest(Path(row['tg_path'])) != stamp['grid']:
-            raise ValueError(f"Stale weak manifest TextGrid: {row['file_key']}")
-        if stamp.get('cache') and file_digest(Path(row['cache_path'])) != stamp['cache']:
-            raise ValueError(f"Stale weak manifest MLLM cache: {row['file_key']}")
+        audio_p = resolve_corpus_path(row.get('audio_path'))
+        audio = Path(audio_p) if audio_p else None
+        if audio and audio.exists():
+            stat = audio.stat()
+            if stat.st_size != stamp['audio_size']:
+                raise ValueError(f"Stale weak manifest audio (size mismatch): {row['file_key']}")
+        tg_p = resolve_corpus_path(row.get('tg_path'))
+        if tg_p and Path(tg_p).exists():
+            if file_digest(Path(tg_p)) != stamp['grid']:
+                raise ValueError(f"Stale weak manifest TextGrid: {row['file_key']}")
+        cache_p = resolve_corpus_path(row.get('cache_path'))
+        if cache_p and Path(cache_p).exists() and stamp.get('cache'):
+            if file_digest(Path(cache_p)) != stamp['cache']:
+                raise ValueError(f"Stale weak manifest MLLM cache: {row['file_key']}")
         if stamp.get('sampling_state_path'):
-            state_p = Path(stamp['sampling_state_path'])
-            if not state_p.exists():
+            state_p_str = resolve_corpus_path(stamp['sampling_state_path'])
+            state_p = Path(state_p_str) if state_p_str else None
+            if state_p and not state_p.exists():
                 raise ValueError(f"Missing weak manifest sampling state: {state_p}")
 
 

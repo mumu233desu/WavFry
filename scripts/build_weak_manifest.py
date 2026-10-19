@@ -169,9 +169,10 @@ def main():
             continue
 
         params = ds.get("adapter_params", {})
-        audio_dir = Path(params.get("audio_dir", ""))
-        tg_dir = Path(params.get("textgrid_dir", ""))
-        cache_base = Path(params.get("cache_dir", "")) if params.get("cache_dir") else (tg_dir / "_breathy_cache")
+        from wavfry.data.path_resolver import resolve_corpus_path
+        audio_dir = Path(resolve_corpus_path(params.get("audio_dir", "")) or "")
+        tg_dir = Path(resolve_corpus_path(params.get("textgrid_dir", "")) or "")
+        cache_base = Path(resolve_corpus_path(params.get("cache_dir", "")) or "") if params.get("cache_dir") else (tg_dir / "_breathy_cache")
         
         # Check mllm_cache directory
         mllm_cache = cache_base / "mllm_cache"
