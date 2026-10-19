@@ -128,6 +128,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             boundary_trim_frames=block_cfg.get('boundary_trim_frames', 0),
             seed=config['training'].get('seed', 42),
             fold_index=fold_idx,
+            max_cache_files=block_cfg.get('max_cache_files', 3000),
         )
         train_ds = ContinuousAudioBlockDataset(train_df, reverb_augmentor=reverb_augmentor, **common_block)
         val_ds = ContinuousAudioBlockDataset(val_df, reverb_augmentor=None, **common_block)

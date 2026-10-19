@@ -9,7 +9,8 @@ data:
   isolate_split_speakers: true
   num_workers: auto
   pin_memory: true
-  prefetch_factor: 2
+  prefetch_factor: 4
+  persistent_workers: true
 
 # ── 模型 ──────────────────────────────────────────────
 model:
@@ -50,12 +51,13 @@ training:
       enabled: false
 
   block:
-    batch_size: 128
-    val_batch_size: 256
+    batch_size: 256
+    val_batch_size: 512
     duration_ms: 2000
     hop_ms: 1000
     max_intervals: 12
     boundary_trim_frames: 0
+    max_cache_files: 3000
     frame_head:
       enabled: true
       loss_weight: 0.1
