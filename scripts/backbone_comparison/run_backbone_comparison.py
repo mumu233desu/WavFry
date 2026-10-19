@@ -239,9 +239,14 @@ def train_single_backbone(
                 with open(hist_file, "r", encoding="utf-8") as f:
                     history = json.load(f)
                 completed_epochs = max((h.get("epoch", 0) for h in history), default=0)
-                if completed_epochs >= target_epochs and best_ckpt.exists():
+                best_epoch = max((h.get("epoch", 0) for h in history if h.get("is_best")), default=0)
+                patience = int(cfg.get("eval", {}).get("early_stopping_patience", 0))
+                early_stopped = bool(patience > 0 and best_epoch > 0 and (completed_epochs - best_epoch) >= patience)
+
+                if (completed_epochs >= target_epochs or early_stopped) and best_ckpt.exists():
+                    reason = f"all {completed_epochs}/{target_epochs} epochs" if completed_epochs >= target_epochs else f"early stopping (patience {patience} at epoch {completed_epochs})"
                     print(
-                        f"[Backbone Comparison] {display} already completed all {completed_epochs}/{target_epochs} epochs. "
+                        f"[Backbone Comparison] {display} already completed training ({reason}). "
                         f"Skipping training and using existing checkpoint {best_ckpt}!",
                         flush=True,
                     )
