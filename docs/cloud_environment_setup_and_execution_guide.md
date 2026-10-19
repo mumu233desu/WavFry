@@ -24,15 +24,17 @@
 
 `deepfilternet` 包含基于 Rust 编写的底层 C-ABI 扩展库 `deepfilterlib`，`maturin` 构建工具必须依赖 `cargo` 进行本地编译。
 
-```bash
-# 1. 更新 APT 并安装基础工具
+# 1. 扩容容器共享内存（防止多进程 DataLoader 报 Bus Error）
+mount -o remount,size=16G /dev/shm 2>/dev/null || true
+
+# 2. 更新 APT 并安装基础工具
 apt-get update && apt-get install -y unzip git tmux build-essential curl
 
-# 2. 安装 uv（超高速 Python 包与环境管理器）
+# 3. 安装 uv（超高速 Python 包与环境管理器）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source "$HOME/.cargo/env" 2>/dev/null || source "$HOME/.local/bin/env" 2>/dev/null || export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
-# 3. 安装 Rust 与 Cargo（彻底解决 deepfilterlib==0.5.6 构建报错）
+# 4. 安装 Rust 与 Cargo（彻底解决 deepfilterlib==0.5.6 构建报错）
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
@@ -69,19 +71,25 @@ echo "[OK] 6 个数据集已全部解压至本地高速盘 /root/Corpus！"
 ### 第三步：克隆代码仓库并配置持久化软链接
 
 ```bash
-# 1. 克隆代码主仓库
+# 1. 配置 Git 全局使用 ghfast 国内镜像加速 GitHub 访问（彻底解决 clone / pull 网络波动）
+git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
+
+# 2. 克隆代码主仓库（自动走 ghfast 加速）
 cd /root
 git clone https://github.com/mumu233desu/WavFry.git
 cd /root/WavFry
 
-# 2. 检出多 Backbone 对照专项分支
+# 若仓库已存在，可直接切换加速远端：
+# git remote set-url origin https://ghfast.top/https://github.com/mumu233desu/WavFry.git
+
+# 3. 检出多 Backbone 对照专项分支
 git checkout feat/backbone-comparison
 
-# 3. 将实验输出目录软链接至持久化云盘 /data
+# 4. 将实验输出目录软链接至持久化云盘 /data
 # （模型权重与日志将自动穿透写入云盘，即使实例被释放也不丢失）
 ln -s /data/exp_results exp_results
 
-# 4. 配置持久化环境变量（写入 ~/.bashrc）
+# 5. 配置持久化环境变量（写入 ~/.bashrc）
 echo 'export WAVFRY_CORPUS_ROOT=/root/Corpus' >> ~/.bashrc
 echo 'export HF_ENDPOINT=https://hf-mirror.com' >> ~/.bashrc
 source ~/.bashrc
@@ -136,8 +144,9 @@ tmux new -s wavfry
 # 2. 进入项目主目录
 cd /root/WavFry
 
-# 3. 清理旧检查点（如有）
-rm -rf exp_results/checkpoints/ablation_backbone_*
+# 3. 清理历史所有运行产物，从零全新启动：
+rm -rf /data/exp_results/* exp_results/* 2>/dev/null || true
+mkdir -p /data/exp_results
 
 # 4. 权威执行 4 款 Backbone 训练 + 18 场景全声学退化评测
 uv run python scripts/backbone_comparison/run_backbone_comparison.py \
