@@ -1,6 +1,12 @@
 import argparse
 import yaml
 import torch
+import torch.multiprocessing
+try:
+    # Use file_system sharing strategy to prevent container /dev/shm exhaustion bus errors
+    torch.multiprocessing.set_sharing_strategy('file_system')
+except Exception:
+    pass
 import sys
 from pathlib import Path
 import pandas as pd

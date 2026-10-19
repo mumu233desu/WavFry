@@ -29,6 +29,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import torch
+import torch.multiprocessing
+try:
+    # Use file_system sharing strategy to prevent container /dev/shm exhaustion bus errors
+    torch.multiprocessing.set_sharing_strategy('file_system')
+except Exception:
+    pass
 import yaml
 
 # Add project root to sys.path
