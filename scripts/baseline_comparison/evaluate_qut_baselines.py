@@ -304,7 +304,14 @@ def run_baseline_evaluation(
         f.write("# Table 1: Baseline Comparison under Acoustic Degradation (F1-Score)\n\n")
         f.write("- **Tiers**: Clean, Mild (15dB), Moderate (5dB), Severe (0dB), and Compound (Noise+RIR)\n")
         f.write("- **Canonical Conditions**: 5 Noise Scenarios (Cafe, Car, Home, Reverb, Street) + 2 Strictly Matched RIR Compounds\n\n")
-        f.write(table1_df.to_markdown(index=False))
+        try:
+            f.write(table1_df.to_markdown(index=False))
+        except Exception:
+            headers = list(table1_df.columns)
+            f.write("| " + " | ".join(headers) + " |\n")
+            f.write("| " + " | ".join([":---"] + [":---:"] * (len(headers) - 1)) + " |\n")
+            for _, r in table1_df.iterrows():
+                f.write("| " + " | ".join(str(r[c]) for c in headers) + " |\n")
         f.write("\n\n---\n*Note: Metrics represent macro-averaged F1-Score across evaluation intervals.*\n")
 
     logger.info(f"Saved Table 1 CSV data to {csv_path}")

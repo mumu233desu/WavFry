@@ -333,6 +333,7 @@ def evaluate_backbone(
     test_df: Any,
     device: str,
     conditions: list[str] | None = None,
+    resume: bool = False,
 ) -> dict[str, Any]:
     meta = BACKBONE_REGISTRY[backbone_key]
     display = meta["display_name"]
@@ -345,14 +346,23 @@ def evaluate_backbone(
 
     # Instantiate model with exact backbone
     model = WavFryClassifier(cfg).to(device)
-    calibrated_threshold = 0.5
+    tasks = cfg.get("model", {}).get("tasks", ["creaky"])
+    calibrated_thresholds = {task: 0.5 for task in tasks}
+    primary_calibrated_threshold = 0.5
     if ckpt_path.exists():
         print(f"[Backbone Comparison] Loading checkpoint weights from {ckpt_path}...", flush=True)
         ckpt_data = torch.load(ckpt_path, map_location=device, weights_only=False)
-        calibrated_threshold = float(ckpt_data.get("best_threshold", 0.5))
+        primary_calibrated_threshold = float(ckpt_data.get("best_threshold", 0.5))
+        for task in tasks:
+            calibrated_thresholds[task] = float(
+                ckpt_data.get(f"best_threshold_{task}",
+                ckpt_data.get("best_thresholds", {}).get(task,
+                ckpt_data.get("best_threshold", 0.5)))
+            )
         state_dict = ckpt_data.get("model_state_dict", ckpt_data)
         model.load_state_dict(state_dict, strict=False)
-        print(f"[Backbone Comparison] Loaded checkpoint (validation-calibrated threshold: {calibrated_threshold:.3f})", flush=True)
+        t_info = ", ".join(f"{t}: {calibrated_thresholds[t]:.3f}" for t in tasks)
+        print(f"[Backbone Comparison] Loaded checkpoint (calibrated thresholds: {t_info})", flush=True)
     else:
         print(f"[Warning] Checkpoint not found at {ckpt_path}; evaluating raw initialized heads.", flush=True)
 
@@ -386,7 +396,6 @@ def evaluate_backbone(
         collate_fn=collate_block_fn,
     )
 
-    tasks = cfg.get("model", {}).get("tasks", ["creaky"])
     use_amp = bool(cfg.get("training", {}).get("use_amp", False)) and ("cuda" in str(device).lower())
     amp_dtype = torch.bfloat16 if cfg.get("training", {}).get("amp_dtype") == "bfloat16" else torch.float16
 
@@ -397,6 +406,50 @@ def evaluate_backbone(
     total_batches = len(test_loader)
 
     for cond in eval_conditions:
+        pred_dump_path = ckpt_dir / f"test_predictions_{backbone_key}_{cond}.pt"
+        if resume and pred_dump_path.exists():
+            try:
+                cached_data = torch.load(pred_dump_path, map_location="cpu", weights_only=False)
+                if "metrics" in cached_data and cached_data["metrics"]:
+                    cached_metrics = cached_data["metrics"]
+                    needs_update = False
+                    for task in tasks:
+                        if f"f1_{task}_best" not in cached_metrics and task in cached_data.get("logits", {}):
+                            logits_t = cached_data["logits"][task]
+                            labels_t = cached_data["labels"][task]
+                            valid_m = ~torch.isnan(labels_t)
+                            if valid_m.sum() > 0:
+                                from wavfry.eval.unified import f1_scan_best_threshold
+                                b_t, b_f1 = f1_scan_best_threshold(logits_t[valid_m], labels_t[valid_m])
+                                t_cal = calibrated_thresholds.get(task, 0.5)
+                                m_cal = compute_metrics(logits_t[valid_m], labels_t[valid_m], threshold=t_cal)
+                                cached_metrics[f"threshold_{task}_calibrated"] = float(t_cal)
+                                cached_metrics[f"f1_{task}_calibrated"] = float(m_cal.get("f1", 0.0))
+                                cached_metrics[f"threshold_{task}_best"] = float(b_t)
+                                cached_metrics[f"f1_{task}_best"] = float(b_f1)
+                                needs_update = True
+                    if needs_update:
+                        cached_data["metrics"] = cached_metrics
+                        torch.save(cached_data, pred_dump_path)
+
+                    results_by_condition[cond] = cached_metrics
+                    c_auc = cached_metrics.get("auc_pr_creaky", 0.0)
+                    c_f1 = cached_metrics.get("f1_creaky_calibrated", 0.0)
+                    c_best_f1 = cached_metrics.get("f1_creaky_best", 0.0)
+                    c_best_t = cached_metrics.get("threshold_creaky_best", 0.5)
+                    b_auc = cached_metrics.get("auc_pr_breathy", 0.0)
+                    b_f1 = cached_metrics.get("f1_breathy_calibrated", 0.0)
+                    b_best_f1 = cached_metrics.get("f1_breathy_best", 0.0)
+                    b_best_t = cached_metrics.get("threshold_breathy_best", 0.5)
+                    print(
+                        f"  [{cond}] (Cached) Creaky PR: {c_auc:.4f} | Creaky F1(Cal): {c_f1:.4f} | Creaky F1(Best): {c_best_f1:.4f} (@{c_best_t:.2f}) | "
+                        f"Breathy PR: {b_auc:.4f} | Breathy F1(Cal): {b_f1:.4f} | Breathy F1(Best): {b_best_f1:.4f} (@{b_best_t:.2f})",
+                        flush=True,
+                    )
+                    continue
+            except Exception as e:
+                print(f"  [{cond}] Failed to load cached predictions ({e}), recomputing...", flush=True)
+
         start_cond = time.time()
         print(f"  [Condition: {cond}] Running vectorized inference ({total_batches} batches)...", flush=True)
         interval_predictions: dict[str, dict[str, list]] = {task: {} for task in tasks}
@@ -463,12 +516,20 @@ def evaluate_backbone(
 
             valid_m = ~torch.isnan(task_labels_all)
             if valid_m.sum() > 0:
-                m_cal = compute_metrics(task_logits_all[valid_m], task_labels_all[valid_m], threshold=calibrated_threshold)
+                t_cal = calibrated_thresholds.get(task, 0.5)
+                m_cal = compute_metrics(task_logits_all[valid_m], task_labels_all[valid_m], threshold=t_cal)
                 m_def = compute_metrics(task_logits_all[valid_m], task_labels_all[valid_m], threshold=0.5)
+
+                from wavfry.eval.unified import f1_scan_best_threshold
+                best_t, best_f1 = f1_scan_best_threshold(task_logits_all[valid_m], task_labels_all[valid_m])
+
                 cond_metrics[f"auc_pr_{task}"] = float(m_cal.get("auc_pr", 0.0))
                 cond_metrics[f"roc_auc_{task}"] = float(m_cal.get("roc_auc", 0.0))
                 cond_metrics[f"f1_{task}_calibrated"] = float(m_cal.get("f1", 0.0))
+                cond_metrics[f"threshold_{task}_calibrated"] = float(t_cal)
                 cond_metrics[f"f1_{task}_default"] = float(m_def.get("f1", 0.0))
+                cond_metrics[f"f1_{task}_best"] = float(best_f1)
+                cond_metrics[f"threshold_{task}_best"] = float(best_t)
                 cond_metrics[f"precision_{task}"] = float(m_cal.get("precision", 0.0))
                 cond_metrics[f"recall_{task}"] = float(m_cal.get("recall", 0.0))
 
@@ -480,8 +541,14 @@ def evaluate_backbone(
                 }
             else:
                 cond_metrics[f"auc_pr_{task}"] = 0.0
+                cond_metrics[f"roc_auc_{task}"] = 0.0
                 cond_metrics[f"f1_{task}_calibrated"] = 0.0
+                cond_metrics[f"threshold_{task}_calibrated"] = float(calibrated_thresholds.get(task, 0.5))
                 cond_metrics[f"f1_{task}_default"] = 0.0
+                cond_metrics[f"f1_{task}_best"] = 0.0
+                cond_metrics[f"threshold_{task}_best"] = 0.5
+                cond_metrics[f"precision_{task}"] = 0.0
+                cond_metrics[f"recall_{task}"] = 0.0
 
         results_by_condition[cond] = cond_metrics
 
@@ -491,7 +558,8 @@ def evaluate_backbone(
             "backbone": backbone_key,
             "display_name": display,
             "condition": cond,
-            "calibrated_threshold": calibrated_threshold,
+            "calibrated_threshold": primary_calibrated_threshold,
+            "calibrated_thresholds": calibrated_thresholds,
             "metrics": cond_metrics,
             "predictions": cond_predictions,
             "logits": {task: cond_predictions[task]["logits"] for task in cond_predictions},
@@ -504,7 +572,8 @@ def evaluate_backbone(
                 "backbone": backbone_key,
                 "display_name": display,
                 "checkpoint": str(ckpt_path),
-                "calibrated_threshold": calibrated_threshold,
+                "calibrated_threshold": primary_calibrated_threshold,
+                "calibrated_thresholds": calibrated_thresholds,
                 "metrics": cond_metrics,
                 "predictions": cond_predictions,
                 "logits": {task: cond_predictions[task]["logits"] for task in cond_predictions},
@@ -513,12 +582,21 @@ def evaluate_backbone(
 
         c_auc = cond_metrics.get("auc_pr_creaky", 0.0)
         c_f1 = cond_metrics.get("f1_creaky_calibrated", 0.0)
+        c_best_f1 = cond_metrics.get("f1_creaky_best", 0.0)
+        c_best_t = cond_metrics.get("threshold_creaky_best", 0.5)
         b_auc = cond_metrics.get("auc_pr_breathy", 0.0)
         b_f1 = cond_metrics.get("f1_breathy_calibrated", 0.0)
-        print(f"  [{cond}] Creaky PR: {c_auc:.4f} | Creaky F1: {c_f1:.4f} | Breathy PR: {b_auc:.4f} | Breathy F1: {b_f1:.4f}", flush=True)
+        b_best_f1 = cond_metrics.get("f1_breathy_best", 0.0)
+        b_best_t = cond_metrics.get("threshold_breathy_best", 0.5)
+        print(
+            f"  [{cond}] Creaky PR: {c_auc:.4f} | Creaky F1(Cal): {c_f1:.4f} | Creaky F1(Best): {c_best_f1:.4f} (@{c_best_t:.2f}) | "
+            f"Breathy PR: {b_auc:.4f} | Breathy F1(Cal): {b_f1:.4f} | Breathy F1(Best): {b_best_f1:.4f} (@{b_best_t:.2f})",
+            flush=True,
+        )
 
     clean_metrics = copy.deepcopy(results_by_condition.get("clean", {}))
-    clean_metrics["calibrated_threshold"] = calibrated_threshold
+    clean_metrics["calibrated_threshold"] = primary_calibrated_threshold
+    clean_metrics["calibrated_thresholds"] = calibrated_thresholds
 
     return {
         "backbone": backbone_key,
@@ -577,8 +655,8 @@ def format_academic_summary_table(
     )
 
     if has_breathy:
-        headers.extend(["Breathy PR", "Breathy F1 (Cal.)"])
-        aligns.extend([":---:", ":---:"])
+        headers.extend(["Breathy PR", "Breathy F1 (Cal.)", "Breathy F1 (Best)"])
+        aligns.extend([":---:", ":---:", ":---:"])
 
     lines = [
         "\n### Table 5: Multi-Backbone Comparison Ablation (Frozen SSL Backbones)",
@@ -603,6 +681,7 @@ def format_academic_summary_table(
     best_clean_f1 = max((res.get("conditions", {}).get("clean", {}).get("f1_creaky_calibrated", 0.0) for res in results), default=0.0)
     best_b_pr = max((res.get("conditions", {}).get("clean", {}).get("auc_pr_breathy", 0.0) for res in results), default=0.0)
     best_b_f1 = max((res.get("conditions", {}).get("clean", {}).get("f1_breathy_calibrated", 0.0) for res in results), default=0.0)
+    best_b_f1_best = max((res.get("conditions", {}).get("clean", {}).get("f1_breathy_best", 0.0) for res in results), default=0.0)
 
     for res in results:
         b_key = res["backbone"]
@@ -640,12 +719,15 @@ def format_academic_summary_table(
             b_auc_str = f"**{b_auc:.4f}**" if abs(b_auc - best_b_pr) < 1e-5 and best_b_pr > 0 else f"{b_auc:.4f}"
             b_f1 = clean_m.get("f1_breathy_calibrated", 0.0)
             b_f1_str = f"**{b_f1:.4f}**" if abs(b_f1 - best_b_f1) < 1e-5 and best_b_f1 > 0 else f"{b_f1:.4f}"
-            row.extend([b_auc_str, b_f1_str])
+            b_best_f1 = clean_m.get("f1_breathy_best", 0.0)
+            b_best_t = clean_m.get("threshold_breathy_best", 0.5)
+            b_best_str = f"**{b_best_f1:.4f}** (@{b_best_t:.2f})" if abs(b_best_f1 - best_b_f1_best) < 1e-5 and best_b_f1_best > 0 else f"{b_best_f1:.4f} (@{b_best_t:.2f})"
+            row.extend([b_auc_str, b_f1_str, b_best_str])
 
         lines.append("| " + " | ".join(row) + " |")
 
     lines.append("")
-    lines.append("*(Note: All backbones frozen; Δ denotes AUC-PR shift relative to Clean. F1 scores evaluated under validation-calibrated decision thresholds.)*")
+    lines.append("*(Note: All backbones frozen; Δ denotes AUC-PR shift relative to Clean. F1 (Cal.) evaluated under validation-calibrated decision thresholds; Breathy F1 (Best) denotes optimal test-set threshold F1 with corresponding τ* in parentheses.)*")
     lines.append("")
     return "\n".join(lines)
 
@@ -717,6 +799,7 @@ def main():
                 test_df=test_df,
                 device=args.device,
                 conditions=args.eval_conditions,
+                resume=args.resume,
             )
             all_results.append(eval_res)
 
@@ -749,6 +832,9 @@ def main():
                             "ROC-AUC": round(float(metrics.get(f"roc_auc_{task}", 0.0)), 4),
                             "F1-Score": round(float(metrics.get(f"f1_{task}_default", 0.0)), 4),
                             "F1-Calibrated": round(float(metrics.get(f"f1_{task}_calibrated", 0.0)), 4),
+                            "Threshold-Calibrated": round(float(metrics.get(f"threshold_{task}_calibrated", 0.5)), 4),
+                            "F1-Best": round(float(metrics.get(f"f1_{task}_best", 0.0)), 4),
+                            "Threshold-Best": round(float(metrics.get(f"threshold_{task}_best", 0.5)), 4),
                             "Precision": round(float(metrics.get(f"precision_{task}", 0.0)), 4),
                             "Recall": round(float(metrics.get(f"recall_{task}", 0.0)), 4),
                         })
