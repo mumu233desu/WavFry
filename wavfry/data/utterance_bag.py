@@ -103,6 +103,7 @@ class UtteranceBagDataset(Dataset):
             "starts": torch.tensor(starts),
             "vowels": json.loads(row["vowel_intervals"]),
             "bag_label": float(self.bag_labels[index]),
+            "quality_weight": float(row.get("quality_weight", 1.0)),
             "metadata": row,
         }
 
@@ -143,6 +144,72 @@ class BagBatchSampler(Sampler):
                 batch, cost = [], 0
             batch.append(idx)
             cost += count
+        if batch:
+            result.append(batch)
+        return result
+
+    def __len__(self):
+        return len(self.batches())
+
+    def __iter__(self):
+        return iter(self.batches())
+
+
+class SpeakerCappedBagBatchSampler(Sampler):
+    """
+    Clean MIL Speaker-Capped Sampler:
+    Limits each speaker to at most `max_per_speaker` (default 8) positive utterance bags per epoch,
+    preventing any single speaker or subset of speakers from dominating the weak supervision loss.
+    """
+    def __init__(
+        self,
+        dataset: UtteranceBagDataset,
+        max_windows: int = 32,
+        samples_per_epoch: int = 64,
+        max_per_speaker: int = 8,
+        seed: int = 42,
+    ):
+        self.dataset = dataset
+        self.max_windows = int(max_windows)
+        self.samples_per_epoch = int(samples_per_epoch)
+        self.max_per_speaker = int(max_per_speaker)
+        self.seed = int(seed)
+        self.epoch = 1
+
+    def set_epoch(self, epoch: int):
+        self.epoch = int(epoch)
+
+    def batches(self):
+        rng = random.Random(self.seed + self.epoch * 1009)
+        # Use dataset's speaker_pos_indices if available, else group from df
+        spk_indices = self.dataset.speaker_pos_indices if (
+            hasattr(self.dataset, "speaker_pos_indices") and self.dataset.speaker_pos_indices
+        ) else {}
+        if not spk_indices:
+            spk_indices = defaultdict(list)
+            for idx in range(len(self.dataset)):
+                spk = str(self.dataset.df.iloc[idx].get("speaker_id", "unknown"))
+                spk_indices[spk].append(idx)
+
+        eligible = []
+        for spk, idx_list in spk_indices.items():
+            shuffled = list(idx_list)
+            rng.shuffle(shuffled)
+            eligible.extend(shuffled[:self.max_per_speaker])
+
+        rng.shuffle(eligible)
+        selected = eligible[:self.samples_per_epoch]
+
+        result, batch, cost = [], [], 0
+        for idx in selected:
+            c = self.dataset.costs[idx]
+            if c > self.max_windows:
+                continue
+            if batch and cost + c > self.max_windows:
+                result.append(batch)
+                batch, cost = [], 0
+            batch.append(idx)
+            cost += c
         if batch:
             result.append(batch)
         return result
@@ -236,6 +303,7 @@ def collate_utterance_bags(items):
         ]),
         "vowels": [item["vowels"] for item in items],
         "bag_labels": torch.tensor([item["bag_label"] for item in items], dtype=torch.float32),
+        "quality_weights": torch.tensor([item.get("quality_weight", 1.0) for item in items], dtype=torch.float32),
         "metadata": [item["metadata"] for item in items],
     }
 

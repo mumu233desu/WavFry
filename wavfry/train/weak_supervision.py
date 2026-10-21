@@ -7,9 +7,48 @@ import math
 import pandas as pd
 from torch.utils.data import DataLoader
 
-from wavfry.data.utterance_bag import BagBatchSampler, UtteranceBagDataset, collate_utterance_bags
+import json
+from wavfry.data.utterance_bag import (
+    BagBatchSampler,
+    SpeakerCappedBagBatchSampler,
+    UtteranceBagDataset,
+    collate_utterance_bags,
+)
 from wavfry.data.weak_manifest import manifest_digest, validate_source_stamps
 from wavfry.data.path_resolver import resolve_corpus_path
+
+
+def compute_weak_quality_weights(df: pd.DataFrame, cfg: dict) -> pd.Series:
+    """Compute discrete 2-factor ladder quality weights for weak positive samples."""
+    weights = []
+    qw_cfg = cfg.get("quality_weighting", {})
+    w_high_text = float(qw_cfg.get("high_text", 1.0))
+    w_high_acoustic = float(qw_cfg.get("high_acoustic", 0.75))
+    w_medium = float(qw_cfg.get("medium", 0.50))
+    w_low = float(qw_cfg.get("low", 0.25))
+
+    for _, row in df.iterrows():
+        p = row.get("cache_path")
+        align = str(row.get("alignment_modes", ""))
+        conf = "medium"
+        if p and Path(p).exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                conf = str(d.get("parsed_prediction", {}).get("overall_confidence", "medium")).lower()
+            except Exception:
+                pass
+
+        if conf == "high" and "text_matched" in align:
+            w = w_high_text
+        elif conf == "high" or ("text_matched" in align and conf == "medium"):
+            w = w_high_acoustic
+        elif conf == "medium" and "fallback" not in align:
+            w = w_medium
+        else:
+            w = w_low
+        weights.append(w)
+    return pd.Series(weights, index=df.index, dtype=float)
 
 
 def dataset_rows(dataset):
@@ -65,9 +104,11 @@ def create_weak_loader(config, model, manual_train, manual_val):
         raise ValueError("Weak supervision currently requires the block paradigm")
     vsdc_cfg = config["training"].get("vsdc", {})
     vsdc_enabled = bool(vsdc_cfg.get("enabled", False))
+    weak_mode = cfg.get("mode", "vsdc" if vsdc_enabled else "legacy_lse")
     frame_cfg = config["training"].get("block", {}).get("frame_head", {})
-    if not vsdc_enabled and (frame_cfg.get("mil_mode", "lse") != "lse" or cfg.get("candidate_scope", "vowels") != "vowels"):
-        raise ValueError("First-version weak supervision uses LSE over all vowel candidates")
+    if not vsdc_enabled and weak_mode not in ["linear_softmax_mil", "soft_weighted_mil", "legacy_lse"]:
+        if frame_cfg.get("mil_mode", "lse") != "lse" or cfg.get("candidate_scope", "vowels") != "vowels":
+            raise ValueError("First-version weak supervision uses LSE over all vowel candidates")
     weight = float(cfg.get("loss_weight", .05))
     if not math.isfinite(weight) or weight <= 0:
         raise ValueError("Positive finite weak loss_weight is required")
@@ -90,10 +131,19 @@ def create_weak_loader(config, model, manual_train, manual_val):
     if train.empty:
         raise ValueError("No non-redundant eligible weak training positives")
 
-    if vsdc_enabled:
+    if weak_mode == "soft_weighted_mil" or cfg.get("quality_weighting", {}).get("enabled", False):
+        train["quality_weight"] = compute_weak_quality_weights(train, cfg)
+    else:
+        train["quality_weight"] = 1.0
+
+    exclude_unverified = bool(cfg.get("exclude_unverified_negatives", False) or weak_mode in ["linear_softmax_mil", "soft_weighted_mil"])
+    include_modal = vsdc_enabled and not exclude_unverified
+
+    if include_modal:
         # Also include modal negative clips from the same training partition
         modal_rows = weak[(weak.batch_split == "train") & (weak.reason == "no_positive_evidence")].copy()
         if not modal_rows.empty:
+            modal_rows["quality_weight"] = 1.0
             train_combined = pd.concat([train, modal_rows], ignore_index=True)
         else:
             train_combined = train
@@ -108,13 +158,20 @@ def create_weak_loader(config, model, manual_train, manual_val):
     dataset = UtteranceBagDataset(train_combined, block_ms=block_cfg.get("duration_ms", 2000),
                                  hop_ms=block_cfg.get("hop_ms", 1000), frame_stride=stride,
                                  receptive=receptive, max_windows=int(cfg.get("max_windows", 64)),
-                                 allow_modal=vsdc_enabled)
-    if vsdc_enabled:
+                                 allow_modal=include_modal)
+    max_per_speaker = int(cfg.get("max_per_speaker", 0))
+    if vsdc_enabled and include_modal:
         from wavfry.data.utterance_bag import PairedBagBatchSampler, collate_paired_utterance_bags
         sampler = PairedBagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 64)),
                                       samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),
                                       seed=config["training"].get("seed", 42))
         collate_fn = collate_paired_utterance_bags
+    elif max_per_speaker > 0:
+        sampler = SpeakerCappedBagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 64)),
+                                              samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),
+                                              max_per_speaker=max_per_speaker,
+                                              seed=config["training"].get("seed", 42))
+        collate_fn = collate_utterance_bags
     else:
         sampler = BagBatchSampler(dataset, max_windows=int(cfg.get("max_windows", 16)),
                                   samples_per_epoch=int(cfg.get("samples_per_epoch", 64)),

@@ -570,6 +570,41 @@ class Trainer:
             entry[1] = label_cpu
 
     def _forward_weak_batch(self, batch, epoch: int = 1):
+        weak_mode = self.weak_cfg.get("mode", "vsdc" if self.vsdc_enabled else "legacy_lse")
+        if weak_mode in ["linear_softmax_mil", "soft_weighted_mil"]:
+            start_epoch = int(self.weak_cfg.get("start_epoch", 1))
+            if epoch < start_epoch:
+                return torch.tensor(0.0, device=self.device, requires_grad=True), 0
+
+            from ..data.utterance_bag import merge_frame_features, extract_vowel_instances
+            from ..model.vsdc import LinearSoftmaxPooling
+            pos_batch = batch["pos"] if "pos" in batch else batch
+            pos_tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in pos_batch.items()}
+            pos_outputs = self.model(pos_tensors['waveforms'], pos_tensors['lengths'], return_frames=True)
+            stride = pos_outputs["frame_stride_samples"]
+            receptive = pos_outputs["frame_receptive_samples"]
+            pos_merged = merge_frame_features(
+                pos_outputs["frame_hidden"]["breathy"],
+                pos_outputs["frame_valid"],
+                pos_tensors["starts"],
+                pos_tensors["bag_index"],
+                stride,
+                receptive,
+            )
+            pos_h, pos_mask = extract_vowel_instances(pos_merged, pos_batch["vowels"])
+            frame_head_logits = self.model.frame_heads["breathy"](pos_h).squeeze(-1)
+            frame_head_probs = torch.sigmoid(frame_head_logits)
+            pooling = LinearSoftmaxPooling()
+            bag_probs = pooling(frame_head_probs, pos_mask)
+            bag_losses = -torch.log(bag_probs.float().clamp(min=1e-7))
+            if weak_mode == "soft_weighted_mil" and "quality_weights" in pos_batch:
+                q_weights = pos_batch["quality_weights"].to(self.device).float()
+                loss_weak = (bag_losses * q_weights).sum() / q_weights.sum().clamp_min(1e-5)
+            else:
+                loss_weak = bag_losses.mean()
+            loss_weight = float(self.weak_cfg.get("loss_weight", 0.2))
+            return loss_weight * loss_weak, len(bag_probs)
+
         if not self.vsdc_enabled:
             from ..data.utterance_bag import utterance_logits
             tensors = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
