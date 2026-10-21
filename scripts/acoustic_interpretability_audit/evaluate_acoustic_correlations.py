@@ -78,11 +78,27 @@ def extract_physical_features_single(
         if e - s < 0.02:
             return res
 
-        # Extract subsegment
-        seg_sound = sound.extract_part(from_time=s, to_time=e, preserve_times=True)
+        # Extract subsegment (preserve_times=False resets local time axis to 0.0s for pitch/formant compatibility)
+        seg_sound = sound.extract_part(from_time=s, to_time=e, preserve_times=False)
+
+        # Physical Gating 1: RMS Energy floor check (Silence Detection)
+        # Segments below ambient noise floor (RMS < 1e-4) lack acoustic speech energy.
+        rms = seg_sound.get_root_mean_square()
+        if rms < 1e-4:
+            return res
 
         # 1. Pitch & PointProcess for Jitter & Shimmer
         pitch = seg_sound.to_pitch(time_step=0.01, pitch_floor=50.0, pitch_ceiling=400.0)
+
+        # Physical Gating 2: Voicing Fraction check (Unvoiced / Voiceless Consonant Detection)
+        # Phonation (Creak, Breathy) is physically defined strictly on voiced speech (vocal fold oscillation).
+        # Intervals with < 20% voiced frames or < 2 periodic cycles have no valid phonation state.
+        freqs = pitch.selected_array["frequency"]
+        voiced_frames = int(np.sum(freqs > 0))
+        total_frames = len(freqs)
+        if total_frames == 0 or (voiced_frames / total_frames) < 0.20 or voiced_frames < 2:
+            return res
+
         point_proc = parselmouth.praat.call(seg_sound, "To PointProcess (periodic, cc)", 50.0, 400.0)
 
         # Jitter (local)

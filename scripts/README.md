@@ -106,7 +106,8 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 | 论文拟收录图表                                                                                                      | 核心学术论点 / 实验目的                                                                                                                                                                                                                                   | 唯一权威主入口脚本                                                                       | 产出成果与文件位置                                                                                             | 标准 `uv run` 执行命令                                                                                                                          | TODO 状态 / 前置依赖                                                                                             |
 |:------------------------------------------------------------------------------------------------------------ |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------- |
-| **Figure 8 & Table 8b: 传统声学物理指标可解释性与相关性校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 声学指标分层小提琴图，证明概率单调对应生理机械运动。 | **`scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`acoustic_correlations_metrics.json` | `uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py --checkpoint <ckpt>`                             | 🟢 **管线就绪，待终版重刷**<br>• 统一调用 Parselmouth 全样本批处理与增量 CSV 缓存；<br>• 待终版模型训练完成后，在全量测试集上执行相关性统计并由专用绘图脚本导出出版级小提琴图。 |
+| **Figure 8 & Table 8b: 传统声学物理指标可解释性与散点回归校验**<br>(Acoustic-Physical Interpretability & Correlation Validation) | **杜绝挑孤立句子的 Cherry-picking 质疑**。在全量测试集（$N=2,392$）元音上度量模型预测概率与传统声学物理金标指标的相关性：<br>• 嘎裂声：次谐波比 (SHR)、周期微扰 (Jitter)、振幅抖动 (Shimmer)；<br>• 气声：声门开相谱倾斜 ($H_1^*-H_2^*$, $H_1^*-A_3^*$)、谐噪比 (HNR)、倒谱峰值 (CPPS)。<br>• **Figure 8**: 散点回归与 95% 置信带分布图，证明概率单调对应生理机械运动；TextGrid 元音掩码彻底隔离无声段。 | **`scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py`**<br>**`scripts/acoustic_interpretability_audit/plot_acoustic_scatter_regressions.py`** | `data/experiments/interpretability/acoustic_correlations.csv`<br>`table8b_acoustic_correlations.csv` & `.md`<br>`fig8_acoustic_physical_scatter_regression.png` | `uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py --checkpoint <ckpt>`<br>`uv run python scripts/acoustic_interpretability_audit/plot_acoustic_scatter_regressions.py` | 🟢 **管线就绪**<br>• 统一调用 Parselmouth 全样本增量 CSV 缓存；<br>• 修复 $H_1^*-H_2^*$ 时间基准与无声区间物理门控；<br>• 配套产出 95% 置信区间出版级散点回归矢量图。 |
+| **Figure 9 & Table 8c: AVID 电子声门图 (EGG) 声门开闭物理效度验证**<br>(Glottal Physical Validity via Synchronized EGG) | **摆脱感知主观标注循环论证（Perceptual Circularity）**。在 AVID 双通道语音-EGG 语料库上，基于 Henrich et al. (2004) DECOM 提取真实声门开商 ($O_q$) 与接触商 ($CQ = 1 - O_q$)：<br>• **微观帧级**：气声后验与 EGG $O_q$ 显著正相关（$r > 0$，反映声门闭合不全与漏气）；嘎裂声后验与 EGG $CQ$ 正相关（$r > 0$，反映声带内收延长的闭合接触）；<br>• **宏观强度与说话人一致性**：验证发声努力分级与跨性别说话人稳健性，为 WavFry“检测声带物理运动状态”的定位提供非感知外部金标效度证据。 | **`scripts/acoustic_interpretability_audit/evaluate_egg_correlations.py`**<br>**`scripts/acoustic_interpretability_audit/plot_egg_correlations.py`** | `data/experiments/interpretability/egg_audit/table_egg_correlations.csv`<br>`table_egg_correlations.md`<br>`fig9_egg_physical_validation.png` & `.pdf` | `uv run python scripts/acoustic_interpretability_audit/evaluate_egg_correlations.py --num-workers 4`<br>`uv run python scripts/acoustic_interpretability_audit/plot_egg_correlations.py` | 🟢 **管线就绪**<br>• 支持 Octave DECOM 多线程并行提取与 `.npz` 增量缓存；<br>• 产出微观散点拟合 + 宏观发声努力 + 跨说话人一致性四面板出版级图表。 |
 | **Table 9: 边缘部署实测速度与吞吐基准**<br>(Edge Runtime & RTF)                                                           | 汇报 ONNX 导出后在 CPU 与 GPU 上的单音频块推理延迟（Wall-clock ms）、实时率（RTF < 0.05）以及内存显存峰值。                                                                                                                                                                       | **`scripts/export_deployment.py`** 与 **`scripts/test_onnx_export.py`**          | `deployments/wavfry_multitask.onnx` 及导出验证报告。                                                          | `uv run python scripts/export_deployment.py --checkpoint <ckpt> --output-dir deployments/`<br>`uv run python scripts/test_onnx_export.py` | 🟢 **管线就绪，待终版导出实测**<br>• 导出包装器已支持多任务与帧级头；<br>• 待终版 Checkpoint 训练完毕后，导出最终 ONNX 并实测 CPU/GPU 推理延迟与 RTF。       |
 
 ---
@@ -131,6 +132,12 @@ scripts/
 ├── representation_and_calibration_audit/ # 对应 Table 8 & Figure 7（CKA 表征几何与退化保真度）
 │   ├── evaluate_representation_cka.py     # [唯一入口] 13x13 隐层 CKA 双任务热力图与逐层保真度条形图
 │   ├── cka_core.py                        # 快速 Frobenius 范数与无偏 HSIC 计算核心库
+│   └── README.md
+├── acoustic_interpretability_audit/       # 对应 Figure 8, Figure 9, Table 8b, Table 8c（声学与EGG生理物理可解释性）
+│   ├── evaluate_acoustic_correlations.py  # [声学数据生产] CS-Dialogue 元音特征、后验匹配、相关性统计
+│   ├── plot_acoustic_scatter_regressions.py # [声学绘图] Figure 8 出版级 4 面板散点回归与 95% 置信区间
+│   ├── evaluate_egg_correlations.py       # [EGG 数据生产] AVID 真实电子声门图 DECOM 开商/接触商相关性审计
+│   ├── plot_egg_correlations.py           # [EGG 绘图] Figure 9 出版级 4 面板 EGG 物理效度验证图
 │   └── README.md
 ├── gemini_tts_synthesis/                 # 数据工程：日语副语言气声双段式 TTS 合成切分标注管线
 │   └── README.md
@@ -217,6 +224,22 @@ uv run python scripts/representation_and_calibration_audit/evaluate_representati
 uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
   --output-dir data/experiments/interpretability
+
+# 5. 出版级四面板散点回归图导出 (Figure 8 with 95% CI Bands)
+uv run python scripts/acoustic_interpretability_audit/plot_acoustic_scatter_regressions.py \
+  --input-csv data/experiments/interpretability/acoustic_correlations.csv \
+  --output-dir data/visualizations/output
+
+# 6. EGG 真实声门物理效度全量 50 发音人校验 (Figure 9 & Table 8c)
+uv run python scripts/acoustic_interpretability_audit/evaluate_egg_correlations.py \
+  --all-speakers \
+  --duration-per-speaker 120 \
+  --num-workers 8 \
+  --output-dir data/experiments/interpretability/egg_audit
+
+# 7. 出版级双面板 EGG 物理效度验证图导出 (Figure 9)
+uv run python scripts/acoustic_interpretability_audit/plot_egg_correlations.py \
+  --output-dir data/visualizations/output
 ```
 
 ### Step 4: 边缘部署模型导出与推断延迟验证 (Table 9)
