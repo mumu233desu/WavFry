@@ -49,6 +49,8 @@ class BlockIndex:
 
     @staticmethod
     def _interval_id(row: dict[str, Any]) -> str:
+        if "interval_key" in row and pd.notna(row["interval_key"]):
+            return str(row["interval_key"])
         return (
             f"{row['file_key']}|{float(row['start_s']):.4f}|"
             f"{float(row['end_s']):.4f}|{row.get('phone', 'UNK')}"

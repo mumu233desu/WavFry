@@ -29,11 +29,12 @@ def build_test_manifest(
     manifest_df: pd.DataFrame,
     task: str = "creaky",
     require_label: bool = True,
+    dataset_id: Optional[str] = None,
 ) -> pd.DataFrame:
     """Construct the unified test set from a multi-dataset manifest.
 
     Filters, applied in order:
-    1. ``dataset_id == "cs_dialogue"`` (when the column exists)
+    1. ``dataset_id == dataset_id`` (when dataset_id is explicitly specified)
     2. ``batch_split == "test"`` (with legacy fallbacks to ``split`` / batch_id)
     3. ``phone_type == "vowel"`` (when the column exists)
     4. non-NaN labels for ``label_{task}`` — NaN rows are unlabeled for this
@@ -43,8 +44,8 @@ def build_test_manifest(
     """
     df = manifest_df.copy()
 
-    if "dataset_id" in df.columns:
-        df = df[df["dataset_id"] == "cs_dialogue"]
+    if dataset_id is not None and "dataset_id" in df.columns:
+        df = df[df["dataset_id"] == dataset_id]
 
     if "batch_split" in df.columns:
         df = df[df["batch_split"] == "test"]
@@ -114,7 +115,10 @@ def load_model_from_checkpoint(
         model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)
     model.eval()
-    return model, config
+    merged_info = dict(ckpt)
+    merged_info.update(config)
+    merged_info["config"] = config
+    return model, merged_info
 
 
 def predict_segment_logits(

@@ -193,38 +193,17 @@ class IncrementalCSVCache:
 def dump_model_predictions(
     model: torch.nn.Module,
     manifest_df: pd.DataFrame,
-    degradation_engine: Any,
+    degradation_engine: Optional[AcousticDegradationEngine],
     out_csv_path: Union[str, Path],
-    device: torch.device = torch.device("cpu"),
-    batch_size: int = 128,
     tier_conditions: Optional[Dict[str, List[str]]] = None,
+    device: torch.device = torch.device("cpu"),
     sample_rate: int = 16000,
+    batch_size: int = 32,
 ) -> pd.DataFrame:
-    """Perform batched inference across standard degradation tiers and dump to CSV.
+    """Pre-compute WavFry inference predictions across QUT degradation tiers.
 
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Loaded WavFryClassifier.
-    manifest_df : pd.DataFrame
-        Test set manifest dataframe.
-    degradation_engine : AcousticDegradationEngine
-        Degradation engine to perturb audio.
-    out_csv_path : Path | str
-        Destination CSV path.
-    device : torch.device
-        Device for model evaluation.
-    batch_size : int
-        Batch size.
-    tier_conditions : Dict[str, List[str]], optional
-        Mapping from tier name to conditions. Defaults to DEFAULT_TIER_CONDITIONS.
-    sample_rate : int
-        Audio sampling rate.
-
-    Returns
-    -------
-    pd.DataFrame
-        The full dumped predictions DataFrame.
+    Uses ContinuousAudioBlockDataset (2.0s sliding blocks with overlapping context
+    and temporal frame pooling) to match the canonical training paradigm.
     """
     manifest = attach_interval_keys(manifest_df).reset_index(drop=True)
     out_path = Path(out_csv_path)
@@ -236,113 +215,91 @@ def dump_model_predictions(
     model.eval()
     model.to(device)
 
-    # Pre-cache audio waveforms in memory to avoid repeated disk reads
-    audio_cache: Dict[str, np.ndarray] = {}
-    unique_paths = manifest["audio_path"].unique()
-    for p in unique_paths:
-        try:
-            wf, sr = sf.read(str(resolve_corpus_path(p)), dtype="float32", always_2d=False)
-            if wf.ndim > 1:
-                wf = np.mean(wf, axis=1)
-            if sr != sample_rate:
-                import torchaudio
+    # Check if model supports continuous block paradigm
+    use_block_paradigm = hasattr(model, "_forward_block")
+    if use_block_paradigm:
+        from torch.utils.data import DataLoader
+        from wavfry.data.paradigm_block import ContinuousAudioBlockDataset, collate_block_fn
 
-                t_wf = torch.from_numpy(wf).unsqueeze(0)
-                t_wf = torchaudio.functional.resample(t_wf, sr, sample_rate)
-                wf = t_wf.squeeze(0).numpy()
-            audio_cache[str(p)] = wf
-        except Exception as e:
-            logger.warning(f"Failed to pre-cache audio {p}: {e}")
+        ds = ContinuousAudioBlockDataset(
+            manifest,
+            duration_ms=2000.0,
+            hop_ms=1000.0,
+            target_sr=sample_rate,
+            reverb_augmentor=None,
+        )
+        loader = DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate_block_fn)
 
-    rows: List[Dict[str, Any]] = []
-
-    for tier_name, cond_list in tier_conditions.items():
-        logger.info(f"[DumpPredictions] Running tier '{tier_name}' with conditions {cond_list}...")
-        for cond in cond_list:
-            # Sliced evaluation in batches
-            for i in range(0, len(manifest), batch_size):
-                batch_sub = manifest.iloc[i : i + batch_size]
-                batch_waves = []
-                valid_mask = []
-
-                for _, row in batch_sub.iterrows():
-                    p = str(row["audio_path"])
-                    if p not in audio_cache:
-                        batch_waves.append(torch.zeros(3200))
-                        valid_mask.append(False)
-                        continue
-                    wf_full = audio_cache[p]
-                    s_idx = max(0, int(round(float(row["start_s"]) * sample_rate)))
-                    e_idx = min(len(wf_full), int(round(float(row["end_s"]) * sample_rate)))
-                    if e_idx <= s_idx:
-                        e_idx = min(len(wf_full), s_idx + 320)
-                    chunk = wf_full[s_idx:e_idx]
-                    batch_waves.append(torch.from_numpy(chunk))
-                    valid_mask.append(True)
-
-                # Pad to max length in batch
-                max_len = max(len(w) for w in batch_waves)
-                padded_waves = torch.stack(
-                    [torch.nn.functional.pad(w, (0, max_len - len(w))) for w in batch_waves]
-                )
-
-                # Apply acoustic degradation
-                if cond != "clean" and degradation_engine is not None:
-                    perturbed = degradation_engine.apply_tensor(padded_waves, cond, seed=42 + i)
-                else:
-                    perturbed = padded_waves
-
-                perturbed = perturbed.to(device)
-
+        rows: List[Dict[str, Any]] = []
+        for tier_name, cond_list in tier_conditions.items():
+            logger.info(f"[DumpPredictions] Running tier '{tier_name}' with conditions {cond_list} (ContinuousAudioBlockDataset)...")
+            interval_store: Dict[str, List[float]] = {}
+            for cond in cond_list:
                 with torch.inference_mode():
-                    outputs = model(perturbed)
-                    # Support multi-task output dictionary
-                    if isinstance(outputs, dict):
-                        logits_creak = outputs.get("logits_creaky", outputs.get("creaky"))
-                        logits_breath = outputs.get("logits_breathy", outputs.get("breathy"))
-                    elif isinstance(outputs, (tuple, list)):
-                        logits_creak = outputs[0]
-                        logits_breath = outputs[1] if len(outputs) > 1 else None
-                    else:
-                        logits_creak = outputs
-                        logits_breath = None
+                    for b_idx, batch in enumerate(loader):
+                        waveforms, bounds, labels, valid, lengths, speakers, block_ids, interval_ids = batch
+                        if cond != "clean" and degradation_engine is not None:
+                            waveforms = degradation_engine.apply_tensor(waveforms, cond, seed=42 + b_idx * 1009)
+                        waveforms = waveforms.to(device)
+                        lengths = lengths.to(device)
+                        bounds = bounds.to(device)
+                        valid = valid.to(device)
 
-                    if logits_creak is not None:
-                        prob_creak = torch.sigmoid(logits_creak.squeeze(-1)).cpu().numpy()
-                    else:
-                        prob_creak = np.zeros(len(batch_sub))
+                        outputs = model(waveforms, lengths, interval_bounds=bounds, interval_valid=valid)
+                        logits_c = outputs["interval_logits"]["creaky"].cpu()
+                        has_b = "breathy" in outputs.get("interval_logits", {})
+                        logits_b = outputs["interval_logits"]["breathy"].cpu() if has_b else None
 
-                    if logits_breath is not None:
-                        prob_breath = torch.sigmoid(logits_breath.squeeze(-1)).cpu().numpy()
-                    else:
-                        prob_breath = np.zeros(len(batch_sub))
+                        for b in range(valid.shape[0]):
+                            for s in range(valid.shape[1]):
+                                if valid[b, s]:
+                                    i_id = interval_ids[b][s]
+                                    if i_id is not None:
+                                        key = str(i_id)
+                                        lg_c = float(logits_c[b, s])
+                                        lg_b = float(logits_b[b, s]) if has_b else 0.0
+                                        if key not in interval_store:
+                                            interval_store[key] = [lg_c, lg_b, 1]
+                                        else:
+                                            interval_store[key][0] += lg_c
+                                            interval_store[key][1] += lg_b
+                                            interval_store[key][2] += 1
 
-                for j, (_, row) in enumerate(batch_sub.iterrows()):
-                    rows.append(
-                        {
-                            "interval_key": row["interval_key"],
-                            "dataset_id": row.get("dataset_id", "cs_dialogue"),
-                            "file_key": row.get("file_key", Path(row["audio_path"]).stem),
-                            "start_s": float(row["start_s"]),
-                            "end_s": float(row["end_s"]),
-                            "speaker_id": row.get("speaker_id", "unknown"),
-                            "gender": row.get("gender", row.get("sex", "unknown")),
-                            "tier": tier_name,
-                            "condition": cond,
-                            "label_creaky": float(row.get("label_creaky", row.get("label", np.nan))),
-                            "prob_creaky": float(prob_creak[j]),
-                            "label_breathy": float(row.get("label_breathy", np.nan)),
-                            "prob_breathy": float(prob_breath[j]),
-                        }
-                    )
+            for _, row in manifest.iterrows():
+                ikey = str(row["interval_key"])
+                if ikey in interval_store:
+                    item = interval_store[ikey]
+                    avg_c = item[0] / item[2]
+                    avg_b = item[1] / item[2]
+                    prob_c = float(1.0 / (1.0 + np.exp(-avg_c)))
+                    prob_b = float(1.0 / (1.0 + np.exp(-avg_b)))
+                else:
+                    prob_c = 0.0
+                    prob_b = 0.0
 
-    preds_df = pd.DataFrame(rows)
-    tmp_out = out_path.with_suffix(".tmp")
-    preds_df.to_csv(tmp_out, index=False, encoding="utf-8")
-    if tmp_out.exists():
-        if out_path.exists():
-            out_path.unlink()
-        tmp_out.rename(out_path)
+                rows.append({
+                    "interval_key": ikey,
+                    "dataset_id": row.get("dataset_id", "cs_dialogue"),
+                    "file_key": row.get("file_key", Path(row["audio_path"]).stem),
+                    "start_s": float(row["start_s"]),
+                    "end_s": float(row["end_s"]),
+                    "speaker_id": row.get("speaker_id", "unknown"),
+                    "gender": row.get("gender", row.get("sex", "unknown")),
+                    "tier": tier_name,
+                    "condition": ",".join(cond_list),
+                    "label_creaky": float(row.get("label_creaky", row.get("label", np.nan))),
+                    "prob_creaky": prob_c,
+                    "label_breathy": float(row.get("label_breathy", np.nan)),
+                    "prob_breathy": prob_b,
+                })
 
-    logger.info(f"[DumpPredictions] Saved {len(preds_df)} prediction rows to {out_path}.")
-    return preds_df
+        preds_df = pd.DataFrame(rows)
+        tmp_out = out_path.with_suffix(".tmp")
+        preds_df.to_csv(tmp_out, index=False, encoding="utf-8")
+        if tmp_out.exists():
+            if out_path.exists():
+                out_path.unlink()
+            tmp_out.rename(out_path)
+
+        logger.info(f"[DumpPredictions] Saved {len(preds_df)} prediction rows to {out_path}.")
+        return preds_df

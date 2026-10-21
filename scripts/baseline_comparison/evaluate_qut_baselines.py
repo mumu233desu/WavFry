@@ -4,7 +4,7 @@ Table 1 & Figure 2: Unified Baseline Evaluation across QUT Acoustic Degradation 
 Canonical Data-Producing Script:
 - Evaluates WavFry vs 4 Baselines (Praat, Creapy, Kane, DeepFry) across:
   Clean, Mild (15dB), Moderate (5dB), Severe (0dB), and Compound (Noise+RIR).
-- Implements Incremental CSV Caching to eliminate redundant re-computation.
+- Implements Composite-Key CSV Caching (model_name::tier::interval_key) to eliminate redundant re-computation.
 - Strict Decoupling: Outputs ONLY structured data (vowel_robustness_metrics.json & table1_baseline_comparison.csv).
   Plotting is handled independently by data/visualizations/plot_fig2_noise_robustness.py.
 """
@@ -17,17 +17,22 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+import warnings
+
+# Suppress known benign third-party warnings from CreaPy and NumPy
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*Mean of empty slice.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*invalid value encountered.*")
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
+    auc,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
-    precision_recall_curve,
-    auc,
     roc_auc_score,
 )
 import torch
@@ -36,15 +41,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from wavfry.eval.acoustic_degradation import AcousticDegradationEngine
 from wavfry.eval.cache_manager import (
     CANONICAL_TIERS,
     DEFAULT_TIER_CONDITIONS,
-    IncrementalCSVCache,
     attach_interval_keys,
     dump_model_predictions,
 )
-from wavfry.eval.acoustic_degradation import AcousticDegradationEngine
 from wavfry.eval.unified import build_test_manifest, load_model_from_checkpoint, resolve_frozen_threshold
+
+from scripts.baseline_comparison.baseline_extractors import (
+    extract_creapy_predictions,
+    extract_deepfry_predictions,
+    extract_kane_predictions,
+    extract_praat_predictions,
+    stage_degraded_audio_pool,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("evaluate_qut_baselines")
@@ -53,7 +65,65 @@ logger = logging.getLogger("evaluate_qut_baselines")
 for noisy in ["httpx", "urllib3", "transformers", "huggingface_hub", "torch", "parselmouth"]:
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
-BASELINES = ["WavFry (Ours)", "Praat", "Creapy", "Kane", "DeepFry"]
+ALL_BASELINES = ["Praat", "Creapy", "Kane", "DeepFry"]
+CANONICAL_MODELS = ["WavFry (Ours)", "Praat", "Creapy", "Kane", "DeepFry"]
+
+
+class BaselineCSVCache:
+    """Incremental CSV Cache with Composite Key (model_name::tier::interval_key)."""
+
+    def __init__(self, cache_path: Path):
+        self.cache_path = Path(cache_path).resolve()
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.df = self._load()
+
+    def _load(self) -> pd.DataFrame:
+        if not self.cache_path.exists() or self.cache_path.stat().st_size == 0:
+            return pd.DataFrame(
+                columns=[
+                    "cache_key",
+                    "interval_key",
+                    "dataset_id",
+                    "file_key",
+                    "start_s",
+                    "end_s",
+                    "model_name",
+                    "tier",
+                    "prob_creaky",
+                ]
+            )
+        try:
+            df = pd.read_csv(self.cache_path, low_memory=False)
+            if "cache_key" not in df.columns:
+                df["cache_key"] = (
+                    df["model_name"].astype(str)
+                    + "::"
+                    + df["tier"].astype(str)
+                    + "::"
+                    + df["interval_key"].astype(str)
+                )
+            df = df.drop_duplicates(subset=["cache_key"], keep="last").reset_index(drop=True)
+            return df
+        except Exception as e:
+            logger.error(f"Error loading cache from {self.cache_path}: {e}")
+            return pd.DataFrame()
+
+    def append_records(self, new_records: pd.DataFrame) -> None:
+        if new_records.empty:
+            return
+        new_df = new_records.copy()
+        if "cache_key" not in new_df.columns:
+            new_df["cache_key"] = (
+                new_df["model_name"].astype(str)
+                + "::"
+                + new_df["tier"].astype(str)
+                + "::"
+                + new_df["interval_key"].astype(str)
+            )
+        self.df = pd.concat([self.df, new_df], ignore_index=True)
+        self.df = self.df.drop_duplicates(subset=["cache_key"], keep="last").reset_index(drop=True)
+        self.df.to_csv(self.cache_path, index=False, encoding="utf-8")
+        logger.info(f"[BaselineCache] Appended {len(new_df)} records (Total: {len(self.df)}).")
 
 
 def compute_binary_metrics(
@@ -104,90 +174,17 @@ def compute_binary_metrics(
     }
 
 
-def _extract_single_praat_worker(item: Tuple[str, str, float, float, str, str, str]) -> Dict[str, Any]:
-    audio_path_str, interval_key, start_s, end_s, dataset_id, file_key, condition = item
-    audio_path = Path(audio_path_str)
-    if not audio_path.exists():
-        prob = 0.0
-    else:
-        try:
-            import parselmouth
-
-            sound = parselmouth.Sound(str(audio_path))
-            pitch = sound.to_pitch(time_step=0.015, pitch_floor=50.0, pitch_ceiling=350.0)
-            xs = np.array(pitch.xs())
-            freqs = np.array(pitch.selected_array["frequency"])
-            mask = (xs >= start_s) & (xs <= end_s)
-            if np.sum(mask) == 0:
-                prob = 0.0
-            else:
-                sub_f = freqs[mask]
-                uv_ratio = np.mean(sub_f == 0.0)
-                prob = float(np.clip(uv_ratio, 0.0, 1.0))
-        except Exception:
-            prob = 0.0
-
-    return {
-        "interval_key": interval_key,
-        "dataset_id": dataset_id,
-        "file_key": file_key,
-        "start_s": start_s,
-        "end_s": end_s,
-        "model_name": "Praat",
-        "tier": condition,
-        "prob_creaky": prob,
-    }
-
-
-def extract_praat_predictions(
-    manifest_df: pd.DataFrame,
-    degradation_engine: Optional[AcousticDegradationEngine] = None,
-    condition: str = "clean",
-    max_workers: Optional[int] = None,
-) -> pd.DataFrame:
-    """Extract Praat pitch unvoiced/perturbation creaky predictions using Parselmouth."""
-    total = len(manifest_df)
-    if total == 0:
-        return pd.DataFrame()
-
-    items = [
-        (
-            str(row["audio_path"]),
-            str(row["interval_key"]),
-            float(row["start_s"]),
-            float(row["end_s"]),
-            str(row.get("dataset_id", "cs_dialogue")),
-            str(row.get("file_key", Path(str(row["audio_path"])).stem)),
-            str(condition),
-        )
-        for _, row in manifest_df.iterrows()
-    ]
-
-    if total <= 20:
-        rows = [_extract_single_praat_worker(item) for item in items]
-        return pd.DataFrame(rows)
-
-    workers = max_workers or min(8, os.cpu_count() or 4)
-    from concurrent.futures import ThreadPoolExecutor
-
-    rows = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        for record in executor.map(_extract_single_praat_worker, items):
-            rows.append(record)
-
-    return pd.DataFrame(rows)
-
-
 def run_baseline_evaluation(
     manifest_path: Path,
     checkpoint_path: Optional[Path],
     preds_csv: Optional[Path],
     baselines_cache_path: Path,
     output_dir: Path,
+    baselines_to_run: Optional[List[str]] = None,
     limit_samples: Optional[int] = None,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> Tuple[Dict[str, Any], pd.DataFrame]:
-    """Execute evaluation and return (metrics_dict, table1_df)."""
+    """Execute unified baseline evaluation across QUT degradation tiers."""
     output_dir.mkdir(parents=True, exist_ok=True)
     full_manifest = pd.read_csv(manifest_path, low_memory=False)
     test_manifest = build_test_manifest(full_manifest, task="creaky")
@@ -197,7 +194,12 @@ def run_baseline_evaluation(
         test_manifest = test_manifest.iloc[:limit_samples].copy().reset_index(drop=True)
         logger.info(f"Limiting evaluation to {len(test_manifest)} test samples.")
 
-    # 1. Obtain or load model predictions
+    deg_engine = AcousticDegradationEngine()
+    cache_base_dir = baselines_cache_path.resolve().parent
+    staged_audio_dir = cache_base_dir / "staged_audio"
+    spans_cache_dir = cache_base_dir / "baseline_spans"
+
+    # 1. Obtain or load WavFry model predictions
     if preds_csv and Path(preds_csv).exists():
         logger.info(f"Loading cached model predictions from {preds_csv}")
         model_preds_df = pd.read_csv(preds_csv)
@@ -208,7 +210,6 @@ def run_baseline_evaluation(
         model, ckpt_dict = load_model_from_checkpoint(
             checkpoint_path, torch.device(device), WavFryClassifier
         )
-        deg_engine = AcousticDegradationEngine()
         dump_path = output_dir / f"preds_{checkpoint_path.stem}_tiered.csv"
         model_preds_df = dump_model_predictions(
             model=model,
@@ -220,17 +221,72 @@ def run_baseline_evaluation(
     else:
         raise ValueError("Must provide either a valid --checkpoint or an existing --preds-csv.")
 
-    # 2. Incremental Baselines Cache
-    base_cache = IncrementalCSVCache(baselines_cache_path)
-    cached_base, missing_base = base_cache.partition_manifest(test_manifest)
+    # 2. Incremental Baselines Cache setup
+    base_cache = BaselineCSVCache(baselines_cache_path)
+    selected_baselines = baselines_to_run or ALL_BASELINES
 
-    if not missing_base.empty:
-        logger.info(f"Extracting Praat baseline for {len(missing_base)} missing intervals...")
-        praat_new = extract_praat_predictions(missing_base, condition="clean")
-        base_cache.append_records(praat_new)
+    # 3. Process each tier and extract missing baseline predictions
+    for tier_key in CANONICAL_TIERS:
+        logger.info(f"--- Processing degradation tier: {tier_key} ---")
+        staged_wavs = stage_degraded_audio_pool(
+            test_manifest=test_manifest,
+            tier=tier_key,
+            degradation_engine=deg_engine,
+            staging_base_dir=staged_audio_dir,
+            seed=42,
+        )
 
-    # 3. Aggregate metrics across tiers
-    # Tier mapping format for JSON
+        for baseline_name in selected_baselines:
+            # Check existing records in cache for (baseline_name, tier_key)
+            if not base_cache.df.empty:
+                existing_keys = set(
+                    base_cache.df[
+                        (base_cache.df["model_name"] == baseline_name)
+                        & (base_cache.df["tier"] == tier_key)
+                    ]["interval_key"]
+                )
+            else:
+                existing_keys = set()
+
+            missing_df = test_manifest[~test_manifest["interval_key"].isin(existing_keys)].copy()
+
+            if not missing_df.empty:
+                logger.info(
+                    f"Extracting {baseline_name} for {len(missing_df)} missing intervals under tier '{tier_key}'..."
+                )
+                if baseline_name == "Praat":
+                    new_records = extract_praat_predictions(
+                        missing_df, staged_wavs=staged_wavs, tier=tier_key
+                    )
+                elif baseline_name == "Creapy":
+                    new_records = extract_creapy_predictions(
+                        missing_df,
+                        staged_wavs=staged_wavs,
+                        tier=tier_key,
+                        cache_spans_dir=spans_cache_dir / "creapy",
+                    )
+                elif baseline_name == "DeepFry":
+                    new_records = extract_deepfry_predictions(
+                        missing_df,
+                        staged_wavs=staged_wavs,
+                        tier=tier_key,
+                        cache_spans_dir=spans_cache_dir / "deepfry",
+                    )
+                elif baseline_name == "Kane":
+                    new_records = extract_kane_predictions(
+                        missing_df,
+                        staged_wavs=staged_wavs,
+                        tier=tier_key,
+                        cache_spans_dir=spans_cache_dir / "kane",
+                    )
+                else:
+                    logger.warning(f"Unknown baseline: {baseline_name}")
+                    new_records = pd.DataFrame()
+
+                if not new_records.empty:
+                    base_cache.append_records(new_records)
+
+    # 4. Aggregate metrics across tiers and models
     tier_display_names = {
         "clean": "Clean",
         "mild_15db": "15dB",
@@ -240,10 +296,7 @@ def run_baseline_evaluation(
     }
 
     metrics_json: Dict[str, Dict[str, Dict[str, float]]] = {}
-    table1_rows: List[Dict[str, Any]] = []
-
-    # Map models
-    models_to_eval = ["WavFry (Ours)", "Praat"]
+    models_to_eval = ["WavFry (Ours)"] + selected_baselines
 
     for tier_key in CANONICAL_TIERS:
         disp_name = tier_display_names[tier_key]
@@ -259,26 +312,28 @@ def run_baseline_evaluation(
             )
             metrics_json[disp_name]["WavFry (Ours)"] = wf_m
 
-        # Praat
-        praat_sub = base_cache.df[
-            (base_cache.df["model_name"] == "Praat")
-            & (base_cache.df["interval_key"].isin(test_manifest["interval_key"]))
-        ]
-        if not praat_sub.empty:
-            # Join with ground truth
-            merged = praat_sub.merge(
-                test_manifest[["interval_key", "label_creaky"]],
-                on="interval_key",
-                how="inner",
-            )
-            praat_m = compute_binary_metrics(
-                merged["label_creaky"].values,
-                merged["prob_creaky"].values,
-                threshold=0.5,
-            )
-            metrics_json[disp_name]["Praat"] = praat_m
+        # Baselines
+        for b_name in selected_baselines:
+            b_sub = base_cache.df[
+                (base_cache.df["model_name"] == b_name)
+                & (base_cache.df["tier"] == tier_key)
+                & (base_cache.df["interval_key"].isin(test_manifest["interval_key"]))
+            ]
+            if not b_sub.empty:
+                merged = b_sub.merge(
+                    test_manifest[["interval_key", "label_creaky"]],
+                    on="interval_key",
+                    how="inner",
+                )
+                b_m = compute_binary_metrics(
+                    merged["label_creaky"].values,
+                    merged["prob_creaky"].values,
+                    threshold=0.5,
+                )
+                metrics_json[disp_name][b_name] = b_m
 
     # Build Table 1 DataFrame (F1-Score across tiers)
+    table1_rows: List[Dict[str, Any]] = []
     for model_name in models_to_eval:
         row_dict = {"Model": model_name}
         f1_list = []
@@ -292,7 +347,7 @@ def run_baseline_evaluation(
 
     table1_df = pd.DataFrame(table1_rows)
 
-    # 4. Save JSON, CSV, and Markdown byproduct
+    # 5. Save JSON, CSV, and Markdown byproduct
     json_path = output_dir / "vowel_robustness_metrics.json"
     csv_path = output_dir / "table1_baseline_comparison.csv"
     md_path = output_dir / "table1_baseline_comparison.md"
@@ -334,6 +389,13 @@ def main():
         default="data/experiments/cache/static_baselines_cache.csv",
         help="Path to incremental baselines cache CSV.",
     )
+    parser.add_argument(
+        "--baselines",
+        nargs="+",
+        default=ALL_BASELINES,
+        choices=ALL_BASELINES,
+        help="Baseline models to evaluate (default: Praat Creapy Kane DeepFry).",
+    )
     parser.add_argument("--output-dir", type=str, default="data/experiments/baselines", help="Output directory.")
     parser.add_argument("--limit-samples", type=int, default=None, help="Limit number of samples for fast testing.")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -345,6 +407,7 @@ def main():
         checkpoint_path=Path(args.checkpoint) if args.checkpoint else None,
         preds_csv=Path(args.preds_csv) if args.preds_csv else None,
         baselines_cache_path=Path(args.baselines_cache),
+        baselines_to_run=args.baselines,
         output_dir=Path(args.output_dir),
         limit_samples=args.limit_samples,
         device=args.device,

@@ -23,17 +23,22 @@ def _manifest():
 
 
 def test_build_test_manifest_filters_dataset_split_phone_and_nan():
+    # default (dataset_id=None): keeps test + vowel + labeled across datasets → rows 0 ('a') and 3 ('d')
     out = build_test_manifest(_manifest(), task="creaky")
-    # keeps: cs_dialogue + test + vowel + labeled → rows 0 only
-    assert len(out) == 1
-    assert out.iloc[0]["file_key"] == "a"
+    assert len(out) == 2
+    assert list(out["file_key"]) == ["a", "d"]
+
+    # explicit dataset_id="cs_dialogue": keeps row 0 ('a') only
+    out_cs = build_test_manifest(_manifest(), task="creaky", dataset_id="cs_dialogue")
+    assert len(out_cs) == 1
+    assert out_cs.iloc[0]["file_key"] == "a"
 
 
 def test_build_test_manifest_legacy_split_column():
     df = _manifest().drop(columns=["batch_split"])
     df["split"] = ["test", "val", "train", "test", "test"]
     out = build_test_manifest(df, task="creaky")
-    assert list(out["file_key"]) == ["a"]
+    assert list(out["file_key"]) == ["a", "d"]
 
 
 def test_build_test_manifest_no_split_column_raises():
