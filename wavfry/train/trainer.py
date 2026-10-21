@@ -148,6 +148,8 @@ class Trainer:
         # Holds (logits, labels) from the best validation epoch for threshold search
         self._best_val_logits: torch.Tensor | None = None
         self._best_val_labels: torch.Tensor | None = None
+        self._best_val_logits_by_task: dict[str, torch.Tensor] = {}
+        self._best_val_labels_by_task: dict[str, torch.Tensor] = {}
         
         # Checkpoint dir
         self.ckpt_dir = Path(config['checkpoint']['dir'])
@@ -1136,6 +1138,12 @@ class Trainer:
                     # Cache raw outputs for post-training threshold grid search
                     self._best_val_logits = val_metrics['logits'].clone()
                     self._best_val_labels = val_metrics['labels'].clone()
+                    self._best_val_logits_by_task = {}
+                    self._best_val_labels_by_task = {}
+                    for task in tasks:
+                        if f'logits_{task}' in val_metrics and f'labels_{task}' in val_metrics:
+                            self._best_val_logits_by_task[task] = val_metrics[f'logits_{task}'].clone()
+                            self._best_val_labels_by_task[task] = val_metrics[f'labels_{task}'].clone()
                     self.save_checkpoint(epoch, val_metrics, is_best=True)
                     is_best = True
                 else:
@@ -1210,17 +1218,50 @@ class Trainer:
                 break
 
         # ── Post-training: threshold grid search on best validation epoch ──
-        if self._best_val_logits is not None:
-            best_threshold, threshold_f1 = self.find_best_threshold(
-                self._best_val_logits, self._best_val_labels
+        tasks = getattr(self.model, "tasks", ["creaky"])
+        best_thresholds: dict[str, float] = {}
+        threshold_f1s: dict[str, float] = {}
+
+        if self._best_val_logits is not None and self._best_val_labels is not None:
+            valid_m = ~torch.isnan(self._best_val_labels)
+            if valid_m.sum() > 0:
+                best_t, best_f1 = self.find_best_threshold(
+                    self._best_val_logits[valid_m], self._best_val_labels[valid_m]
+                )
+                best_thresholds[self.primary_task] = float(best_t)
+                threshold_f1s[self.primary_task] = float(best_f1)
+
+        for task in tasks:
+            if task in best_thresholds:
+                continue
+            t_logits = self._best_val_logits_by_task.get(task)
+            t_labels = self._best_val_labels_by_task.get(task)
+            if t_logits is not None and t_labels is not None:
+                valid_m = ~torch.isnan(t_labels)
+                if valid_m.sum() > 0:
+                    t_best, t_f1 = self.find_best_threshold(t_logits[valid_m], t_labels[valid_m])
+                    best_thresholds[task] = float(t_best)
+                    threshold_f1s[task] = float(t_f1)
+
+        if best_thresholds:
+            primary_threshold = best_thresholds.get(self.primary_task, 0.5)
+            primary_f1 = threshold_f1s.get(self.primary_task, 0.0)
+            print(f"Optimal thresholds (grid search):", flush=True)
+            for t_name, t_val in best_thresholds.items():
+                print(f"  [{t_name}] Best threshold: {t_val:.3f}  →  F1={threshold_f1s.get(t_name, 0.0):.4f}", flush=True)
+            # Patch into checkpoints on disk
+            self._update_checkpoint_threshold(
+                primary_threshold, primary_f1, best_thresholds=best_thresholds, threshold_f1s=threshold_f1s
             )
-            print(f"Best threshold (grid search): {best_threshold:.3f}  →  F1={threshold_f1:.4f}")
-            # Patch it into the best checkpoint on disk
-            self._update_checkpoint_threshold(best_threshold, threshold_f1)
             for rec in self.history:
                 if rec.get('is_best'):
-                    rec['best_threshold'] = float(best_threshold)
-                    rec['threshold_f1'] = float(threshold_f1)
+                    rec['best_threshold'] = float(primary_threshold)
+                    rec['threshold_f1'] = float(primary_f1)
+                    rec['best_thresholds'] = {k: float(v) for k, v in best_thresholds.items()}
+                    rec['threshold_f1s'] = {k: float(v) for k, v in threshold_f1s.items()}
+                    for t_name, t_val in best_thresholds.items():
+                        rec[f'best_threshold_{t_name}'] = float(t_val)
+                        rec[f'threshold_f1_{t_name}'] = float(threshold_f1s.get(t_name, 0.0))
             self.save_history()
 
         return self.history
@@ -1267,32 +1308,23 @@ class Trainer:
         Returns the threshold that maximises F1 on the provided logits/labels,
         along with the corresponding F1 score.
         """
-        import numpy as np
-        from sklearn.metrics import f1_score
-
-        if thresholds is None:
-            # 201 evenly-spaced thresholds from 0.01 to 0.99
-            thresholds = [round(t, 3) for t in np.linspace(0.01, 0.99, 201).tolist()]
-
-        probs = torch.sigmoid(logits).cpu().float().numpy()
-        labels_np = labels.cpu().numpy().astype(np.int32)
-
-        best_t, best_f1 = 0.5, 0.0
-        for t in thresholds:
-            preds = (probs >= t).astype(np.int32)
-            score = float(f1_score(labels_np, preds, average='binary', zero_division=0))
-            if score > best_f1:
-                best_f1 = score
-                best_t = t
-
-        return best_t, best_f1
+        from wavfry.eval.unified import f1_scan_best_threshold
+        return f1_scan_best_threshold(logits, labels)
 
     def _update_checkpoint_threshold(
-        self, best_threshold: float, threshold_f1: float
+        self,
+        best_threshold: float,
+        threshold_f1: float,
+        best_thresholds: dict[str, float] | None = None,
+        threshold_f1s: dict[str, float] | None = None,
     ) -> None:
         """Load the best checkpoints from disk, inject threshold fields, and re-save."""
         targets = [self.ckpt_dir / "best_model.pt", self.ckpt_dir / "latest.pt"]
         targets.extend(list(self.ckpt_dir.glob("best_ep*.pt")))
+
+        primary_name = getattr(self, "primary_task", "creaky")
+        best_ts = best_thresholds or {primary_name: best_threshold}
+        f1_ts = threshold_f1s or {primary_name: threshold_f1}
         
         updated_count = 0
         for ckpt_path in set(targets):
@@ -1300,18 +1332,30 @@ class Trainer:
                 continue
             try:
                 ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
-                ckpt['best_threshold'] = best_threshold
-                ckpt['threshold_f1'] = threshold_f1
+                ckpt['best_threshold'] = float(best_threshold)
+                ckpt['threshold_f1'] = float(threshold_f1)
+                ckpt['best_thresholds'] = {k: float(v) for k, v in best_ts.items()}
+                ckpt['threshold_f1s'] = {k: float(v) for k, v in f1_ts.items()}
+                for t_name, t_val in best_ts.items():
+                    ckpt[f'best_threshold_{t_name}'] = float(t_val)
+                    ckpt[f'threshold_f1_{t_name}'] = float(f1_ts.get(t_name, 0.0))
+
                 if 'metrics' in ckpt:
-                    ckpt['metrics']['best_threshold'] = best_threshold
-                    ckpt['metrics']['threshold_f1'] = threshold_f1
+                    ckpt['metrics']['best_threshold'] = float(best_threshold)
+                    ckpt['metrics']['threshold_f1'] = float(threshold_f1)
+                    ckpt['metrics']['best_thresholds'] = {k: float(v) for k, v in best_ts.items()}
+                    ckpt['metrics']['threshold_f1s'] = {k: float(v) for k, v in f1_ts.items()}
+                    for t_name, t_val in best_ts.items():
+                        ckpt['metrics'][f'best_threshold_{t_name}'] = float(t_val)
+                        ckpt['metrics'][f'threshold_f1_{t_name}'] = float(f1_ts.get(t_name, 0.0))
+
                 tmp = ckpt_path.with_suffix('.pt.tmp')
                 torch.save(ckpt, tmp)
                 os.replace(tmp, ckpt_path)
                 updated_count += 1
             except Exception as exc:
                 print(f"[WARNING] Failed to update checkpoint with threshold ({ckpt_path}): {exc}")
-        print(f"Synchronized optimal threshold {best_threshold:.3f} across {updated_count} checkpoints.")
+        print(f"Synchronized optimal thresholds across {updated_count} checkpoints: {best_ts}", flush=True)
 
     # ──────────────────────────────────────────────────────────────────────
     # Checkpoint I/O
@@ -1354,6 +1398,16 @@ class Trainer:
                 self._best_val_labels.detach().cpu().clone()
                 if self._best_val_labels is not None else None
             ),
+            'best_val_logits_by_task': {
+                task: tensor.detach().cpu().clone()
+                for task, tensor in getattr(self, '_best_val_logits_by_task', {}).items()
+                if tensor is not None
+            },
+            'best_val_labels_by_task': {
+                task: tensor.detach().cpu().clone()
+                for task, tensor in getattr(self, '_best_val_labels_by_task', {}).items()
+                if tensor is not None
+            },
             # best_threshold / threshold_f1 are injected later by _update_checkpoint_threshold
             'metrics': metrics_to_save,
             'config': self.config,
@@ -1462,6 +1516,15 @@ class Trainer:
         if saved_weak.get('fingerprint') != current_fingerprint:
             raise ValueError("Weak supervision manifest changed on resume; start a new experiment")
         if current_fingerprint is not None:
+            def _filter_perf_keys(s):
+                if not isinstance(s, dict):
+                    return s
+                import copy
+                res = copy.deepcopy(s)
+                if "block" in res and isinstance(res["block"], dict):
+                    res["block"].pop("max_cache_files", None)
+                return res
+
             current_schedule = {
                 'epochs': self.config['training']['epochs'],
                 'accumulation': self.config['training'].get('gradient_accumulation_steps', 1),
@@ -1469,7 +1532,7 @@ class Trainer:
                 'block': self.config['training'].get('block', {}),
             }
             if (saved_weak.get('configuration') != self.weak_cfg
-                    or saved_weak.get('schedule') != current_schedule
+                    or _filter_perf_keys(saved_weak.get('schedule')) != _filter_perf_keys(current_schedule)
                     or saved_weak.get('total_steps') != self.total_steps):
                 raise ValueError("Weak supervision schedule/configuration changed on resume")
         self.optimizer.zero_grad(set_to_none=True)
@@ -1509,6 +1572,12 @@ class Trainer:
             self._best_val_labels = self._best_val_labels.cpu()
         if self._best_val_logits is not None:
             self._best_val_logits = self._best_val_logits.cpu()
+        self._best_val_logits_by_task = {
+            t: tens.cpu() for t, tens in checkpoint.get('best_val_logits_by_task', {}).items() if tens is not None
+        }
+        self._best_val_labels_by_task = {
+            t: tens.cpu() for t, tens in checkpoint.get('best_val_labels_by_task', {}).items() if tens is not None
+        }
         if self.scaler is not None and 'scaler_state_dict' in checkpoint:
             self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
 

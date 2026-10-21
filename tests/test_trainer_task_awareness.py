@@ -176,6 +176,30 @@ def test_threshold_injection_covers_latest_checkpoint(tmp_path):
     assert ckpt["metrics"]["best_threshold"] == 0.65
 
 
+def test_multitask_threshold_injection_covers_both_creaky_and_breathy(tmp_path):
+    trainer = _bare_trainer(tmp_path)
+    trainer.primary_task = "creaky"
+    trainer._best_val_logits = None
+    trainer._best_val_labels = None
+    trainer.save_checkpoint(1, {"f1": 0.5, "auc_pr": 0.5}, is_best=True)
+
+    trainer._update_checkpoint_threshold(
+        best_threshold=0.62,
+        threshold_f1=0.81,
+        best_thresholds={"creaky": 0.62, "breathy": 0.38},
+        threshold_f1s={"creaky": 0.81, "breathy": 0.74},
+    )
+
+    ckpt = torch.load(tmp_path / "best_model.pt", map_location="cpu", weights_only=False)
+    assert ckpt["best_threshold"] == 0.62
+    assert ckpt["best_threshold_creaky"] == 0.62
+    assert ckpt["best_threshold_breathy"] == 0.38
+    assert ckpt["threshold_f1_creaky"] == 0.81
+    assert ckpt["threshold_f1_breathy"] == 0.74
+    assert ckpt["metrics"]["best_threshold_creaky"] == 0.62
+    assert ckpt["metrics"]["best_threshold_breathy"] == 0.38
+
+
 def test_rebuild_writer_produces_usable_writer(tmp_path):
     from torch.utils.tensorboard import SummaryWriter
 

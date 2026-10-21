@@ -77,6 +77,7 @@ def create_weak_loader(config, model, manual_train, manual_val):
     if not path.is_absolute():
         path = Path(__file__).resolve().parents[2] / path
     weak = pd.read_csv(path, dtype={"file_key": str, "speaker_id": str, "dataset_id": str})
+    raw_digest = manifest_digest(weak)
     if 'audio_path' in weak.columns:
         weak['audio_path'] = weak['audio_path'].apply(resolve_corpus_path)
     train = guard_weak_partitions(weak, manual_train, manual_val)
@@ -120,7 +121,7 @@ def create_weak_loader(config, model, manual_train, manual_val):
                                   seed=config["training"].get("seed", 42))
         collate_fn = collate_utterance_bags
     loader = DataLoader(dataset, batch_sampler=sampler, num_workers=0, collate_fn=collate_fn)
-    return loader, manifest_digest(weak)
+    return loader, raw_digest
 
 
 def epoch_update_counts(manual_loader, weak_loader, epochs, start_epoch, grad_acc):

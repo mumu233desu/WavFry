@@ -249,6 +249,10 @@ def adapter_cs_dialogue_textgrid(ds_cfg: dict[str, Any]) -> list[dict[str, Any]]
                 n_unanimous = batch_annotations.get("total_unanimous", 0)
                 n_disputed = batch_annotations.get("total_disputed", 0)
                 print(f"[manifest] [{dataset_id}] Kappa Consensus: {n_unanimous} unanimous intervals kept, {n_disputed} disputed/unverified intervals excluded.")
+                if n_unanimous == 0 and not batch_annotations.get("files"):
+                    if annotation_path.exists() or (annotation_path.with_name(annotation_path.name + ".d")).exists():
+                        print(f"[manifest] [{dataset_id}] Single-annotator test batch detected; falling back to direct manual annotations from {annotation_path}...")
+                        batch_annotations = load_annotations(annotation_path)
             else:
                 if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
                     raise FileNotFoundError(
@@ -935,6 +939,12 @@ def adapter_sharded_textgrid_cache(ds_cfg: dict[str, Any]) -> list[dict[str, Any
             n_unanimous = batch_data.get("total_unanimous", 0)
             n_disputed = batch_data.get("total_disputed", 0)
             print(f"[manifest] [{dataset_id}] Kappa Consensus: {n_unanimous} unanimous intervals kept, {n_disputed} disputed/unverified intervals excluded.")
+            if (not batch_data.get("files")) and (annotation_path.exists() or (annotation_path.with_name(annotation_path.name + ".d")).exists()):
+                print(f"[manifest] [{dataset_id}] Single-annotator test batch detected; falling back to direct manual annotations from {annotation_path}...")
+                if _HAS_CREAKY_TOOLS and load_annotations is not None:
+                    batch_data = load_annotations(annotation_path)
+                else:
+                    batch_data = _load_standalone_sharded_annotations(annotation_path)
         else:
             if not annotation_path.exists() and not (annotation_path.with_name(annotation_path.name + ".d")).exists():
                 continue
