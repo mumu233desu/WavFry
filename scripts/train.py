@@ -234,7 +234,7 @@ def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer
             try:
                 last_epoch = trainer.load_checkpoint(latest_path)
                 start_epoch = last_epoch + 1
-                print(f"Resuming from epoch {start_epoch}")
+                print(f"Resuming from epoch {start_epoch}", flush=True)
             except Exception as e:
                 raise RuntimeError(
                     f"[RESUME ERROR] Failed to load resume checkpoint from '{latest_path}': {e}. "

@@ -1001,6 +1001,8 @@ class Trainer:
         epoch_val_loss = total_loss / len(self.val_loader)
         if isinstance(epoch_val_loss, torch.Tensor):
             epoch_val_loss = epoch_val_loss.item()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         return float(epoch_val_loss), metrics
 
     def save_history(self):
@@ -1558,6 +1560,7 @@ class Trainer:
                 res = copy.deepcopy(s)
                 if "block" in res and isinstance(res["block"], dict):
                     res["block"].pop("max_cache_files", None)
+                    res["block"].pop("val_batch_size", None)
                 return res
 
             current_schedule = {
