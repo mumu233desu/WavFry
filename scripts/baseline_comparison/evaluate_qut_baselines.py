@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional
@@ -47,6 +48,10 @@ from wavfry.eval.unified import build_test_manifest, load_model_from_checkpoint,
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("evaluate_qut_baselines")
+
+# Silence noisy external library loggers
+for noisy in ["httpx", "urllib3", "transformers", "huggingface_hub", "torch", "parselmouth"]:
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 BASELINES = ["WavFry (Ours)", "Praat", "Creapy", "Kane", "DeepFry"]
 
@@ -162,15 +167,12 @@ def extract_praat_predictions(
         rows = [_extract_single_praat_worker(item) for item in items]
         return pd.DataFrame(rows)
 
-    workers = max_workers or min(12, os.cpu_count() or 4)
-    logger.info(f"Extracting Praat predictions in parallel across {workers} CPU workers ({total} intervals)...")
-
-    import concurrent.futures
+    workers = max_workers or min(8, os.cpu_count() or 4)
+    from concurrent.futures import ThreadPoolExecutor
 
     rows = []
-    chunksize = max(1, total // (workers * 4))
-    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-        for idx, record in enumerate(executor.map(_extract_single_praat_worker, items, chunksize=chunksize)):
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for record in executor.map(_extract_single_praat_worker, items):
             rows.append(record)
 
     return pd.DataFrame(rows)
