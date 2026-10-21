@@ -56,7 +56,6 @@ training:
     hop_ms: 1000
     max_intervals: 12
     boundary_trim_frames: 0
-    max_cache_files: 3000
     frame_head:
       enabled: true
       loss_weight: 0.1
