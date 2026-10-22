@@ -43,6 +43,33 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_AWAYMODE_REQUIRED = 0x00000040
+
+def prevent_windows_sleep():
+    """Prevent Windows from sleeping or suspending while training runs."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED
+            )
+            print("[Power] Windows Sleep Prevention ENABLED (Continuous System & Execution lock).", flush=True)
+        except Exception as e:
+            print(f"[Power] Warning: Failed to enable sleep prevention: {e}", flush=True)
+
+def restore_windows_sleep():
+    """Restore default Windows sleep behavior."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            print("[Power] Windows Sleep Prevention RESTORED to normal.", flush=True)
+        except Exception:
+            pass
+
+
 def run_training(config, df, device, dataset_mod, splits_mod, model_mod, trainer_mod, fold_idx=0, preloaded_wavlm=None, resume=False, warm_start=None):
     # Set seed for this fold/run (seed + fold_idx for variety in LOOCV)
     set_seed(config['training'].get('seed', 42) + fold_idx)
