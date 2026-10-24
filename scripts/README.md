@@ -92,13 +92,14 @@ WavFry 并非单一的气声或嘎裂声模型，而是一个**面向自然连�
 
 ---
 
-### 第三部分：双任务解耦、层敏感度与表征几何机理剖析
+### 第三部分：双任务解耦、层敏感度与物理表征机理剖析
 
 | 论文拟收录图表                                                                     | 核心学术论点 / 实验目的                                                                    | 唯一权威主入口脚本                                                                             | 产出成果与文件位置                                                                                                                 | 标准 `uv run` 执行命令                                                                                                                | TODO 状态 / 前置依赖                                                            |
 |:--------------------------------------------------------------------------- |:-------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------- |
 | **Table 5 & Figure 4: LOLO 微观逐层消融敏感度矩阵**<br>(Micro Layer Ablation)          | 揭示双任务在 WavLM 13 层中的**语音学生理层级差异**：嘎裂声强烈依赖底层时域微细脉冲（L1~L3）；气声更依赖中层共振峰与高层语义（L4~L8）。  | **`scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py`**         | `data/experiments/lolo_ablation_evaluation/lolo_ablation_report.csv`<br>`lolo_ablation_summary.json`                      | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py --checkpoint <ckpt>`                     | 🟢 **管线就绪，待终版重刷**<br>• 当前已在中间模型跑通验证；<br>• 加数据重训后，需在终版 Checkpoint 上一键重跑固化。 |
 | **Table 6 & Figure 5: 宏观自顶向下层截断与剪枝边界**<br>(Depth Truncation Pareto)         | 自顶向下依次丢弃顶层 $k$ 个 Transformer 块（$k=1..12$），论证保留前 6~7 层即可无损保持干净集双任务精度，给出端侧轻量化部署上限。 | **`scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py`** | `data/experiments/topk_layer_truncation_evaluation/topk_layer_truncation_report.csv`<br>`topk_layer_truncation_report.md` | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py --checkpoint <ckpt>`             | 🟢 **管线就绪，待终版重刷**<br>• 当前已跑通并验证 Pareto 边界；<br>• 待终版模型产出后重新执行一次确认端侧裁剪层数。   |
-| **Table 8 & Figure 7: CKA 表征几何与跨退化保真度**<br>(Representation CKA & Stability) | 构建 13×13 线性 CKA 双任务自相似度热力图（展示生理分块）；计算在标准声学退化下的**逐层 CKA 保真度条形图**，量化预训练几何抗扰能力。     | **`scripts/representation_and_calibration_audit/evaluate_representation_cka.py`**     | `data/experiments/representation_cka_audit/layer_cka_heatmap.pdf`<br>`cka_layer_fidelity_bar.pdf`                         | `uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py --checkpoint <ckpt> --compare-noise` | 🟢 **管线就绪，待终版执行**<br>• 已剔除冗余混乱的置信度校准图；<br>• 待终版模型重训后执行出图。                 |
+| **Table 7 & Figure 3: 跨层物理声学编码机理审计**<br>(Cross-Layer Physical Acoustic Decay) | 揭示**为什么高层冗余可以安全截断**：逐层（$L_0\dots L_{12}$）使用发音人分组 Ridge 回归预测 6 项传统物理声学指标（Jitter, Shimmer, SHR, CPPS, $H_1^*-H_2^*$, HNR）。证明 $L_0\text{--}L_5$ 充分保留声门动力学，而 $L_6\text{--}L_{12}$ 随语义抽象发生物理特征衰减与平滑，从而在机理上闭环解释了 Drop Top 6 的安全性与双任务层深度差异。 | **`scripts/layer_acoustic_encoding_audit/evaluate_layer_acoustic_encoding.py`** | `data/experiments/layer_acoustic_encoding_audit/layer_acoustic_encoding_metrics.csv`<br>`fig_layer_acoustic_encoding_decay.png` & `.pdf`<br>`layer_acoustic_encoding_report.md` | `uv run --project code python code/scripts/layer_acoustic_encoding_audit/evaluate_layer_acoustic_encoding.py` | 🟢 **管线就绪，已正式归集**<br>• 采用发音人分组 5 折交叉验证；<br>• 替代原有无实际区分度的纯 CKA 实验；<br>• 产出 Elsevier CSL 规范出版级双面板机理图。 |
+| **Table 8 & Figure 7: CKA 表征几何与跨退化保真度**<br>(Representation CKA & Stability) | 构建 13×13 线性 CKA 双任务自相似度热力图（展示生理分块）；计算在标准声学退化下的**逐层 CKA 保真度条形图**，量化预训练几何抗扰能力。     | **`scripts/representation_and_calibration_audit/evaluate_representation_cka.py`**     | `data/experiments/representation_cka_audit/layer_cka_heatmap.pdf`<br>`cka_layer_fidelity_bar.pdf`                         | `uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py --checkpoint <ckpt> --compare-noise` | 🟡 **备选辅助分析**<br>• 辅助观察层几何抗扰；核心机理解释由 Table 7 物理编码承担。 |
 
 ---
 
@@ -128,6 +129,9 @@ scripts/
 ├── layer_importance_and_truncation_audit/# 对应 Table 5, Table 6, Figure 4, Figure 5（层重要度与深度裁剪）
 │   ├── evaluate_lolo_ablation.py          # [唯一入口] LOLO 逐层剥离消融评测（微观层不可或缺性）
 │   ├── evaluate_topk_layer_truncation.py  # [唯一入口] 自顶向下逐层截断评测（宏观计算深度 Pareto）
+│   └── README.md
+├── layer_acoustic_encoding_audit/        # 对应 Table 7 & Figure 3（跨层物理声学编码机理回归审计）
+│   ├── evaluate_layer_acoustic_encoding.py # [唯一入口] 逐层物理声学指标回归评测与双面板出版图生成
 │   └── README.md
 ├── representation_and_calibration_audit/ # 对应 Table 8 & Figure 7（CKA 表征几何与退化保真度）
 │   ├── evaluate_representation_cka.py     # [唯一入口] 13x13 隐层 CKA 双任务热力图与逐层保真度条形图
@@ -214,23 +218,27 @@ uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_
   --split val \
   --output-dir data/experiments/topk_layer_truncation_evaluation
 
-# 3. CKA 13x13 几何热力图与跨退化逐层保真度条形图
+# 3. 跨层物理声学编码机理回归审计与出版图生成 (Table 7 & Figure 3)
+uv run --project code python code/scripts/layer_acoustic_encoding_audit/evaluate_layer_acoustic_encoding.py \
+  --output-dir data/experiments/layer_acoustic_encoding_audit
+
+# 4. CKA 13x13 几何热力图与跨退化逐层保真度条形图
 uv run python scripts/representation_and_calibration_audit/evaluate_representation_cka.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
   --compare-noise \
   --output-dir data/experiments/representation_cka_audit
 
-# 4. 语音学生理声学指标可解释性校验 (Figure 8 & Table 8b)
+# 5. 语音学生理声学指标可解释性校验 (Figure 8 & Table 8b)
 uv run python scripts/acoustic_interpretability_audit/evaluate_acoustic_correlations.py \
   --checkpoint exp_results/checkpoints/final_weak_on_vsdc/best_model.pt \
   --output-dir data/experiments/interpretability
 
-# 5. 出版级四面板散点回归图导出 (Figure 8 with 95% CI Bands)
+# 6. 出版级四面板散点回归图导出 (Figure 8 with 95% CI Bands)
 uv run python scripts/acoustic_interpretability_audit/plot_acoustic_scatter_regressions.py \
   --input-csv data/experiments/interpretability/acoustic_correlations.csv \
   --output-dir data/visualizations/output
 
-# 6. EGG 真实声门物理效度全量 50 发音人校验 (Figure 9 & Table 8c)
+# 7. EGG 真实声门物理效度全量 50 发音人校验 (Figure 9 & Table 8c)
 uv run python scripts/acoustic_interpretability_audit/evaluate_egg_correlations.py \
   --all-speakers \
   --duration-per-speaker 120 \

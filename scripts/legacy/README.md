@@ -23,6 +23,8 @@ KeyError，部分静默读取空值），部分脚本的标注/评测路径也�
 | `eval_wavfry_testset.py` | 基于离线目录的 WavFry 测试集评测 | 被统一多任务与动态退化评测体系取代 |
 | `eval_baselines_testset.py` | 基于离线目录的外部基线评测 | 依赖已弃用的离线加噪文件夹；正在逐步接入统一动态退化引擎 |
 | `evaluate_robustness_and_bootstrap.py` | 单模型历史深度截断与离线加噪 Bootstrap | 其层截断评估已被 `scripts/layer_importance_and_truncation_audit/` 替代；跨模型通用统计检验已被 `scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py` 替代 |
+| `temp_layer_independent_probing/` | 探索性单层独立与累积前缀分类探针评测（实验 a/b） | 与 Section 5.1/5.4 结构重叠；且在测试集内监督引发气声探针高于主模型的分数倒挂。已正式废弃，保留层级物理声学回归 |
+| `temp_layer_acoustic_encoding/` | 临时多面板因果解释出图与回归脚本（实验 c 原型） | 已收敛转正为官方正式主入口 `scripts/layer_acoustic_encoding_audit/evaluate_layer_acoustic_encoding.py` |
 
 当前有效的替代入口：
 
@@ -30,6 +32,7 @@ KeyError，部分静默读取空值），部分脚本的标注/评测路径也�
 - 声学退化引擎：`wavfry/eval/acoustic_degradation.py`（支持 3x3 真实 QUT-NOISE 与真实空间混响）
 - 校准与 CKA 审计：`scripts/representation_and_calibration_audit/`
 - 层重要性与深度裁剪：`scripts/layer_importance_and_truncation_audit/`
+- 跨层物理声学编码机理审计：`scripts/layer_acoustic_encoding_audit/` (Section 5.2 权威主入口)
 - 统计显著性 Bootstrap：`scripts/statistical_bootstrap_audit/`
 - 韵律基线：`scripts/experiments/run_prosodic_baseline.py`
 - Few-shot 基准：`scripts/experiments/run_fewshot_experiment.py`
