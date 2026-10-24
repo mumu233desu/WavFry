@@ -190,6 +190,22 @@ class IncrementalCSVCache:
         return cached_df
 
 
+def compute_checkpoint_fingerprint(ckpt_path: Optional[Union[str, Path]]) -> Tuple[str, str]:
+    """Compute a human-readable checkpoint ID and 12-char SHA-256 hex digest."""
+    if not ckpt_path:
+        return "unknown", "unknown"
+    p = Path(ckpt_path).resolve()
+    ckpt_id = f"{p.parent.name}/{p.name}"
+    if not p.is_file():
+        return ckpt_id, "missing"
+    import hashlib
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            h.update(chunk)
+    return ckpt_id, h.hexdigest()[:12]
+
+
 def dump_model_predictions(
     model: torch.nn.Module,
     manifest_df: pd.DataFrame,
@@ -199,12 +215,14 @@ def dump_model_predictions(
     device: torch.device = torch.device("cpu"),
     sample_rate: int = 16000,
     batch_size: int = 32,
+    checkpoint_path: Optional[Union[str, Path]] = None,
 ) -> pd.DataFrame:
     """Pre-compute WavFry inference predictions across QUT degradation tiers.
 
     Uses ContinuousAudioBlockDataset (2.0s sliding blocks with overlapping context
     and temporal frame pooling) to match the canonical training paradigm.
     """
+    ckpt_id, ckpt_sha256 = compute_checkpoint_fingerprint(checkpoint_path)
     manifest = attach_interval_keys(manifest_df).reset_index(drop=True)
     out_path = Path(out_csv_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -291,6 +309,8 @@ def dump_model_predictions(
                     "prob_creaky": prob_c,
                     "label_breathy": float(row.get("label_breathy", np.nan)),
                     "prob_breathy": prob_b,
+                    "checkpoint_id": ckpt_id,
+                    "checkpoint_sha256": ckpt_sha256,
                 })
 
         preds_df = pd.DataFrame(rows)

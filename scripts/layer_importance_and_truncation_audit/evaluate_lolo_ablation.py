@@ -53,6 +53,7 @@ from wavfry.eval.acoustic_degradation import (
     get_acoustic_degradation_engine,
     get_condition_metadata,
 )
+from wavfry.model.wavlm_classifier import WavFryClassifier
 
 
 def parse_args():
@@ -603,6 +604,7 @@ def evaluate_lolo_single_pass(
                 "condition": cond["id"],
                 "ablated_layer": cond["ablated_layer"],
                 "relative_depth": cond["relative_depth"],
+                "layer_idx": cond.get("layer_index", -1),
                 "scalar_mix_weight": round(mix_w, 5),
                 "auc_pr": round(auc_pr, 4),
                 "f1": round(f1, 4),
@@ -786,6 +788,15 @@ def main():
     csv_path = out_base / "lolo_ablation_matrix_detail.csv"
     pd.DataFrame(all_tidy_rows).to_csv(csv_path, index=False, encoding="utf-8")
     print(f"[Saved] Standardized Tidy CSV saved to: {csv_path}")
+
+    # 1b. Export flat lolo_ablation_results.csv for plotting
+    first_cond = "clean" if "clean" in full_summary_json["conditions"] else eval_conditions[0]
+    flat_rows = []
+    for t_name, rows in full_summary_json["conditions"][first_cond].items():
+        flat_rows.extend(rows)
+    results_csv = out_base / "lolo_ablation_results.csv"
+    pd.DataFrame(flat_rows).to_csv(results_csv, index=False, encoding="utf-8")
+    print(f"[Saved] Standardized Report CSV saved to: {results_csv}")
 
     # 2. Hierarchical Machine-Readable JSON
     json_path = out_base / "lolo_ablation_summary.json"

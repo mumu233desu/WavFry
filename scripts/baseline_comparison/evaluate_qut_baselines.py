@@ -217,6 +217,7 @@ def run_baseline_evaluation(
             degradation_engine=deg_engine,
             out_csv_path=dump_path,
             device=torch.device(device),
+            checkpoint_path=checkpoint_path,
         )
     else:
         raise ValueError("Must provide either a valid --checkpoint or an existing --preds-csv.")

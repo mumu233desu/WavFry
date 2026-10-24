@@ -1,0 +1,26 @@
+{
+  "pytorch_model_size_mb": 364.49,
+  "onnx_model_size_mb": 362.14,
+  "audio_duration_sec": 1.0,
+  "iterations": 50,
+  "mean_latency_ms": 44.5,
+  "std_latency_ms": 1.75,
+  "p50_latency_ms": 44.96,
+  "p95_latency_ms": 46.7,
+  "rtf": 0.0445,
+  "rtf_status": "Ultra-Fast (RTF < 0.05)",
+  "mathematical_fidelity": {
+    "verified_tasks": [
+      "creaky",
+      "breathy"
+    ],
+    "max_absolute_diff": {
+      "creaky": 7.450580596923828e-08,
+      "breathy": 6.258487701416016e-07
+    },
+    "mse": {
+      "creaky": 5.551115123125783e-15,
+      "breathy": 3.9168668308775523e-13
+    }
+  }
+}

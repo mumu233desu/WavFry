@@ -63,6 +63,7 @@ DEFAULT_OCTAVE_BIN = Path(r"D:\Tools\octave-11.3.0-w64\mingw64\bin\octave-cli.ex
 
 CANDIDATE_CHECKPOINTS = [
     PROJECT_ROOT / "exp_results/checkpoints/frozen_creaky_breathy_block/best_model.pt",
+    PROJECT_ROOT / "exp_results/checkpoints/ablation_backbone_wavlm_baseplus/best_model.pt",
     PROJECT_ROOT / "exp_results/checkpoints/ablation_backbone_wavlm_baseplus/latest.pt",
     PROJECT_ROOT / "exp_results/checkpoints/csl_frozen_wavlm_base_plus/best_model.pt",
 ]
@@ -314,11 +315,18 @@ def evaluate_egg_correlations(
     # Target speakers
     target_speakers = set(speakers) if speakers else None
 
+    # Known hardware-corrupted EGG recording in AVID:
+    # Spk23 has ~4.96 kHz modulator carrier leakage due to electrode detachment (0 valid human glottal cycles).
+    CORRUPTED_EGG_SPEAKERS = {"Spk23"}
+
     filtered_files = []
     seen_spks = set()
     for f in all_audio_files:
         meta = parse_avid_filename(f.name)
         spk = meta["speaker_id"]
+        if spk in CORRUPTED_EGG_SPEAKERS:
+            logger.info(f"Excluding {f.name} ({spk}): known EGG hardware carrier fault (~4.96 kHz unvoiced noise).")
+            continue
         if target_speakers is not None and spk not in target_speakers:
             continue
         # If long recording directory, ensure 1 primary file per speaker
@@ -335,13 +343,66 @@ def evaluate_egg_correlations(
         f"Evaluating {len(filtered_files)} audio files across {len(set(parse_avid_filename(f.name)['speaker_id'] for f in filtered_files))} speakers."
     )
 
-    # Phase 1: Identify and extract uncached files
+    from wavfry.eval.cache_manager import compute_checkpoint_fingerprint
+    ckpt_id, ckpt_sha256 = compute_checkpoint_fingerprint(checkpoint_path)
+
+    # Phase 1: Identify and extract uncached files (or refresh model predictions if checkpoint changed)
     uncached_files = []
+    refresh_pred_files = []
     for f in filtered_files:
         meta = parse_avid_filename(f.name)
         cache_file = cache_dir / f"{meta['file_key']}.npz"
         if not cache_file.exists():
             uncached_files.append(f)
+        else:
+            try:
+                with np.load(cache_file) as cached_npz:
+                    cached_sha = str(cached_npz["ckpt_sha256"]) if "ckpt_sha256" in cached_npz else ""
+                if cached_sha != ckpt_sha256:
+                    refresh_pred_files.append(f)
+            except Exception:
+                uncached_files.append(f)
+
+    if refresh_pred_files:
+        logger.info(
+            f"Refreshing WavFry frame predictions for {len(refresh_pred_files)} cached EGG files with checkpoint {ckpt_id} ({ckpt_sha256})..."
+        )
+        for idx, f_file in enumerate(refresh_pred_files):
+            f_meta = parse_avid_filename(f_file.name)
+            cache_file = cache_dir / f"{f_meta['file_key']}.npz"
+            with np.load(cache_file) as cached_npz:
+                t_v = cached_npz["t_v"]
+                oq_v = cached_npz["oq_v"]
+                f0_v = cached_npz["f0_v"]
+                speech_rms = float(cached_npz["speech_rms"])
+
+            info = sf.info(str(f_file))
+            fs = info.samplerate
+            is_long = info.duration > 30.0
+            lead_s = 5.0 if is_long else 0.0
+            start_frame = int(lead_s * fs)
+            # Read up to max(t_v) + 1.0s to cover all cached voiced EGG frames
+            max_needed_s = float(np.max(t_v)) - lead_s + 1.0 if len(t_v) > 0 else (duration_per_speaker or 120.0)
+            frames_to_read = int(max_needed_s * fs)
+            data, _ = sf.read(str(f_file), start=start_frame, frames=frames_to_read)
+            speech_audio = data[:, 0] if data.ndim >= 2 else data
+
+            t_model, probs_dict = run_wavfry_frames_long(
+                model, speech_audio, fs, device, time_offset=lead_s
+            )
+            probs_cached = {task: np.interp(t_v, t_model, probs_dict[task]) for task in model.tasks}
+            save_dict = {
+                "t_v": t_v,
+                "oq_v": oq_v,
+                "f0_v": f0_v,
+                "speech_rms": speech_rms,
+                "ckpt_id": ckpt_id,
+                "ckpt_sha256": ckpt_sha256,
+                **{f"p_{t}": probs_cached[t] for t in model.tasks},
+            }
+            np.savez_compressed(cache_file, **save_dict)
+            if (idx + 1) % 10 == 0 or (idx + 1) == len(refresh_pred_files):
+                logger.info(f"Refreshed predictions [{idx + 1}/{len(refresh_pred_files)}] files...")
 
     if uncached_files:
         logger.info(
@@ -376,6 +437,8 @@ def evaluate_egg_correlations(
                     "oq_v": egg_res["oq_v"],
                     "f0_v": egg_res["f0_v"],
                     "speech_rms": egg_res["speech_rms"],
+                    "ckpt_id": ckpt_id,
+                    "ckpt_sha256": ckpt_sha256,
                     **{f"p_{t}": probs_cached[t] for t in model.tasks},
                 }
                 np.savez_compressed(cache_file, **save_dict)

@@ -140,9 +140,9 @@ def main():
 
     args = parser.parse_args()
     proj_root = Path(__file__).resolve().parents[1]
-    vis_dir = Path(r"E:\Coding\WavFry\data\visualizations")
+    vis_dir = Path(r"E:\Coding\WavFry\data\visualizations\csl2026_journal")
     if not vis_dir.exists():
-        vis_dir = proj_root / "data" / "visualizations"
+        vis_dir = proj_root / "data" / "visualizations" / "csl2026_journal"
 
     # 1. Parse modules
     if args.modules.strip().lower() == "all":

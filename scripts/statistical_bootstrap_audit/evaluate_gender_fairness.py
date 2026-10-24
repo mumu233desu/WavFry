@@ -48,7 +48,7 @@ def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: float = 0
     yp = y_prob[valid_mask]
 
     if len(yt) == 0 or len(np.unique(yt)) < 2:
-        return {"N": len(yt), "Accuracy": 0.0, "Precision": 0.0, "Recall": 0.0, "F1-Score": 0.0, "PR-AUC": 0.0, "ROC-AUC": 0.0}
+        return {"N": len(yt), "Positive_Rate": float(np.mean(yt)) if len(yt) > 0 else 0.0, "Accuracy": 0.0, "Precision": 0.0, "Recall": 0.0, "F1-Score": 0.0, "PR-AUC": 0.0, "ROC-AUC": 0.0}
 
     y_pred = (yp >= threshold).astype(int)
     acc = float(accuracy_score(yt, y_pred))
@@ -120,13 +120,25 @@ def run_gender_fairness_audit(
         raise ValueError("Must provide either --checkpoint or --preds-csv.")
 
     # 2. Harmonize gender
-    if "gender" not in clean_preds.columns or clean_preds["gender"].isna().all():
-        # Fallback extract from file_key: F_... or M_...
-        clean_preds["gender"] = clean_preds["file_key"].apply(
-            lambda k: "F" if str(k).startswith("F") else ("M" if str(k).startswith("M") else "Unknown")
-        )
+    def _parse_gender(row):
+        g = str(row.get("gender", "")).strip().lower()
+        if g in ["f", "female"]:
+            return "Female"
+        if g in ["m", "male"]:
+            return "Male"
+        fk = str(row.get("file_key", "")).strip()
+        if fk.startswith("F_") or fk.startswith("F"):
+            return "Female"
+        if fk.startswith("M_") or fk.startswith("M"):
+            return "Male"
+        spk = str(row.get("speaker_id", "")).strip()
+        if spk.startswith("F_") or spk.startswith("F"):
+            return "Female"
+        if spk.startswith("M_") or spk.startswith("M"):
+            return "Male"
+        return "Unknown"
 
-    clean_preds["Gender"] = clean_preds["gender"].map({"F": "Female", "M": "Male"}).fillna("Unknown")
+    clean_preds["Gender"] = clean_preds.apply(_parse_gender, axis=1)
 
     # Filter known genders
     valid_gender_df = clean_preds[clean_preds["Gender"].isin(["Female", "Male"])].copy()

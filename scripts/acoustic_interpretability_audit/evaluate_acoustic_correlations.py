@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,8 +25,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
-import soundfile as sf
-import torch
 
 # Ensure 04_creaky_tools is importable for acoustic features
 TOOLS_ROOT = Path(r"E:\Corpus\CS-Dialogue\data\short_wav\WAVE\04_creaky_tools")
@@ -41,10 +40,6 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from wavfry.eval.cache_manager import IncrementalCSVCache, attach_interval_keys, dump_model_predictions
-from wavfry.eval.acoustic_degradation import AcousticDegradationEngine
-from wavfry.eval.unified import build_test_manifest, load_model_from_checkpoint
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("evaluate_acoustic_correlations")
@@ -205,7 +200,7 @@ def extract_batch_physical_features(
         rows = [_extract_single_worker(item) for item in items]
         return pd.DataFrame(rows)
 
-    workers = max_workers or min(12, os.cpu_count() or 4)
+    workers = max_workers or min(6, os.cpu_count() or 4)
     logger.info(f"Extracting acoustic features in parallel across {workers} CPU workers ({total} intervals)...")
 
     import concurrent.futures
@@ -228,11 +223,19 @@ def run_acoustic_correlation_audit(
     acoustic_cache_path: Path,
     output_dir: Path,
     limit_samples: Optional[int] = None,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    device: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], pd.DataFrame]:
+    import torch
+    from wavfry.eval.cache_manager import IncrementalCSVCache, attach_interval_keys, dump_model_predictions
+    from wavfry.eval.acoustic_degradation import AcousticDegradationEngine
+    from wavfry.eval.unified import build_test_manifest, load_model_from_checkpoint
+
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
     output_dir.mkdir(parents=True, exist_ok=True)
     full_manifest = pd.read_csv(manifest_path, low_memory=False)
-    test_manifest = build_test_manifest(full_manifest, task="creaky")
+    test_manifest = build_test_manifest(full_manifest, require_label=False)
     test_manifest = attach_interval_keys(test_manifest)
 
     if limit_samples is not None and limit_samples > 0:
@@ -262,6 +265,7 @@ def run_acoustic_correlation_audit(
             out_csv_path=output_dir / "clean_preds_temp.csv",
             device=torch.device(device),
             tier_conditions={"clean": ["clean"]},
+            checkpoint_path=checkpoint_path,
         )
     else:
         raise ValueError("Must provide either --checkpoint or --preds-csv.")
@@ -310,13 +314,19 @@ def run_acoustic_correlation_audit(
         if prob_col not in merged_df.columns:
             continue
 
-        probs = merged_df[prob_col].values
+        label_col = f"label_{task_name}"
+        if label_col in merged_df.columns and merged_df[label_col].notna().any():
+            task_df = merged_df[merged_df[label_col].notna()]
+        else:
+            task_df = merged_df
+
+        probs = task_df[prob_col].values
         task_results = []
 
         for feat_label, col_name, expected_trend in feat_specs:
-            if col_name not in merged_df.columns:
+            if col_name not in task_df.columns:
                 continue
-            vals = merged_df[col_name].values
+            vals = task_df[col_name].values
             valid = ~np.isnan(probs) & ~np.isnan(vals)
 
             if np.sum(valid) < 10:
@@ -453,7 +463,7 @@ def main():
         "--output-dir", type=str, default="data/experiments/interpretability", help="Output directory."
     )
     parser.add_argument("--limit-samples", type=int, default=None, help="Limit samples for fast test.")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", type=str, default=None)
 
     args = parser.parse_args()
 

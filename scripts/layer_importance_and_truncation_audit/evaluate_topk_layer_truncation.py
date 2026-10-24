@@ -647,15 +647,13 @@ def generate_reports(
     # 1. Primary Tidy CSV with TitleCase LaTeX-aligned headers
     if all_tidy_rows is not None and len(all_tidy_rows) > 0:
         pd.DataFrame(all_tidy_rows).to_csv(detail_csv_path, index=False, encoding="utf-8")
-        pd.DataFrame(all_tidy_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
         print(f"\n[Saved] Top-k Truncation Detail CSV saved to: {detail_csv_path}")
-    else:
-        all_rows = []
-        for t_name, rows in task_results.items():
-            all_rows.extend(rows)
-        pd.DataFrame(all_rows).to_csv(detail_csv_path, index=False, encoding="utf-8")
-        pd.DataFrame(all_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
-        print(f"\n[Saved] Top-k Truncation Detail CSV saved to: {detail_csv_path}")
+
+    all_rows = []
+    for t_name, rows in task_results.items():
+        all_rows.extend(rows)
+    pd.DataFrame(all_rows).to_csv(legacy_csv_path, index=False, encoding="utf-8")
+    print(f"[Saved] Top-k Truncation Report CSV saved to: {legacy_csv_path}")
 
     # 2. Hierarchical Machine-Readable JSON summary
     if full_summary_json is not None:

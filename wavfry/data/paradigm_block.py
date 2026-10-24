@@ -133,10 +133,11 @@ class BlockIndex:
                 if interval_duration > self.duration_s + 1e-7:
                     if primary not in _WARNED_INTERVALS:
                         _WARNED_INTERVALS.add(primary)
-                        logger.warning(
-                            f"Interval {primary} duration ({interval_duration:.3f}s) exceeds block capacity ({self.duration_s}s). "
-                            f"Truncating to {self.duration_s}s."
-                        )
+                        if len(_WARNED_INTERVALS) <= 1:
+                            logger.warning(
+                                f"Detected intervals exceeding block capacity ({self.duration_s}s), e.g. {primary} ({interval_duration:.3f}s). "
+                                f"Truncating to {self.duration_s}s (further identical warnings suppressed)."
+                            )
                     start = float(row["start_s"])
                     end = start + self.duration_s
                     row_copy = dict(row)

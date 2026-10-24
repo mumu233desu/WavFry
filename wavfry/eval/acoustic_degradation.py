@@ -116,6 +116,8 @@ def parse_condition_str(condition: str) -> ParsedCondition:
             return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="car", snr_db=compound_snr)
         elif any(k in norm for k in ("reverb", "room")):
             return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="reverb", snr_db=compound_snr)
+        else:
+            return ParsedCondition(raw_name=condition, is_clean=False, has_reverb=True, noise_type="car", snr_db=compound_snr)
 
     # 2. Pure RIR conditions (Spatial RIR only, no noise)
     if norm in ("reverb", "reverb_rir", "room_rir"):

@@ -96,12 +96,13 @@ class ONNXExportWrapper(torch.nn.Module):
 
         if self.export_frames:
             if hasattr(self.model, "frame_heads") and self.model.frame_heads is not None:
-                if self.has_creaky_frame:
+                if self.has_creaky_frame and "creaky" in hidden_by_task:
                     outputs_list.append(self.model.frame_heads["creaky"](hidden_by_task["creaky"]).squeeze(-1))
-                if self.has_breathy_frame:
+                if self.has_breathy_frame and "breathy" in hidden_by_task:
                     outputs_list.append(self.model.frame_heads["breathy"](hidden_by_task["breathy"]).squeeze(-1))
-            elif hasattr(self.model, "frame_head") and self.model.frame_head is not None:
-                outputs_list.append(self.model.frame_head(hidden_by_task["creaky"]).squeeze(-1))
+            elif hasattr(self.model, "frame_head") and self.model.frame_head is not None and self.has_creaky_frame:
+                if "creaky" in hidden_by_task:
+                    outputs_list.append(self.model.frame_head(hidden_by_task["creaky"]).squeeze(-1))
 
         if len(outputs_list) == 1:
             return outputs_list[0]

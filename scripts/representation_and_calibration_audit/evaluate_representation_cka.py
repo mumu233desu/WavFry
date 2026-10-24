@@ -143,7 +143,8 @@ def parse_args():
     parser.add_argument(
         "--unbiased",
         action="store_true",
-        help="Use unbiased HSIC on Gram matrices (O(N^2)). Default uses fast centered Frobenius norm (O(N*D^2)).",
+        default=True,
+        help="Use unbiased HSIC on Gram matrices (O(N^2)). Default uses unbiased HSIC.",
     )
     return parser.parse_args()
 
@@ -311,13 +312,20 @@ def extract_condition_representations(
                     if np.isnan(lab_val):
                         continue
 
-                    start_f = int(bounds_b[slot_idx, 0].item())
-                    end_f = int(bounds_b[slot_idx, 1].item())
+                    conv_stride = 320
+                    frame_count = hidden_states[0].shape[1]
+                    raw_start = bounds_b[slot_idx, 0].item()
+                    raw_end = bounds_b[slot_idx, 1].item()
+                    start_f = int(max(0, min(raw_start // conv_stride, frame_count)))
+                    end_f = int(max(0, min((raw_end + conv_stride - 1) // conv_stride, frame_count)))
                     if end_f <= start_f:
-                        end_f = start_f + 1
+                        end_f = min(start_f + 1, frame_count)
 
                     for l in range(num_layers):
-                        h_l = hidden_states[l][b, start_f:end_f, :].mean(dim=0).cpu().numpy()
+                        feat_slice = hidden_states[l][b, start_f:end_f, :]
+                        if feat_slice.shape[0] == 0:
+                            feat_slice = hidden_states[l][b, start_f:min(start_f + 1, frame_count), :]
+                        h_l = feat_slice.mean(dim=0).cpu().numpy()
                         features[l].append(h_l)
 
                     total_samples += 1

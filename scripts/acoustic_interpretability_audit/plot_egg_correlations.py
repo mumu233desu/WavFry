@@ -145,10 +145,10 @@ def plot_glottal_spectrum(
     # Biological Mechanism Annotation Box
     n_total = len(valid)
     box_text = (
-        "\\textbf{Glottal Kinematic Poles}:\n"
+        "Glottal Kinematic Poles:\n"
         f"• {stat_lines[0]}\n"
         f"• {stat_lines[1]}\n"
-        f"$N = {n_total:,}$ voiced physical frames"
+        f"N = {n_total:,} voiced physical frames"
     )
     ax.text(
         0.04, 0.06, box_text,
@@ -159,14 +159,14 @@ def plot_glottal_spectrum(
     # Direction badges
     ax.annotate(
         "Breathy: Glottal Gap ($O_q \\uparrow$)",
-        xy=(0.88, 0.72), xytext=(0.58, 0.86),
+        xy=(0.88, 0.61), xytext=(0.55, 0.78),
         arrowprops=dict(arrowstyle="->", color=line_breathy, lw=1.5),
         fontsize=8.5, fontweight="bold", color=line_breathy,
         bbox=dict(boxstyle="round,pad=0.25", facecolor="#E8F5E9", edgecolor=line_breathy, alpha=0.9),
     )
     ax.annotate(
         "Creaky: Medial Compression ($O_q \\downarrow$)",
-        xy=(0.88, 0.46), xytext=(0.52, 0.32),
+        xy=(0.88, 0.54), xytext=(0.60, 0.39),
         arrowprops=dict(arrowstyle="->", color=line_creaky, lw=1.5),
         fontsize=8.5, fontweight="bold", color=line_creaky,
         bbox=dict(boxstyle="round,pad=0.25", facecolor="#FFEBEE", edgecolor=line_creaky, alpha=0.9),
@@ -191,11 +191,16 @@ def plot_population_speaker_consistency(
         return
 
     # Prepare tidy data for seaborn
+    n_male = int((speaker_df["gender"] == "M").sum()) if "gender" in speaker_df.columns else 25
+    n_female = int((speaker_df["gender"] == "F").sum()) if "gender" in speaker_df.columns else 24
+    male_label = f"Male (N={n_male})"
+    female_label = f"Female (N={n_female})"
+
     plot_rows = []
     for _, row in speaker_df.iterrows():
         spk = row["speaker_id"]
         gender = row.get("gender", "Unknown")
-        gender_label = "Male (N=25)" if gender == "M" else ("Female (N=25)" if gender == "F" else "Unknown")
+        gender_label = male_label if gender == "M" else (female_label if gender == "F" else "Unknown")
 
         if has_b and pd.notnull(row["breathy_oq_r"]):
             plot_rows.append({
@@ -216,8 +221,8 @@ def plot_population_speaker_consistency(
 
     # Color palette: Steel Blue for Male, Coral Rose for Female
     gender_palette = {
-        "Male (N=25)": "#457B9D",
-        "Female (N=25)": "#E76F51",
+        male_label: "#457B9D",
+        female_label: "#E76F51",
         "Unknown": "#6C757D",
     }
 
@@ -280,11 +285,12 @@ def plot_population_speaker_consistency(
     c_win = np.mean(c_df["Pearson_r"] > 0) * 100 if len(c_df) > 0 else 0
 
     # Annotation text on plot
+    n_spks = len(b_df) if len(b_df) > 0 else len(c_df)
     stat_box = (
-        f"\\textbf{{50-Speaker Population Consistency}}:\n"
-        f"• Breathy $O_q$: Median $r = {b_med:+.3f}$, {b_win:.0f}\\% speakers $r > 0$\n"
-        f"• Creaky $CQ$:  Median $r = {c_med:+.3f}$, {c_win:.0f}\\% speakers $r > 0$\n"
-        f"• Cross-gender invariant: Male & Female medians both $> 0$"
+        f"{n_spks}-Speaker Population Consistency:\n"
+        f"• Breathy $O_q$: Median $r = {b_med:+.3f}$, {b_win:.0f}% speakers $r > 0$\n"
+        f"• Creaky $CQ$:  Median $r = {c_med:+.3f}$, {c_win:.0f}% speakers $r > 0$\n"
+        f"• Cross-gender invariant: Male & Female medians aligned"
     )
     ax.text(
         0.04, 0.06, stat_box,
@@ -292,7 +298,7 @@ def plot_population_speaker_consistency(
         bbox=dict(boxstyle="round,pad=0.5", facecolor="#F8F9FA", alpha=0.92, edgecolor="#B0BEC5", linewidth=1.0),
     )
 
-    ax.set_title("(b) Population-Wide Correlation Consistency (All 50 AVID Speakers)", fontweight="bold", pad=10, fontsize=11.5)
+    ax.set_title(f"(b) Population-Wide Correlation Consistency (N = {n_spks} Valid AVID Speakers)", fontweight="bold", pad=10, fontsize=11.5)
     ax.set_xlabel("Target Glottal Kinematic Relationship", fontsize=10.5)
     ax.set_ylabel("Per-Speaker Pearson Correlation $r$", fontsize=10.5)
     ax.set_ylim(-0.30, 0.65)
@@ -333,16 +339,24 @@ def render_egg_figures(
 
     plt.tight_layout()
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_png = out_dir / "fig9_egg_physical_validation.png"
-    out_pdf = out_dir / "fig9_egg_physical_validation.pdf"
+    target_dirs = [out_dir]
+    for sync_dir in [
+        Path(r"E:\Coding\WavFry\data\visualizations\csl2026_journal\output"),
+        Path(r"E:\Coding\WavFry\paper\CSL2026_submission\figures"),
+    ]:
+        if sync_dir.parent.exists() and sync_dir.resolve() != out_dir.resolve():
+            target_dirs.append(sync_dir)
 
-    if save_format in ("png", "both"):
-        plt.savefig(out_png, dpi=dpi, bbox_inches="tight")
-        logger.info(f"Saved PNG figure to: {out_png}")
-    if save_format in ("pdf", "both"):
-        plt.savefig(out_pdf, bbox_inches="tight")
-        logger.info(f"Saved PDF figure to: {out_pdf}")
+    for d in target_dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        out_png = d / "fig9_egg_physical_validation.png"
+        out_pdf = d / "fig9_egg_physical_validation.pdf"
+        if save_format in ("png", "both"):
+            plt.savefig(out_png, dpi=dpi, bbox_inches="tight")
+            logger.info(f"Saved PNG figure to: {out_png}")
+        if save_format in ("pdf", "both"):
+            plt.savefig(out_pdf, bbox_inches="tight")
+            logger.info(f"Saved PDF figure to: {out_pdf}")
 
     plt.close(fig)
 

@@ -90,6 +90,14 @@ def plot_scatter_panel(
         ax.set_ylabel(y_label, fontsize=10)
         return
 
+    # Compute statistics on full unclipped voiced vowel sample to align 100% with Table 8b
+    x_raw = valid_sub[x_col].values
+    y_raw = valid_sub[y_col].values
+    r, p_r = pearsonr(x_raw, y_raw)
+    rho, p_rho = spearmanr(x_raw, y_raw)
+    n_total = len(valid_sub)
+
+    # Optional visual clipping of extreme Praat tracking outliers for plotting canvas only
     if clip_p99:
         p99 = valid_sub[y_col].quantile(0.99)
         valid_sub = valid_sub[valid_sub[y_col] <= p99]
@@ -106,17 +114,12 @@ def plot_scatter_panel(
         ci=95,
     )
 
-    x_vals = valid_sub[x_col].values
-    y_vals = valid_sub[y_col].values
-    r, p_r = pearsonr(x_vals, y_vals)
-    rho, p_rho = spearmanr(x_vals, y_vals)
-
     p_r_str = format_p_val(p_r)
     p_rho_str = format_p_val(p_rho)
     stat_text = (
         f"Pearson r = {r:+.3f} ({p_r_str})\n"
         f"Spearman ρ = {rho:+.3f} ({p_rho_str})\n"
-        f"N = {len(valid_sub)} voiced vowels"
+        f"N = {n_total} voiced vowels"
     )
 
     if annotation_loc == "lower_left":
@@ -157,10 +160,13 @@ def render_acoustic_scatter_regressions(
 
     prob_b_col = "prob_breathy" if "prob_breathy" in df.columns else "prob_creaky"
 
+    df_creaky = df[df["label_creaky"].notna()] if "label_creaky" in df.columns and df["label_creaky"].notna().any() else df
+    df_breathy = df[df["label_breathy"].notna()] if "label_breathy" in df.columns and df["label_breathy"].notna().any() else df
+
     # Panel (a): Creaky Posterior vs Jitter (local)
     plot_scatter_panel(
         ax=axes[0, 0],
-        df=df,
+        df=df_creaky,
         x_col="prob_creaky",
         y_col="jitter_local",
         title="(a) Creaky Posterior vs. Jitter (local)",
@@ -175,7 +181,7 @@ def render_acoustic_scatter_regressions(
     # Panel (b): Creaky Posterior vs Shimmer (local)
     plot_scatter_panel(
         ax=axes[0, 1],
-        df=df,
+        df=df_creaky,
         x_col="prob_creaky",
         y_col="shimmer_local",
         title="(b) Creaky Posterior vs. Shimmer (local)",
@@ -190,7 +196,7 @@ def render_acoustic_scatter_regressions(
     # Panel (c): Breathy Posterior vs CPPS (dB)
     plot_scatter_panel(
         ax=axes[1, 0],
-        df=df,
+        df=df_breathy,
         x_col=prob_b_col,
         y_col="cpps",
         title="(c) Breathy Posterior vs. CPPS (dB)",
@@ -205,7 +211,7 @@ def render_acoustic_scatter_regressions(
     # Panel (d): Breathy Posterior vs H1*-H2* (dB)
     plot_scatter_panel(
         ax=axes[1, 1],
-        df=df,
+        df=df_breathy,
         x_col=prob_b_col,
         y_col="h1h2_star",
         title="(d) Breathy Posterior vs. H1*-H2* (dB)",
@@ -219,16 +225,24 @@ def render_acoustic_scatter_regressions(
 
     plt.tight_layout()
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_png = out_dir / "fig8_acoustic_physical_scatter_regression.png"
-    out_pdf = out_dir / "fig8_acoustic_physical_scatter_regression.pdf"
+    target_dirs = [out_dir]
+    for sync_dir in [
+        Path(r"E:\Coding\WavFry\data\visualizations\csl2026_journal\output"),
+        Path(r"E:\Coding\WavFry\paper\CSL2026_submission\figures"),
+    ]:
+        if sync_dir.parent.exists() and sync_dir.resolve() != out_dir.resolve():
+            target_dirs.append(sync_dir)
 
-    if save_format in ("png", "both"):
-        plt.savefig(out_png, dpi=dpi, bbox_inches="tight")
-        logger.info(f"Saved PNG figure to: {out_png}")
-    if save_format in ("pdf", "both"):
-        plt.savefig(out_pdf, bbox_inches="tight")
-        logger.info(f"Saved PDF figure to: {out_pdf}")
+    for d in target_dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        out_png = d / "fig8_acoustic_physical_scatter_regression.png"
+        out_pdf = d / "fig8_acoustic_physical_scatter_regression.pdf"
+        if save_format in ("png", "both"):
+            plt.savefig(out_png, dpi=dpi, bbox_inches="tight")
+            logger.info(f"Saved PNG figure to: {out_png}")
+        if save_format in ("pdf", "both"):
+            plt.savefig(out_pdf, bbox_inches="tight")
+            logger.info(f"Saved PDF figure to: {out_pdf}")
 
     plt.close(fig)
 
