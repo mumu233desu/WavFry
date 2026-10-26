@@ -12,6 +12,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **`evaluate_lolo_ablation.py`** | **Figure 4 / Table 3**<br>(LOLO 敏感度矩阵) | **微观逐层剥离消融 (Leave-One-Layer-Out)**<br>逐一屏蔽单个层（置 $w_l = -\infty$ 后动态 Softmax 归一化），量化单个隐藏层对任务不可或缺性（Indispensability）。 | **微观局部敏感度**<br>（排查哪一层是特定任务的关键表征瓶颈） | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_lolo_ablation.py --checkpoint <ckpt>` |
 | **`evaluate_topk_layer_truncation.py`** | **Figure 5 / Table 4**<br>(深度剪枝衰减曲线) | **宏观自顶向下层截断 (Top-$k$ Depth Truncation)**<br>依次自顶向下丢弃顶层 $k$ 个 Transformer 块（$k=1, 2, \dots, 12$），评估模型在仅保留浅层/中层时的性能衰减与算力-精度权衡。 | **宏观有效深度与部署上限**<br>（确定端侧模型可安全裁剪的层数与蒸馏目标层） | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_topk_layer_truncation.py --checkpoint <ckpt>` |
+| **`evaluate_layer_quantization_sensitivity.py`** | **Table 10 / 机理支撑**<br>(激活离群值与量化敏感度) | **张量数值离群值与量化敏感度审计 (Quantization & Outliers)**<br>实测全层峰度（Kurtosis）、离群通道与模拟量化 SQNR（INT8/INT4），对比全量化 vs Top-$k$ 结构剪枝 vs 浅层混合量化的任务敏感度。 | **数值稳健性与机理证伪**<br>（证实高层激活离群值聚集，验证结构截断相比低比特量化的零误差优势） | `uv run python scripts/layer_importance_and_truncation_audit/evaluate_layer_quantization_sensitivity.py` |
 
 ---
 
