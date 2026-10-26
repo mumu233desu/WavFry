@@ -45,175 +45,202 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("evaluate_acoustic_correlations")
 
 
-def extract_physical_features_single(
-    audio_path: Path,
-    start_s: float,
-    end_s: float,
-) -> Dict[str, float]:
-    """Extract physical acoustic metrics for a single vowel segment using Parselmouth/Praat."""
-    import parselmouth
+def _extract_single_audio_file(
+    file_item: Tuple[str, List[Tuple[str, float, float, str, str]]]
+) -> List[Dict[str, Any]]:
+    """Extract physical acoustic metrics for all intervals in an audio file using continuous full-sentence Praat objects.
 
-    res = {
-        "jitter_local": np.nan,
-        "shimmer_local": np.nan,
-        "hnr": np.nan,
-        "cpps": np.nan,
-        "h1h2_star": np.nan,
-        "shr": np.nan,
-    }
+    Eliminates short-snippet edge tapering and pitch floor truncation artifacts by computing Praat analysis objects
+    (Pitch, PointProcess, Harmonicity, PowerCepstrogram, Formant) continuously on the entire utterance, then querying
+    local metrics over [start_s, end_s].
+    """
+    import parselmouth
+    from parselmouth.praat import call
+
+    audio_path_str, intervals = file_item
+    audio_path = Path(audio_path_str)
+
+    empty_results = []
+    for interval_key, start_s, end_s, dataset_id, file_key in intervals:
+        empty_results.append({
+            "interval_key": interval_key,
+            "dataset_id": dataset_id,
+            "file_key": file_key,
+            "start_s": start_s,
+            "end_s": end_s,
+            "jitter_local": np.nan,
+            "shimmer_local": np.nan,
+            "hnr": np.nan,
+            "cpps": np.nan,
+            "h1h2_star": np.nan,
+            "shr": np.nan,
+        })
 
     if not audio_path.exists():
-        return res
+        return empty_results
 
     try:
         sound = parselmouth.Sound(str(audio_path))
         dur = float(sound.duration)
-        s = max(0.0, float(start_s))
-        e = min(dur, float(end_s))
-        if e - s < 0.02:
-            return res
+        if dur < 0.05:
+            return empty_results
 
-        # Extract subsegment (preserve_times=False resets local time axis to 0.0s for pitch/formant compatibility)
-        seg_sound = sound.extract_part(from_time=s, to_time=e, preserve_times=False)
+        # 1. Continuous Pitch tracking & PointProcess
+        pitch = sound.to_pitch(time_step=0.01, pitch_floor=50.0, pitch_ceiling=400.0)
+        point_proc = call(sound, "To PointProcess (periodic, cc)", 50.0, 400.0)
 
-        # Physical Gating 1: RMS Energy floor check (Silence Detection)
-        # Segments below ambient noise floor (RMS < 1e-4) lack acoustic speech energy.
-        rms = seg_sound.get_root_mean_square()
-        if rms < 1e-4:
-            return res
+        # 2. Continuous Harmonicity (HNR)
+        harmonicity = sound.to_harmonicity(time_step=0.01, minimum_pitch=50.0)
 
-        # 1. Pitch & PointProcess for Jitter & Shimmer
-        pitch = seg_sound.to_pitch(time_step=0.01, pitch_floor=50.0, pitch_ceiling=400.0)
-
-        # Physical Gating 2: Voicing Fraction check (Unvoiced / Voiceless Consonant Detection)
-        # Phonation (Creak, Breathy) is physically defined strictly on voiced speech (vocal fold oscillation).
-        # Intervals with < 20% voiced frames or < 2 periodic cycles have no valid phonation state.
-        freqs = pitch.selected_array["frequency"]
-        voiced_frames = int(np.sum(freqs > 0))
-        total_frames = len(freqs)
-        if total_frames == 0 or (voiced_frames / total_frames) < 0.20 or voiced_frames < 2:
-            return res
-
-        point_proc = parselmouth.praat.call(seg_sound, "To PointProcess (periodic, cc)", 50.0, 400.0)
-
-        # Jitter (local)
-        try:
-            jitter = parselmouth.praat.call(point_proc, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
-            if not np.isnan(jitter):
-                res["jitter_local"] = float(jitter)
-        except Exception:
-            pass
-
-        # Shimmer (local)
-        try:
-            shimmer = parselmouth.praat.call(
-                [seg_sound, point_proc], "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6
-            )
-            if not np.isnan(shimmer):
-                res["shimmer_local"] = float(shimmer)
-        except Exception:
-            pass
-
-        # 2. Harmonicity (HNR in dB)
-        try:
-            harm = seg_sound.to_harmonicity(time_step=0.01, minimum_pitch=50.0)
-            hnr_val = parselmouth.praat.call(harm, "Get mean", 0, 0)
-            if not np.isnan(hnr_val):
-                res["hnr"] = float(hnr_val)
-        except Exception:
-            pass
-
-        # 3. CPPS (Cepstral Peak Prominence Smoothed)
+        # 3. Continuous CPPS
+        t_cpps, cpps_arr = np.array([]), np.array([])
         if compute_cpps is not None:
             try:
-                _, cpps_arr = compute_cpps(seg_sound)
-                valid_cpps = cpps_arr[~np.isnan(cpps_arr)]
-                if len(valid_cpps) > 0:
-                    res["cpps"] = float(np.mean(valid_cpps))
+                t_cpps, cpps_arr = compute_cpps(sound, time_step=0.01)
             except Exception:
                 pass
 
-        # 4. H1*-H2* (Formant corrected harmonic difference)
+        # 4. Continuous H1*-H2*
+        t_h1h2, h1h2_arr = np.array([]), np.array([])
         if compute_h1_h2_star is not None:
             try:
-                _, h1h2_arr = compute_h1_h2_star(seg_sound)
-                valid_h1h2 = h1h2_arr[~np.isnan(h1h2_arr)]
-                if len(valid_h1h2) > 0:
-                    res["h1h2_star"] = float(np.mean(valid_h1h2))
+                t_h1h2, h1h2_arr = compute_h1_h2_star(sound, time_step=0.01)
             except Exception:
                 pass
 
-        # 5. SHR (Subharmonic-to-Harmonic Ratio) proxy via pitch subharmonic candidate ratio
-        try:
-            # Ratio of periods with halved frequency / subharmonic presence
-            freqs = pitch.selected_array["frequency"]
-            v_freqs = freqs[freqs > 0]
-            if len(v_freqs) > 2:
-                # Approximate SHR from octave period jumping
-                f_diffs = np.abs(np.diff(v_freqs))
-                shr_proxy = np.mean(f_diffs > 25.0)  # frequency jumping irregularity
-                res["shr"] = float(shr_proxy)
-        except Exception:
-            pass
+        p_times = pitch.xs()
+        p_freqs_all = pitch.selected_array["frequency"]
+
+        file_results = []
+        for interval_key, start_s, end_s, dataset_id, file_key in intervals:
+            res = {
+                "interval_key": interval_key,
+                "dataset_id": dataset_id,
+                "file_key": file_key,
+                "start_s": start_s,
+                "end_s": end_s,
+                "jitter_local": np.nan,
+                "shimmer_local": np.nan,
+                "hnr": np.nan,
+                "cpps": np.nan,
+                "h1h2_star": np.nan,
+                "shr": np.nan,
+            }
+
+            s = max(0.0, min(dur, float(start_s)))
+            e = max(0.0, min(dur, float(end_s)))
+            if e - s < 0.02:
+                file_results.append(res)
+                continue
+
+            # Silence floor check
+            try:
+                rms = call(sound, "Get root-mean-square", s, e)
+                if rms < 1e-4:
+                    file_results.append(res)
+                    continue
+            except Exception:
+                pass
+
+            # Jitter (local)
+            try:
+                jitter = call(point_proc, "Get jitter (local)", s, e, 0.0001, 0.02, 1.3)
+                if not np.isnan(jitter) and jitter > 0:
+                    res["jitter_local"] = float(jitter)
+            except Exception:
+                pass
+
+            # Shimmer (local)
+            try:
+                shimmer = call([sound, point_proc], "Get shimmer (local)", s, e, 0.0001, 0.02, 1.3, 1.6)
+                if not np.isnan(shimmer) and shimmer > 0:
+                    res["shimmer_local"] = float(shimmer)
+            except Exception:
+                pass
+
+            # HNR (mean)
+            try:
+                hnr_val = call(harmonicity, "Get mean", s, e)
+                if not np.isnan(hnr_val):
+                    res["hnr"] = float(hnr_val)
+            except Exception:
+                pass
+
+            # CPPS
+            if len(t_cpps) > 0 and len(cpps_arr) > 0:
+                mask_c = (t_cpps >= s) & (t_cpps <= e)
+                if np.any(mask_c):
+                    v = cpps_arr[mask_c]
+                    valid_v = v[~np.isnan(v)]
+                    if len(valid_v) > 0:
+                        res["cpps"] = float(np.mean(valid_v))
+
+            # H1*-H2*
+            if len(t_h1h2) > 0 and len(h1h2_arr) > 0:
+                mask_h = (t_h1h2 >= s) & (t_h1h2 <= e)
+                if np.any(mask_h):
+                    v = h1h2_arr[mask_h]
+                    valid_v = v[~np.isnan(v)]
+                    if len(valid_v) > 0:
+                        res["h1h2_star"] = float(np.mean(valid_v))
+
+            # SHR
+            if len(p_times) > 0:
+                mask_p = (p_times >= s) & (p_times <= e)
+                if np.any(mask_p):
+                    sub_f = p_freqs_all[mask_p]
+                    v_freqs = sub_f[sub_f > 0]
+                    if len(v_freqs) >= 2:
+                        f_diffs = np.abs(np.diff(v_freqs))
+                        res["shr"] = float(np.mean(f_diffs > 25.0))
+
+            file_results.append(res)
+
+        return file_results
 
     except Exception as e:
-        logger.debug(f"Error extracting features for {audio_path}: {e}")
-
-    return res
-
-
-def _extract_single_worker(row_tuple: Tuple[str, str, float, float, str, str]) -> Dict[str, Any]:
-    audio_path_str, interval_key, start_s, end_s, dataset_id, file_key = row_tuple
-    feats = extract_physical_features_single(Path(audio_path_str), start_s, end_s)
-    return {
-        "interval_key": interval_key,
-        "dataset_id": dataset_id,
-        "file_key": file_key,
-        "start_s": start_s,
-        "end_s": end_s,
-        **feats,
-    }
+        logger.warning(f"Error extracting features for {audio_path}: {e}")
+        return empty_results
 
 
 def extract_batch_physical_features(
     manifest_df: pd.DataFrame, max_workers: Optional[int] = None
 ) -> pd.DataFrame:
-    """Extract physical acoustic metrics for missing rows in manifest."""
+    """Extract physical acoustic metrics for intervals grouped by audio file using continuous sentence-level Praat extraction."""
     total = len(manifest_df)
     if total == 0:
         return pd.DataFrame()
 
-    items = [
-        (
-            str(row["audio_path"]),
+    file_map: Dict[str, List[Tuple[str, float, float, str, str]]] = {}
+    for _, row in manifest_df.iterrows():
+        a_path = str(row["audio_path"])
+        file_map.setdefault(a_path, []).append((
             str(row["interval_key"]),
             float(row["start_s"]),
             float(row["end_s"]),
             str(row.get("dataset_id", "cs_dialogue")),
             str(row.get("file_key", Path(str(row["audio_path"])).stem)),
-        )
-        for _, row in manifest_df.iterrows()
-    ]
+        ))
 
-    # For tiny batches, run serially to avoid process spawn overhead
-    if total <= 20:
-        rows = [_extract_single_worker(item) for item in items]
-        return pd.DataFrame(rows)
-
+    file_items = list(file_map.items())
+    num_files = len(file_items)
     workers = max_workers or min(6, os.cpu_count() or 4)
-    logger.info(f"Extracting acoustic features in parallel across {workers} CPU workers ({total} intervals)...")
+    logger.info(
+        f"Extracting acoustic features across {workers} CPU workers "
+        f"({num_files} unique audio files, {total} total intervals)..."
+    )
 
     import concurrent.futures
 
-    rows = []
-    chunksize = max(1, total // (workers * 4))
+    all_rows = []
+    chunksize = max(1, num_files // (workers * 4))
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-        for idx, record in enumerate(executor.map(_extract_single_worker, items, chunksize=chunksize)):
-            rows.append(record)
-            if (idx + 1) % 100 == 0 or idx == total - 1:
-                logger.info(f"Acoustic features progress: [{idx + 1}/{total}] ({(idx + 1) / total * 100:.1f}%)")
+        for idx, file_records in enumerate(executor.map(_extract_single_audio_file, file_items, chunksize=chunksize)):
+            all_rows.extend(file_records)
+            if (idx + 1) % 20 == 0 or idx == num_files - 1:
+                logger.info(f"Acoustic features progress: [{idx + 1}/{num_files} files] ({(idx + 1) / num_files * 100:.1f}%)")
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(all_rows)
 
 
 def run_acoustic_correlation_audit(
@@ -224,6 +251,7 @@ def run_acoustic_correlation_audit(
     output_dir: Path,
     limit_samples: Optional[int] = None,
     device: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> Tuple[Dict[str, Any], pd.DataFrame]:
     import torch
     from wavfry.eval.cache_manager import IncrementalCSVCache, attach_interval_keys, dump_model_predictions
@@ -274,14 +302,21 @@ def run_acoustic_correlation_audit(
 
     # 2. Incremental Acoustic Feature Cache
     ac_cache = IncrementalCSVCache(acoustic_cache_path)
-    cached_feats, missing_feats = ac_cache.partition_manifest(test_manifest)
-
-    if not missing_feats.empty:
-        logger.info(f"Extracting acoustic features for {len(missing_feats)} missing intervals...")
-        new_feats_df = extract_batch_physical_features(missing_feats)
-        ac_cache.append_records(new_feats_df)
-
-    matched_feats = ac_cache.get_matched(test_manifest)
+    if force_refresh:
+        logger.info(
+            f"Force-refresh requested: extracting acoustic features for all {len(test_manifest)} intervals "
+            "using continuous sentence-level extraction..."
+        )
+        all_feats_df = extract_batch_physical_features(test_manifest)
+        all_feats_df.to_csv(acoustic_cache_path, index=False)
+        matched_feats = all_feats_df
+    else:
+        cached_feats, missing_feats = ac_cache.partition_manifest(test_manifest)
+        if not missing_feats.empty:
+            logger.info(f"Extracting acoustic features for {len(missing_feats)} missing intervals...")
+            new_feats_df = extract_batch_physical_features(missing_feats)
+            ac_cache.append_records(new_feats_df)
+        matched_feats = ac_cache.get_matched(test_manifest)
 
     # 3. Merge predictions with acoustic features
     merged_df = clean_preds.merge(
@@ -464,6 +499,11 @@ def main():
     )
     parser.add_argument("--limit-samples", type=int, default=None, help="Limit samples for fast test.")
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Force recomputing all acoustic features using continuous full-sentence Praat extraction.",
+    )
 
     args = parser.parse_args()
 
@@ -475,6 +515,7 @@ def main():
         output_dir=Path(args.output_dir),
         limit_samples=args.limit_samples,
         device=args.device,
+        force_refresh=args.force_refresh,
     )
 
     print("\n=== Table 8b: Acoustic-Physical Correlation Validation ===")
