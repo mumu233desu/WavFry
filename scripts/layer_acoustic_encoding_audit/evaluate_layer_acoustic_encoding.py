@@ -192,7 +192,7 @@ def plot_layer_acoustic_decay(
     Panel (a): Glottal Micro-Perturbations & Spectral Tilt (Creaky Voice / Glottal Pulse Correlates)
     Panel (b): Harmonic Periodicity & Turbulence Noise (Breathy Voice / Aspiration Correlates)
     """
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5.2), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.2), dpi=300, sharey=True)
 
     layers = np.arange(13)
     layer_labels = ["L0\n(CNN)"] + [f"L{i}" for i in range(1, 13)]
@@ -225,18 +225,18 @@ def plot_layer_acoustic_decay(
     ax1.set_ylabel("Out-of-Sample Spearman Correlation ($\\rho$)", fontweight="bold", fontsize=10)
     ax1.set_xticks(layers)
     ax1.set_xticklabels(layer_labels, fontsize=8.5)
-    ax1.set_ylim(0.10, 0.78)
+    ax1.set_ylim(0.20, 0.95)
     ax1.grid(True, linestyle=":", alpha=0.6, zorder=0)
-    ax1.legend(loc="lower left", fontsize=8.0, framealpha=0.95, edgecolor="#cbd5e1")
+    ax1.legend(loc="upper right", fontsize=8.0, framealpha=0.95, edgecolor="#cbd5e1")
 
-    # Annotate H1*-H2* collapse
+    # Annotate H1*-H2* collapse cleanly in lower margin
     h1h2_l0 = piv["h1h2_star"].iloc[0]
     h1h2_l8 = piv["h1h2_star"].iloc[8]
     ax1.annotate(
         f"$H_1^*-H_2^*$ collapse:\n$\\rho: {h1h2_l0:.3f} \\to {h1h2_l8:.3f}$",
         xy=(8, h1h2_l8),
-        xytext=(6.5, 0.38),
-        arrowprops=dict(facecolor="#6B46C1", shrink=0.08, width=1.0, headwidth=5),
+        xytext=(7.2, 0.23),
+        arrowprops=dict(facecolor="#6B46C1", shrink=0.10, width=1.0, headwidth=5),
         fontsize=8.0,
         fontweight="bold",
         color="#4C1D95",
@@ -266,16 +266,15 @@ def plot_layer_acoustic_decay(
 
     ax2.set_title("(b) Harmonic Periodicity & Turbulence Noise (Breathy Cues)", fontsize=11, fontweight="bold", pad=10)
     ax2.set_xlabel("WavLM Layer", fontweight="bold", fontsize=10)
-    ax2.set_ylabel("Out-of-Sample Spearman Correlation ($\\rho$)", fontweight="bold", fontsize=10)
     ax2.set_xticks(layers)
     ax2.set_xticklabels(layer_labels, fontsize=8.5)
-    ax2.set_ylim(0.50, 0.95)
+    ax2.set_ylim(0.20, 0.95)
     ax2.grid(True, linestyle=":", alpha=0.6, zorder=0)
     ax2.legend(loc="upper right", fontsize=8.0, framealpha=0.95, edgecolor="#cbd5e1")
 
     # Add text label for shaded area in panel b
     ax2.text(
-        9.0, 0.53,
+        9.0, 0.30,
         "Truncated Layers ($L_6-L_{12}$)\n(Semantic Abstraction /\nGlottal Feature Decay)",
         ha="center", va="bottom", fontsize=8.2, fontweight="bold", color="#64748b",
         bbox=dict(boxstyle="round,pad=0.4", facecolor="#ffffff", edgecolor="#cbd5e1", alpha=0.9),
