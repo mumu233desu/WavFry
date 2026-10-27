@@ -5,7 +5,7 @@ Canonical Publication Visualization Script:
 - Reads the output of evaluate_acoustic_correlations.py (acoustic_correlations.csv)
 - Generates a publication-grade 4-panel regression figure:
   (a) Creaky Posterior vs Jitter (local)
-  (b) Creaky Posterior vs Shimmer (local)
+  (b) Creaky Posterior vs SHR
   (c) Breathy Posterior vs CPPS (dB)
   (d) Breathy Posterior vs Formant-Corrected H1*-H2* (dB)
 - Includes 95% bootstrap confidence interval bands on the regression fits.
@@ -178,18 +178,18 @@ def render_acoustic_scatter_regressions(
         annotation_loc="upper_left",
     )
 
-    # Panel (b): Creaky Posterior vs Shimmer (local)
+    # Panel (b): Creaky Posterior vs SHR
     plot_scatter_panel(
         ax=axes[0, 1],
         df=df_creaky,
         x_col="prob_creaky",
-        y_col="shimmer_local",
-        title="(b) Creaky Posterior vs. Shimmer (local)",
+        y_col="shr",
+        title="(b) Creaky Posterior vs. SHR",
         x_label="WavFry Predicted Creaky Posterior",
-        y_label="Shimmer (local)",
+        y_label="Subharmonic-to-Harmonic Ratio (SHR)",
         color="#F4A261",
         line_color="#C85A17",
-        clip_p99=True,
+        clip_p99=False,
         annotation_loc="upper_left",
     )
 
