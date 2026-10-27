@@ -63,6 +63,7 @@ DEEPFRY_CKPT = (
     / "models"
     / "CREAK-220lr_0.001_decay_21_input_size_512_hidden_size_256_channels_512_normalize_False_measure_ff1_dropout_0.1_classes_3_.pth"
 )
+WAVFRY_CKPT = CODE_DIR / "exp_results" / "checkpoints" / "ablation_backbone_wavlm_baseplus" / "best_model.pt"
 DEFAULT_STAGED_DIR = CODE_DIR / "data" / "experiments" / "cache" / "staged_audio"
 DEFAULT_OUTPUT_CACHE = ROOT_DIR / "data" / "experiments" / "cache" / "temp_frame_probabilities"
 
@@ -161,6 +162,48 @@ def run_deepfry_single_file(
 
 
 # ---------------------------------------------------------------------------
+# WavFry Extractor
+# ---------------------------------------------------------------------------
+def load_wavfry_model(device: torch.device, ckpt_path: Path):
+    """Loads pre-trained WavFry PyTorch model."""
+    from wavfry.eval.unified import load_model_from_checkpoint
+    from wavfry.model.wavlm_classifier import WavFryClassifier
+
+    model, ckpt_info = load_model_from_checkpoint(ckpt_path, device, WavFryClassifier)
+    return model
+
+
+def run_wavfry_single_file(
+    model, wav_path: Path, device: torch.device, task: str = "creaky"
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Runs WavFry on a 16kHz mono audio file via frame-level head.
+
+    Returns:
+        timestamps: (N,) float32 array of frame centers in seconds (stride = 20ms).
+        prob_creak: (N,) float32 array of continuous posterior in [0, 1].
+    """
+    audio_data, sr = sf.read(str(wav_path), dtype="float32", always_2d=False)
+    if audio_data.ndim > 1:
+        audio_data = np.mean(audio_data, axis=1)
+
+    if sr != 16000:
+        raise ValueError(f"Expected 16kHz audio, got {sr}Hz for {wav_path}")
+
+    x = torch.from_numpy(audio_data).unsqueeze(0).to(device)
+    lengths = torch.tensor([len(audio_data)], device=device)
+    with torch.no_grad():
+        frames = model(x, lengths=lengths, return_frames=True)
+        frame_logits = frames["frame_logits"][task].squeeze(0)
+        p_creak = torch.sigmoid(frame_logits).cpu().numpy().astype(np.float32)
+
+    n_frames = len(p_creak)
+    stride_samples = frames.get("frame_stride_samples", 320)
+    receptive_samples = frames.get("frame_receptive_samples", 400)
+    t = (np.arange(n_frames, dtype=np.float32) * stride_samples + receptive_samples / 2.0) / 16000.0
+    return t, p_creak
+
+
+# ---------------------------------------------------------------------------
 # Main Dumping Routine
 # ---------------------------------------------------------------------------
 def dump_baseline_probabilities(
@@ -192,6 +235,12 @@ def dump_baseline_probabilities(
     if "DeepFry" in models:
         logger.info("Loading DeepFry model checkpoint...")
         deepfry_model = load_deepfry_model(device, DEEPFRY_DIR, DEEPFRY_CKPT)
+
+    # Load WavFry if needed
+    wavfry_model = None
+    if "WavFry" in models:
+        logger.info(f"Loading WavFry model checkpoint from {WAVFRY_CKPT}...")
+        wavfry_model = load_wavfry_model(device, WAVFRY_CKPT)
 
     total_ops = len(models) * len(tiers) * len(file_keys)
     done_ops = 0
@@ -226,6 +275,8 @@ def dump_baseline_probabilities(
                         t_arr, p_arr = run_creapy_single_file(wav_p, CREAPY_DIR)
                     elif model_name == "DeepFry":
                         t_arr, p_arr = run_deepfry_single_file(deepfry_model, wav_p, device)
+                    elif model_name == "WavFry":
+                        t_arr, p_arr = run_wavfry_single_file(wavfry_model, wav_p, device, task="creaky")
                     else:
                         raise ValueError(f"Unknown model: {model_name}")
 
@@ -255,7 +306,7 @@ def main():
     parser.add_argument("--manifest", type=str, default="manifests/segments_multi.csv")
     parser.add_argument("--staged-dir", type=str, default=str(DEFAULT_STAGED_DIR))
     parser.add_argument("--output-cache", type=str, default=str(DEFAULT_OUTPUT_CACHE))
-    parser.add_argument("--models", nargs="+", default=["CreaPy", "DeepFry"], choices=["CreaPy", "DeepFry"])
+    parser.add_argument("--models", nargs="+", default=["CreaPy", "DeepFry", "WavFry"], choices=["CreaPy", "DeepFry", "WavFry"])
     parser.add_argument("--tiers", nargs="+", default=CANONICAL_TIERS, choices=CANONICAL_TIERS)
     parser.add_argument("--limit-files", type=int, default=None, help="Limit number of files for smoke testing.")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")

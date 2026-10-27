@@ -19,18 +19,28 @@ This directory contains the canonical baseline comparison pipeline corresponding
 - **`plot_fig2_noise_robustness.py`（独立绘图与可视化入口）**：
   - 纯离线读取上述结构化数据，渲染满足 IEEE/Elsevier CSL 出版标准的 Figure 2 折线图；
   - 产出高分辨率矢量图与位图至 `data/visualizations/output/`。
+- **`evaluate_frame_event_map.py`（细粒度连续时序发声事件 Multi-IoU 评测权威主入口）**：
+  - 依据 `docs/notes_frame_level_event_evaluation_methodology.md` 方法论备忘录实现；
+  - 摆脱预切分元音区间的束缚，在连续自由时间轴上执行一维时序动作检测（Temporal Action Detection, TAD）；
+  - 支持多阶梯容差及格线 $\alpha \in \{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7\}$ 下的匈牙利二分图一对一配对与 PR 积分，输出宏观检出率（$\alpha=0.1\text{--}0.3$）、微观边界锐度（$\alpha=0.5\text{--}0.7$）及全局 $\text{mAP}$；
+  - 支持固定阈值（验证集最优 $\tau^*$ 与开箱 0.5）下的二值化时间区间 Precision、Recall、F1-Score 评测（零泄漏协议）；
+  - 产出规范数据成果至 `data/experiments/frame_level_eval/`：
+    - `frame_event_map_metrics.json`
+    - `frame_event_map_summary.csv`
+    - `frame_event_map_report.md`
 
 ## 2. 标准运行命令
 ```bash
-# 模式 A：直接从已有 Checkpoint 评估全部 5 个模型
+# 模式 A：闭合元音区间基准评测（Table 1 / Figure 2）
 uv run python scripts/baseline_comparison/evaluate_qut_baselines.py \
   --checkpoint exp_results/checkpoints/best_model.pt \
   --manifest manifests/segments_multi.csv
 
-# 模式 B：纯离线秒级运行（基于已导出的预测 CSV）
-uv run python scripts/baseline_comparison/evaluate_qut_baselines.py \
-  --preds-csv data/experiments/baselines/preds_best_model_tiered.csv \
-  --manifest manifests/segments_multi.csv
+# 模式 B：细粒度连续时序事件 Multi-IoU mAP 评测（Section 4.2 / Kappa Test）
+uv run python scripts/baseline_comparison/evaluate_frame_event_map.py \
+  --batch-dir "E:/Corpus/Creaky/MELI_processed/textgrid/_creaky_cache/batches/batch_1/manual_creaky_annotations.json.d" \
+  --models "WavFry" "CreaPy" "DeepFry" \
+  --tier clean
 
 # 模式 C：离线渲染 Figure 2 出版图
 uv run python scripts/baseline_comparison/plot_fig2_noise_robustness.py
