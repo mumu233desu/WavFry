@@ -66,6 +66,9 @@ DEEPFRY_CKPT = (
 WAVFRY_CKPT = CODE_DIR / "exp_results" / "checkpoints" / "ablation_backbone_wavlm_baseplus" / "best_model.pt"
 DEFAULT_STAGED_DIR = CODE_DIR / "data" / "experiments" / "cache" / "staged_audio"
 DEFAULT_OUTPUT_CACHE = ROOT_DIR / "data" / "experiments" / "cache" / "temp_frame_probabilities"
+KANE_SPANS_DIR = CODE_DIR / "data" / "experiments" / "cache" / "baseline_spans" / "kane"
+if not KANE_SPANS_DIR.exists():
+    KANE_SPANS_DIR = ROOT_DIR / "data" / "experiments" / "cache" / "baseline_spans" / "kane"
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +207,81 @@ def run_wavfry_single_file(
 
 
 # ---------------------------------------------------------------------------
+# Praat Extractor (Parselmouth with Speech Intensity Gating)
+# ---------------------------------------------------------------------------
+def run_praat_single_file(wav_path: Path) -> Tuple[np.ndarray, np.ndarray]:
+    """Runs Praat pitch perturbation baseline on 16kHz audio with intensity silence gating.
+
+    Mitigates the critical silence pitfall by suppressing false alarms in pauses/silence
+    where standard Praat pitch tracking trivially fails (frequency == 0).
+
+    Returns:
+        timestamps: (N,) float32 array of frame centers in seconds (stride = 15ms).
+        prob_creak: (N,) float32 array of creak posterior in [0, 1].
+    """
+    import parselmouth
+
+    sound = parselmouth.Sound(str(wav_path))
+    pitch = sound.to_pitch(time_step=0.015, pitch_floor=50.0, pitch_ceiling=350.0)
+    intensity = sound.to_intensity(time_step=0.015, minimum_pitch=50.0)
+
+    xs = np.array(pitch.xs(), dtype=np.float32)
+    freqs = np.array(pitch.selected_array["frequency"])
+
+    if len(xs) == 0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+    # Intensity gating: filter out non-speech silence
+    ivals = np.array([intensity.get_value(float(t)) for t in xs], dtype=np.float32)
+    ivals = np.nan_to_num(ivals, nan=0.0)
+    max_i = float(np.max(ivals)) if len(ivals) > 0 else 0.0
+    # Standard Praat speech silence threshold: max - 30 dB, and absolute >= 35 dB
+    voiced_mask = (ivals >= (max_i - 30.0)) & (ivals >= 35.0)
+
+    # Creak decision: active speech frames where pitch tracker fails (unvoiced/subharmonic)
+    prob_creak = np.where(voiced_mask & (freqs == 0.0), 1.0, 0.0).astype(np.float32)
+    return xs, prob_creak
+
+
+# ---------------------------------------------------------------------------
+# Kane Extractor (Rasterized from Pre-computed Covarep ANN Decision Spans)
+# ---------------------------------------------------------------------------
+def run_kane_single_file(
+    fkey: str, tier: str, wav_path: Path, kane_spans_cache: Path
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Rasterizes Kane (2013 / Covarep) official ANN decision spans to 10ms frame grid.
+
+    Re-uses official ANN classifications (with 3-tap median filtering and tau=0.3 threshold)
+    to achieve 100% faithful alignment with Table 1 baseline extraction without redundant
+    Octave execution overhead.
+
+    Returns:
+        timestamps: (N,) float32 array of frame centers in seconds (stride = 10ms).
+        prob_creak: (N,) float32 array of binary creak decisions in {0.0, 1.0}.
+    """
+    import json
+    info = sf.info(str(wav_path))
+    dur = float(info.duration)
+    # 10ms frame grid matching COVAREP detect_creaky_voice frame centers (t = (1:N)*0.010)
+    timestamps = np.arange(0.010, dur, 0.010, dtype=np.float32)
+    prob_creak = np.zeros_like(timestamps, dtype=np.float32)
+
+    span_json = kane_spans_cache / tier / f"{fkey}.json"
+    if span_json.exists():
+        try:
+            with open(span_json, "r", encoding="utf-8") as f:
+                spans = json.load(f)
+            for s, e in spans:
+                prob_creak[(timestamps >= float(s) - 1e-4) & (timestamps <= float(e) + 1e-4)] = 1.0
+        except Exception as e:
+            logger.warning(f"Error reading Kane span for {fkey} ({tier}): {e}")
+    else:
+        logger.warning(f"Kane span JSON missing: {span_json}")
+
+    return timestamps, prob_creak
+
+
+# ---------------------------------------------------------------------------
 # Main Dumping Routine
 # ---------------------------------------------------------------------------
 def dump_baseline_probabilities(
@@ -214,6 +292,7 @@ def dump_baseline_probabilities(
     tiers: List[str],
     limit_files: Optional[int] = None,
     device_str: str = "cuda",
+    overwrite: bool = False,
 ):
     output_cache_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(device_str if torch.cuda.is_available() and device_str == "cuda" else "cpu")
@@ -260,7 +339,7 @@ def dump_baseline_probabilities(
 
             for i, fkey in enumerate(file_keys, 1):
                 out_npz = model_tier_cache / f"{fkey}.npz"
-                if out_npz.exists() and out_npz.stat().st_size > 100:
+                if not overwrite and out_npz.exists() and out_npz.stat().st_size > 100:
                     done_ops += 1
                     continue
 
@@ -277,6 +356,10 @@ def dump_baseline_probabilities(
                         t_arr, p_arr = run_deepfry_single_file(deepfry_model, wav_p, device)
                     elif model_name == "WavFry":
                         t_arr, p_arr = run_wavfry_single_file(wavfry_model, wav_p, device, task="creaky")
+                    elif model_name == "Praat":
+                        t_arr, p_arr = run_praat_single_file(wav_p)
+                    elif model_name == "Kane":
+                        t_arr, p_arr = run_kane_single_file(fkey, tier, wav_p, KANE_SPANS_DIR)
                     else:
                         raise ValueError(f"Unknown model: {model_name}")
 
@@ -306,10 +389,16 @@ def main():
     parser.add_argument("--manifest", type=str, default="manifests/segments_multi.csv")
     parser.add_argument("--staged-dir", type=str, default=str(DEFAULT_STAGED_DIR))
     parser.add_argument("--output-cache", type=str, default=str(DEFAULT_OUTPUT_CACHE))
-    parser.add_argument("--models", nargs="+", default=["CreaPy", "DeepFry", "WavFry"], choices=["CreaPy", "DeepFry", "WavFry"])
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=["CreaPy", "DeepFry", "WavFry", "Praat", "Kane"],
+        choices=["CreaPy", "DeepFry", "WavFry", "Praat", "Kane"],
+    )
     parser.add_argument("--tiers", nargs="+", default=CANONICAL_TIERS, choices=CANONICAL_TIERS)
     parser.add_argument("--limit-files", type=int, default=None, help="Limit number of files for smoke testing.")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing cached npz files.")
 
     args = parser.parse_args()
 
@@ -326,6 +415,7 @@ def main():
         tiers=args.tiers,
         limit_files=args.limit_files,
         device_str=args.device,
+        overwrite=args.overwrite,
     )
 
 

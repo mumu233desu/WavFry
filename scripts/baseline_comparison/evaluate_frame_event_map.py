@@ -759,8 +759,20 @@ def main():
     )
     parser.add_argument("--probs-dir", type=str, default=str(DEFAULT_PROBS_DIR), help="Root directory of cached probabilities.")
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_DIR), help="Output directory for reports.")
-    parser.add_argument("--models", nargs="+", default=["WavFry", "CreaPy", "DeepFry"], help="Models to evaluate.")
-    parser.add_argument("--tier", type=str, default="clean", help="Acoustic tier to evaluate (default: clean).")
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=["WavFry", "CreaPy", "DeepFry", "Praat", "Kane"],
+        help="Models to evaluate.",
+    )
+    parser.add_argument(
+        "--tier",
+        "--tiers",
+        dest="tiers",
+        nargs="+",
+        default=["clean"],
+        help="Acoustic tier(s) to evaluate (default: clean).",
+    )
     parser.add_argument("--iou-thresholds", nargs="+", type=float, default=CANONICAL_IOU_THRESHOLDS, help="IoU thresholds for mAP.")
     parser.add_argument("--no-merge-adjacent", action="store_true", help="Disable adjacent phone contiguity merging.")
     parser.add_argument("--bridge-gap", type=float, default=0.015, help="Bridge gap in seconds for intra-event micro-dips.")
@@ -780,7 +792,7 @@ def main():
     else:
         logger.info(f"  Mode: Auto-Discovery via datasets.yaml ({datasets_yaml_path})")
     logger.info(f"  Probs Dir: {probs_dir}")
-    logger.info(f"  Models: {args.models} | Tier: {args.tier}")
+    logger.info(f"  Models: {args.models} | Tiers: {args.tiers}")
     logger.info(f"  IoU Ladders: {args.iou_thresholds}")
     logger.info(f"  Anti-Fragmentation: bridge_gap={args.bridge_gap*1000:.1f}ms, min_duration={args.min_duration*1000:.1f}ms")
     logger.info("=" * 80)
@@ -793,111 +805,115 @@ def main():
         bridge_gap_s=args.bridge_gap,
     )
 
-    # 2. Evaluate Multi-IoU mAP
+    # 2. Evaluate Multi-IoU mAP & Fixed Threshold across Tiers
     map_results = []
-    for model_name in args.models:
-        logger.info(f"Evaluating Multi-IoU mAP for [{model_name}] on [{args.tier}]...")
-        res = evaluate_model_multi_iou_map(
-            model_name=model_name,
-            tier=args.tier,
-            probs_root=probs_dir,
-            gt_by_file=gt_by_file,
-            unc_by_file=unc_by_file,
-            iou_thresholds=args.iou_thresholds,
-            bridge_gap=args.bridge_gap,
-            min_duration=args.min_duration,
-        )
-        map_results.append(res)
-        logger.info(
-            f"[{model_name}] mAP: {res['mAP']*100:.2f}% | "
-            f"Macro (0.1-0.3): {res['macro_mAP']*100:.2f}% | "
-            f"Micro (0.5-0.7): {res['micro_mAP']*100:.2f}% | "
-            f"Proposals: {res['total_proposals']}"
-        )
-
-    # 3. Evaluate Fixed Threshold Intervals (Zero-Leakage Protocol & Oracle Baseline)
     f1_results = []
-    
-    # 3a. WavFry Frozen Validation Threshold (0.56) and Default (0.50)
-    if "WavFry" in args.models:
-        for tau, p_label in [(0.56, "Frozen Validation (Zero-Leakage)"), (0.50, "Default Baseline")]:
-            logger.info(f"Evaluating Fixed-Threshold Detection for [WavFry] at tau={tau:.2f} ({p_label})...")
-            res = evaluate_model_fixed_threshold(
-                model_name="WavFry",
-                tier=args.tier,
+
+    for cur_tier in args.tiers:
+        logger.info("-" * 60)
+        logger.info(f"  Evaluating Acoustic Tier: [{cur_tier}]")
+        logger.info("-" * 60)
+
+        for model_name in args.models:
+            logger.info(f"Evaluating Multi-IoU mAP for [{model_name}] on [{cur_tier}]...")
+            res = evaluate_model_multi_iou_map(
+                model_name=model_name,
+                tier=cur_tier,
                 probs_root=probs_dir,
                 gt_by_file=gt_by_file,
                 unc_by_file=unc_by_file,
-                decision_threshold=tau,
-                eval_iou_threshold=0.30,
-                min_duration=args.min_duration,
+                iou_thresholds=args.iou_thresholds,
                 bridge_gap=args.bridge_gap,
+                min_duration=args.min_duration,
             )
-            res["protocol_type"] = p_label
-            f1_results.append(res)
+            map_results.append(res)
             logger.info(
-                f"[WavFry (tau={tau:.2f})] F1: {res['F1-Score']*100:.2f}% | "
-                f"Precision: {res['Precision']*100:.2f}% | "
-                f"Recall: {res['Recall']*100:.2f}% "
-                f"(TP={res['TP']}, FP={res['FP']}, FN={res['FN']})"
+                f"[{model_name}][{cur_tier}] mAP: {res['mAP']*100:.2f}% | "
+                f"Macro (0.1-0.3): {res['macro_mAP']*100:.2f}% | "
+                f"Micro (0.5-0.7): {res['micro_mAP']*100:.2f}% | "
+                f"Proposals: {res['total_proposals']}"
             )
 
-    # 3b. External Baselines: Default 0.50 and Test-Set Oracle Grid Search
-    for b_model in ["DeepFry", "CreaPy"]:
-        if b_model not in args.models:
-            continue
-            
-        # Default 0.50
-        logger.info(f"Evaluating Fixed-Threshold Detection for [{b_model}] at default tau=0.50...")
-        def_res = evaluate_model_fixed_threshold(
-            model_name=b_model,
-            tier=args.tier,
-            probs_root=probs_dir,
-            gt_by_file=gt_by_file,
-            unc_by_file=unc_by_file,
-            decision_threshold=0.50,
-            eval_iou_threshold=0.30,
-            min_duration=args.min_duration,
-            bridge_gap=args.bridge_gap,
-        )
-        def_res["protocol_type"] = "Default (Uncalibrated)"
-        f1_results.append(def_res)
-        logger.info(
-            f"[{b_model} (Default tau=0.50)] F1: {def_res['F1-Score']*100:.2f}% | "
-            f"Precision: {def_res['Precision']*100:.2f}% | "
-            f"Recall: {def_res['Recall']*100:.2f}%"
-        )
+        # 3a. WavFry Frozen Validation Threshold (0.56) and Default (0.50)
+        if "WavFry" in args.models:
+            for tau, p_label in [(0.56, "Frozen Validation (Zero-Leakage)"), (0.50, "Default Baseline")]:
+                logger.info(f"Evaluating Fixed-Threshold Detection for [WavFry] at tau={tau:.2f} ({p_label}) on [{cur_tier}]...")
+                res = evaluate_model_fixed_threshold(
+                    model_name="WavFry",
+                    tier=cur_tier,
+                    probs_root=probs_dir,
+                    gt_by_file=gt_by_file,
+                    unc_by_file=unc_by_file,
+                    decision_threshold=tau,
+                    eval_iou_threshold=0.30,
+                    min_duration=args.min_duration,
+                    bridge_gap=args.bridge_gap,
+                )
+                res["protocol_type"] = p_label
+                f1_results.append(res)
+                logger.info(
+                    f"[WavFry (tau={tau:.2f})][{cur_tier}] F1: {res['F1-Score']*100:.2f}% | "
+                    f"Precision: {res['Precision']*100:.2f}% | "
+                    f"Recall: {res['Recall']*100:.2f}% "
+                    f"(TP={res['TP']}, FP={res['FP']}, FN={res['FN']})"
+                )
 
-        # Oracle grid search across thresholds [0.10, 0.90]
-        logger.info(f"Scanning Oracle Threshold for [{b_model}] across tau in [0.10, 0.90]...")
-        best_f1 = -1.0
-        best_res = None
-        for tau_sweep in np.linspace(0.10, 0.90, 17):
-            cur_res = evaluate_model_fixed_threshold(
+        # 3b. External Baselines: Default 0.50 and Test-Set Oracle Grid Search
+        for b_model in [m for m in args.models if m != "WavFry"]:
+            if b_model not in args.models:
+                continue
+
+            # Default 0.50
+            logger.info(f"Evaluating Fixed-Threshold Detection for [{b_model}] at default tau=0.50 on [{cur_tier}]...")
+            def_res = evaluate_model_fixed_threshold(
                 model_name=b_model,
-                tier=args.tier,
+                tier=cur_tier,
                 probs_root=probs_dir,
                 gt_by_file=gt_by_file,
                 unc_by_file=unc_by_file,
-                decision_threshold=float(tau_sweep),
+                decision_threshold=0.50,
                 eval_iou_threshold=0.30,
                 min_duration=args.min_duration,
                 bridge_gap=args.bridge_gap,
             )
-            if cur_res["F1-Score"] > best_f1:
-                best_f1 = cur_res["F1-Score"]
-                best_res = cur_res
-        
-        if best_res is not None:
-            best_res["model_name"] = f"{b_model} (Oracle)"
-            best_res["protocol_type"] = "Oracle Upper Bound (Test-Tuned)"
-            f1_results.append(best_res)
+            def_res["protocol_type"] = "Default (Uncalibrated)"
+            f1_results.append(def_res)
             logger.info(
-                f"[{b_model} (Oracle tau={best_res['decision_threshold']:.2f})] F1: {best_res['F1-Score']*100:.2f}% | "
-                f"Precision: {best_res['Precision']*100:.2f}% | "
-                f"Recall: {best_res['Recall']*100:.2f}% "
-                f"(TP={best_res['TP']}, FP={best_res['FP']}, FN={best_res['FN']})"
+                f"[{b_model} (Default tau=0.50)][{cur_tier}] F1: {def_res['F1-Score']*100:.2f}% | "
+                f"Precision: {def_res['Precision']*100:.2f}% | "
+                f"Recall: {def_res['Recall']*100:.2f}%"
             )
+
+            # Oracle grid search across thresholds [0.10, 0.90]
+            logger.info(f"Scanning Oracle Threshold for [{b_model}] on [{cur_tier}] across tau in [0.10, 0.90]...")
+            best_f1 = -1.0
+            best_res = None
+            for tau_sweep in np.linspace(0.10, 0.90, 17):
+                cur_res = evaluate_model_fixed_threshold(
+                    model_name=b_model,
+                    tier=cur_tier,
+                    probs_root=probs_dir,
+                    gt_by_file=gt_by_file,
+                    unc_by_file=unc_by_file,
+                    decision_threshold=float(tau_sweep),
+                    eval_iou_threshold=0.30,
+                    min_duration=args.min_duration,
+                    bridge_gap=args.bridge_gap,
+                )
+                if cur_res["F1-Score"] > best_f1:
+                    best_f1 = cur_res["F1-Score"]
+                    best_res = cur_res
+
+            if best_res is not None:
+                best_res["model_name"] = f"{b_model} (Oracle)"
+                best_res["protocol_type"] = "Oracle Upper Bound (Test-Tuned)"
+                f1_results.append(best_res)
+                logger.info(
+                    f"[{b_model} (Oracle tau={best_res['decision_threshold']:.2f})][{cur_tier}] F1: {best_res['F1-Score']*100:.2f}% | "
+                    f"Precision: {best_res['Precision']*100:.2f}% | "
+                    f"Recall: {best_res['Recall']*100:.2f}% "
+                    f"(TP={best_res['TP']}, FP={best_res['FP']}, FN={best_res['FN']})"
+                )
 
     # 4. Generate Output Reports
     generate_reports(map_results, f1_results, stats, output_dir)
