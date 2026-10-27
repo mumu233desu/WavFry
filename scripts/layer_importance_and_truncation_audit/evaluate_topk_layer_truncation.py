@@ -124,6 +124,30 @@ def parse_args():
         default=None,
         help="Legacy alias for a single acoustic degradation condition.",
     )
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        default=True,
+        help="Run speaker-level cluster bootstrap (B=1000) for paired significance testing (default: True).",
+    )
+    parser.add_argument(
+        "--no-bootstrap",
+        dest="bootstrap",
+        action="store_false",
+        help="Disable bootstrap significance testing.",
+    )
+    parser.add_argument(
+        "--bootstrap-samples",
+        type=int,
+        default=1000,
+        help="Number of cluster bootstrap iterations (default: 1000).",
+    )
+    parser.add_argument(
+        "--bootstrap-seed",
+        type=int,
+        default=42,
+        help="Random seed for bootstrap resampling (default: 42).",
+    )
     return parser.parse_args()
 
 
@@ -390,6 +414,131 @@ def compute_binary_metrics(y_logits: np.ndarray, y_true: np.ndarray) -> Dict[str
     }
 
 
+def compute_speaker_cluster_bootstrap(
+    labels: np.ndarray,
+    preds_base: np.ndarray,
+    preds_cond: np.ndarray,
+    speakers: np.ndarray,
+    n_bootstrap: int = 1000,
+    seed: int = 42,
+) -> Dict[str, Any]:
+    """
+    Perform non-parametric speaker-level cluster paired bootstrap (B=n_bootstrap).
+    Resamples unique speakers with replacement to preserve temporal clustering within speakers.
+    """
+    valid_mask = ~np.isnan(labels)
+    labels = labels[valid_mask].astype(int)
+    preds_base = preds_base[valid_mask]
+    preds_cond = preds_cond[valid_mask]
+    speakers = np.asarray(speakers)[valid_mask]
+
+    unique_speakers = np.unique(speakers)
+    n_spk = len(unique_speakers)
+    if n_spk < 2 or len(np.unique(labels)) < 2:
+        return {
+            "ci_95": [0.0, 0.0],
+            "ci_95_str": "[0.0000, 0.0000]",
+            "delta_mean": 0.0,
+            "delta_ci_95": [0.0, 0.0],
+            "delta_ci_95_str": "[0.0000, 0.0000]",
+            "p_value": 1.0,
+            "p_val_str": "1.000",
+            "statistical_significance": "Insufficient Clusters",
+        }
+
+    # Pre-index indices by speaker for vectorized sampling
+    spk_indices = {s: np.where(speakers == s)[0] for s in unique_speakers}
+
+    rng = np.random.RandomState(seed)
+    probs_base = 1.0 / (1.0 + np.exp(-preds_base))
+    probs_cond = 1.0 / (1.0 + np.exp(-preds_cond))
+
+    # Baseline self-comparison check
+    is_baseline = np.array_equal(preds_base, preds_cond)
+
+    boot_cond = []
+    boot_delta = []
+
+    for _ in range(n_bootstrap):
+        sampled_spks = rng.choice(unique_speakers, size=n_spk, replace=True)
+        idx = np.concatenate([spk_indices[s] for s in sampled_spks])
+        y_b = labels[idx]
+        if len(np.unique(y_b)) < 2:
+            continue
+
+        p_cond_b = probs_cond[idx]
+        pr_cond = average_precision_score(y_b, p_cond_b)
+        boot_cond.append(pr_cond)
+
+        if not is_baseline:
+            p_base_b = probs_base[idx]
+            pr_base = average_precision_score(y_b, p_base_b)
+            boot_delta.append(pr_cond - pr_base)
+
+    if len(boot_cond) == 0:
+        return {
+            "ci_95": [0.0, 0.0],
+            "ci_95_str": "[0.0000, 0.0000]",
+            "delta_mean": 0.0,
+            "delta_ci_95": [0.0, 0.0],
+            "delta_ci_95_str": "[0.0000, 0.0000]",
+            "p_value": 1.0,
+            "p_val_str": "1.000",
+            "statistical_significance": "Resampling Degeneracy",
+        }
+
+    ci_low = float(np.percentile(boot_cond, 2.5))
+    ci_high = float(np.percentile(boot_cond, 97.5))
+    ci_str = f"[{ci_low:.4f}, {ci_high:.4f}]"
+
+    if is_baseline:
+        return {
+            "ci_95": [round(ci_low, 4), round(ci_high, 4)],
+            "ci_95_str": ci_str,
+            "delta_mean": 0.0,
+            "delta_ci_95": [0.0, 0.0],
+            "delta_ci_95_str": "[0.0000, 0.0000]",
+            "p_value": 1.0,
+            "p_val_str": "1.000",
+            "statistical_significance": "Baseline Reference",
+        }
+
+    boot_delta = np.array(boot_delta)
+    n_valid = len(boot_delta)
+    delta_ci_low = float(np.percentile(boot_delta, 2.5))
+    delta_ci_high = float(np.percentile(boot_delta, 97.5))
+    delta_mean = float(np.mean(boot_delta))
+    delta_ci_str = f"[{delta_ci_low:.4f}, {delta_ci_high:.4f}]"
+
+    # Davison & Hinkley (1997) continuity-smoothed empirical p-value for H0: delta = 0
+    count_pos = np.sum(boot_delta >= 0)
+    count_neg = np.sum(boot_delta <= 0)
+    p_val = float(2.0 * min((1 + count_pos) / (n_valid + 1), (1 + count_neg) / (n_valid + 1)))
+    p_val = min(1.0, p_val)
+
+    if p_val > 0.05:
+        sig = "Not Significant (p > 0.05)"
+    elif p_val > 0.01:
+        sig = "Moderate Drop (p <= 0.05) *" if delta_mean < 0 else "Moderate Gain (p <= 0.05) *"
+    elif p_val > 0.001:
+        sig = "Significant Drop (p <= 0.01) **" if delta_mean < 0 else "Significant Gain (p <= 0.01) **"
+    else:
+        sig = "Highly Significant Drop (p <= 0.001) ***" if delta_mean < 0 else "Highly Significant Gain (p <= 0.001) ***"
+
+    p_val_str = "< 0.001" if p_val < 0.001 else f"{p_val:.3f}"
+
+    return {
+        "ci_95": [round(ci_low, 4), round(ci_high, 4)],
+        "ci_95_str": ci_str,
+        "delta_mean": round(delta_mean, 4),
+        "delta_ci_95": [round(delta_ci_low, 4), round(delta_ci_high, 4)],
+        "delta_ci_95_str": delta_ci_str,
+        "p_value": round(p_val, 4),
+        "p_val_str": p_val_str,
+        "statistical_significance": sig,
+    }
+
+
 def evaluate_truncation_single_pass(
     model: WavFryClassifier,
     loader: DataLoader,
@@ -399,6 +548,9 @@ def evaluate_truncation_single_pass(
     eval_tasks: List[str],
     max_batches: Optional[int] = None,
     noise_condition: Optional[str] = None,
+    run_bootstrap: bool = True,
+    bootstrap_samples: int = 1000,
+    bootstrap_seed: int = 42,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Execute single-pass forward caching top-k truncation evaluation across conditions and tasks."""
     model.eval()
@@ -438,6 +590,9 @@ def evaluate_truncation_single_pass(
         task: [[] for _ in range(num_conditions)] for task in eval_tasks
     }
     cond_segment_labels: Dict[str, List[list]] = {
+        task: [[] for _ in range(num_conditions)] for task in eval_tasks
+    }
+    cond_segment_speakers: Dict[str, List[list]] = {
         task: [[] for _ in range(num_conditions)] for task in eval_tasks
     }
 
@@ -505,7 +660,8 @@ def evaluate_truncation_single_pass(
                         task_idx = model.tasks.index(task_name) if task_name in model.tasks else 0
                         t_labels = labels[..., task_idx] if (labels.ndim > 2 and labels.shape[-1] > task_idx) else labels
 
-                        for logit_row, label_row, val_row, item_row in zip(t_logits, t_labels, valid, interval_ids):
+                        for logit_row, label_row, val_row, item_row, spk in zip(t_logits, t_labels, valid, interval_ids, speakers):
+                            spk_str = str(spk)
                             for l_val, lab_val, v_val, i_id in zip(logit_row, label_row, val_row, item_row):
                                 if v_val and i_id is not None:
                                     lab_float = lab_val.item()
@@ -513,7 +669,7 @@ def evaluate_truncation_single_pass(
                                         i_key = str(i_id.item() if isinstance(i_id, torch.Tensor) else i_id)
                                         rec = cond_interval_preds[task_name][c_idx]
                                         if i_key not in rec:
-                                            rec[i_key] = [l_val.item(), lab_float, 1]
+                                            rec[i_key] = [l_val.item(), lab_float, 1, spk_str]
                                         else:
                                             rec[i_key][0] += l_val.item()
                                             rec[i_key][2] += 1
@@ -575,21 +731,27 @@ def evaluate_truncation_single_pass(
                             c_logits = model.heads[task_name](pooled).squeeze(-1)
                         cond_segment_preds[task_name][c_idx].extend(c_logits.cpu().numpy().tolist())
                         cond_segment_labels[task_name][c_idx].extend(t_labels.cpu().numpy().tolist())
+                        cond_segment_speakers[task_name][c_idx].extend([str(s) for s in speakers])
 
     task_results: Dict[str, List[Dict[str, Any]]] = {}
 
     for task_name in eval_tasks:
         results: List[Dict[str, Any]] = []
         base_auc_pr = 0.0
+        base_logits: Optional[np.ndarray] = None
+        base_labels: Optional[np.ndarray] = None
+        base_speakers: Optional[np.ndarray] = None
 
         for c_idx, cond in enumerate(conditions):
             if paradigm == "block":
                 rec = cond_interval_preds[task_name][c_idx]
                 y_logits = np.array([item[0] / item[2] for item in rec.values()], dtype=np.float32)
                 y_labels = np.array([item[1] for item in rec.values()], dtype=np.float32)
+                y_spks = np.array([item[3] for item in rec.values()], dtype=object)
             else:
                 y_logits = np.array(cond_segment_preds[task_name][c_idx], dtype=np.float32)
                 y_labels = np.array(cond_segment_labels[task_name][c_idx], dtype=np.float32)
+                y_spks = np.array(cond_segment_speakers[task_name][c_idx], dtype=object)
 
             metrics = compute_binary_metrics(y_logits, y_labels)
             auc_pr = metrics["auc_pr"]
@@ -599,11 +761,35 @@ def evaluate_truncation_single_pass(
 
             if cond["id"] == "full_model_baseline":
                 base_auc_pr = auc_pr
+                base_logits = y_logits.copy()
+                base_labels = y_labels.copy()
+                base_speakers = y_spks.copy()
                 delta_pr = 0.0
                 drop_pct = 0.0
             else:
                 delta_pr = auc_pr - base_auc_pr  # Positive means improvement, negative means degradation
                 drop_pct = ((base_auc_pr - auc_pr) / base_auc_pr * 100.0) if base_auc_pr > 0 else 0.0
+
+            boot_res = {
+                "ci_95": [0.0, 0.0],
+                "ci_95_str": "[0.0000, 0.0000]",
+                "delta_mean": round(delta_pr, 4),
+                "delta_ci_95": [0.0, 0.0],
+                "delta_ci_95_str": "[0.0000, 0.0000]",
+                "p_value": 1.0,
+                "p_val_str": "1.000",
+                "statistical_significance": "Baseline" if cond["id"] == "full_model_baseline" else "Not Evaluated",
+            }
+
+            if run_bootstrap and base_logits is not None and len(y_spks) > 0:
+                boot_res = compute_speaker_cluster_bootstrap(
+                    labels=y_labels,
+                    preds_base=base_logits,
+                    preds_cond=y_logits,
+                    speakers=y_spks,
+                    n_bootstrap=bootstrap_samples,
+                    seed=bootstrap_seed,
+                )
 
             results.append({
                 "task": task_name,
@@ -622,6 +808,13 @@ def evaluate_truncation_single_pass(
                 "best_threshold": round(metrics["best_threshold"], 2),
                 "n_samples": metrics["n_samples"],
                 "n_pos": metrics["n_pos"],
+                "ci_95": boot_res["ci_95"],
+                "ci_95_str": boot_res["ci_95_str"],
+                "delta_ci_95": boot_res["delta_ci_95"],
+                "delta_ci_95_str": boot_res["delta_ci_95_str"],
+                "p_value": boot_res["p_value"],
+                "p_val_str": boot_res["p_val_str"],
+                "statistical_significance": boot_res["statistical_significance"],
             })
 
         task_results[task_name] = results
@@ -685,49 +878,43 @@ def generate_reports(
             f.write(f"- **Evaluated Labeled Samples**: `{base_row['n_samples']}` (Positives: `{base_row['n_pos']}`)\n\n")
 
             f.write("### 逐层累积截断实验详细数据表 (Sequential Cumulative Truncation)\n\n")
-            f.write("| 截断条件 | 丢弃层数 $k$ | 保留层数 | 保留权重质量 | PR-AUC | $\\Delta$PR-AUC | 跌幅 (%) | F1 | ROC-AUC | 最佳阈值 $\\tau^*$ | 状态评定 |\n")
+            f.write("| 截断条件 | 丢弃层数 $k$ | 保留层数 | 保留权重质量 | PR-AUC (95% CI) | $\\Delta$PR-AUC | 95% CI (差值 $\\Delta$) | 经验 $p$ 值 | 显著性判定 | F1 | ROC-AUC |\n")
             f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|\n")
 
             seq_rows = [r for r in rows if r["category"] in ("Baseline", "Sequential Truncation")]
             for r in seq_rows:
-                drop_pct = r["drop_pct"]
-                if r["condition_id"] == "full_model_baseline":
-                    status = "🎯 Full Baseline"
-                elif drop_pct <= 0.0:
-                    status = "🔥 逆势提升 / 零损"
-                elif drop_pct <= 0.5:
-                    status = "🟢 极微损 (<0.5%)"
-                elif drop_pct <= 2.0:
-                    status = "🟡 轻微下降 (<=2%)"
-                elif drop_pct <= 5.0:
-                    status = "🟠 中度受损 (<=5%)"
-                else:
-                    status = "🔴 严重受损 (>5%)"
-
                 delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
+                ci_str = f"`{r.get('ci_95_str', '')}`" if r.get("ci_95_str") else ""
+                delta_ci_str = f"`{r.get('delta_ci_95_str', '')}`" if r.get("delta_ci_95_str") else ""
+                p_val_str = r.get("p_val_str", "1.000")
+                sig_str = r.get("statistical_significance", "N/A")
                 f.write(
                     f"| **{r['name']}** | {r['drop_k']} | {r['kept_layers_count']} | "
-                    f"{r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
-                    f"{delta_str} | {drop_pct:.1f}% | {r['f1']:.4f} | {r['auc_roc']:.4f} | "
-                    f"{r['best_threshold']:.2f} | {status} |\n"
+                    f"{r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** {ci_str} | "
+                    f"{delta_str} | {delta_ci_str} | {p_val_str} | {sig_str} | "
+                    f"{r['f1']:.4f} | {r['auc_roc']:.4f} |\n"
                 )
 
             # Negative controls
             neg_rows = [r for r in rows if r["category"] == "Negative Control"]
             if neg_rows:
                 f.write("\n### 阴性反向对照分析 (Negative Control Anchor)\n\n")
-                f.write("| 对照条件 | 保留权重 | PR-AUC | $\\Delta$PR-AUC | F1 | ROC-AUC | 科学推论 |\n")
-                f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---|\n")
+                f.write("| 对照条件 | 保留权重 | PR-AUC (95% CI) | $\\Delta$PR-AUC | 95% CI (差值 $\\Delta$) | 经验 $p$ 值 | 显著性判定 | 科学推论 |\n")
+                f.write("|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|\n")
                 for r in neg_rows:
                     delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
+                    ci_str = f"`{r.get('ci_95_str', '')}`" if r.get("ci_95_str") else ""
+                    delta_ci_str = f"`{r.get('delta_ci_95_str', '')}`" if r.get("delta_ci_95_str") else ""
+                    p_val_str = r.get("p_val_str", "1.000")
+                    sig_str = r.get("statistical_significance", "N/A")
                     f.write(
-                        f"| **{r['name']}** | {r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** | "
-                        f"{delta_str} | {r['f1']:.4f} | {r['auc_roc']:.4f} | 仅凭高层语义无法独立支撑发声态判别 |\n"
+                        f"| **{r['name']}** | {r['retained_weight_mass']*100:.1f}% | **{r['auc_pr']:.4f}** {ci_str} | "
+                        f"{delta_str} | {delta_ci_str} | {p_val_str} | {sig_str} | 仅凭高层语义无法独立支撑发声态判别 |\n"
                     )
 
             f.write("\n---\n\n")
 
-        f.write("*说明：本评测采用 Single-Pass Forward Caching 单次前向缓存机制，后验测试各个深度截断下的性能临界点（Cliff）。*\n")
+        f.write("*说明：本评测采用 Single-Pass Forward Caching 单次前向缓存机制，并结合说话人级非参数聚类配对 Bootstrap (B=1000) 审计深度截断临界点。*\n")
 
     print(f"[Saved] Top-k Truncation Markdown report saved to: {md_path}")
 
@@ -805,6 +992,9 @@ def main():
             eval_tasks=eval_tasks,
             max_batches=args.max_batches,
             noise_condition=cond,
+            run_bootstrap=args.bootstrap,
+            bootstrap_samples=args.bootstrap_samples,
+            bootstrap_seed=args.bootstrap_seed,
         )
         full_summary_json["conditions"][cond] = task_results
         meta = get_condition_metadata(cond)
@@ -826,7 +1016,11 @@ def main():
                     "Kept-Layers": r["kept_layers_count"],
                     "Retained-Weight-Mass": round(float(r["retained_weight_mass"]), 4),
                     "PR-AUC": round(float(r["auc_pr"]), 4),
+                    "CI-95-PR-AUC": r.get("ci_95_str", ""),
                     "Delta-PR-AUC": round(float(r["delta_auc_pr"]), 4),
+                    "Delta-CI-95": r.get("delta_ci_95_str", ""),
+                    "P-Value": r.get("p_value", 1.0),
+                    "Statistical-Significance": r.get("statistical_significance", ""),
                     "Drop (%)": round(float(r["drop_pct"]), 2),
                     "F1-Score": round(float(r["f1"]), 4),
                     "ROC-AUC": round(float(r["auc_roc"]), 4),
@@ -856,10 +1050,14 @@ def main():
     print("=" * 80)
     for t_name, rows in full_summary_json["conditions"][first_cond].items():
         base_r = next(r for r in rows if r["condition_id"] == "full_model_baseline")
-        print(f"\n>>> Task: {t_name.upper()} (Baseline PR-AUC: {base_r['auc_pr']:.4f}, F1: {base_r['f1']:.4f})")
+        print(f"\n>>> Task: {t_name.upper()} (Baseline PR-AUC: {base_r['auc_pr']:.4f} {base_r.get('ci_95_str', '')}, F1: {base_r['f1']:.4f})")
         for r in rows:
             delta_str = f"+{r['delta_auc_pr']:.4f}" if r["delta_auc_pr"] >= 0 else f"{r['delta_auc_pr']:.4f}"
-            print(f"  [{r['name']:<44}] PR-AUC: {r['auc_pr']:.4f} (Δ {delta_str}, {r['drop_pct']:>5.1f}%) | Weight: {r['retained_weight_mass']*100:>5.1f}%")
+            p_val_display = r.get("p_val_str", "1.000")
+            sig_display = r.get("statistical_significance", "")
+            ci_disp = r.get("ci_95_str", "")
+            d_ci_disp = r.get("delta_ci_95_str", "")
+            print(f"  [{r['name']:<44}] PR-AUC: {r['auc_pr']:.4f} {ci_disp} (Δ {delta_str} {d_ci_disp}, p={p_val_display:<6}, {sig_display}) | Weight: {r['retained_weight_mass']*100:>5.1f}%")
 
 
 if __name__ == "__main__":
