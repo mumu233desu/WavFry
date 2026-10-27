@@ -37,9 +37,9 @@ $$\alpha \in \{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7\}$$
 #### 3. 数学上的“完全无阈值依赖（Threshold-Free via PR Curve）”
 Multi-IoU mAP 在分类概率层面**完全不需要人工指定二值化阈值（如 0.5）**：
 1. 在固定某个时域及格线 $\alpha$ 下，模型预测出的所有事件区间携带各自的置信度得分（Confidence $\in (0, 1)$），按置信度从高到低全局降序排列；
-2. 采用匈牙利二分图匹配（Hungarian Bipartite Matching）进行全局无偏一对一配对；
+2. 遵循 COCO 与 ActivityNet/THUMOS 标准，采用**置信度降序单射二分图配对（Greedy Confidence-Sorted Injective Matching）**：置信度最高的预测优先挑选最佳未被消耗的真值，一旦真值配对即告锁定，杜绝后续重叠预测重复占有，同时严格保证 Precision-Recall 曲线关于置信度门限的单调积分有效性；
 3. 沿置信度列表逐步降低过滤门槛，计算完整的 Precision-Recall 曲线；
-4. 对该曲线求积分得到该阶梯下的平均精度 $\text{AP}_{\alpha}$；
+4. 对该曲线进行连续插值求积分（COCO/PASCAL VOC 连续包络面积）得到该阶梯下的平均精度 $\text{AP}_{\alpha}$；
 5. 对所有阶梯的 $\text{AP}_{\alpha}$ 取算术平均，得到全局综合得分：
    $$\text{mAP} = \frac{1}{|\mathcal{A}|} \sum_{\alpha \in \mathcal{A}} \text{AP}_{\alpha}$$
 
