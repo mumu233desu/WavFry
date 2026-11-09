@@ -25,6 +25,8 @@ KeyError，部分静默读取空值），部分脚本的标注/评测路径也�
 | `evaluate_robustness_and_bootstrap.py` | 单模型历史深度截断与离线加噪 Bootstrap | 其层截断评估已被 `scripts/layer_importance_and_truncation_audit/` 替代；跨模型通用统计检验已被 `scripts/statistical_bootstrap_audit/evaluate_paired_models_bootstrap.py` 替代 |
 | `temp_layer_independent_probing/` | 探索性单层独立与累积前缀分类探针评测（实验 a/b） | 与 Section 5.1/5.4 结构重叠；且在测试集内监督引发气声探针高于主模型的分数倒挂。已正式废弃，保留层级物理声学回归 |
 | `temp_layer_acoustic_encoding/` | 临时多面板因果解释出图与回归脚本（实验 c 原型） | 已收敛转正为官方正式主入口 `scripts/layer_acoustic_encoding_audit/evaluate_layer_acoustic_encoding.py` |
+| `extract_ablation_metrics.py` | 提取并格式化输出弱监督 MIL 消融对比表 | 针对早期 MIL 消融历史的特定汇总脚本，归档备查 |
+| `eval_breathy_checkpoint_groups.py` | 早期气声断点分语种/发音人切片评估脚本 | 依赖特定历史 CSV 与模型路径，现已由标准化评测套件统一承接 |
 
 当前有效的替代入口：
 

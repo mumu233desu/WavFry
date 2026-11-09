@@ -225,6 +225,8 @@ def train_single_backbone(
     meta = BACKBONE_REGISTRY[backbone_key]
     display = meta["display_name"]
     ckpt_dir = Path(cfg["checkpoint"]["dir"])
+    if not ckpt_dir.is_absolute():
+        ckpt_dir = ROOT / ckpt_dir
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     best_ckpt = ckpt_dir / "best_model.pt"
     latest_ckpt = ckpt_dir / "latest.pt"
@@ -401,6 +403,8 @@ def evaluate_backbone(
 
     results_by_condition: dict[str, dict[str, float]] = {}
     ckpt_dir = Path(cfg["checkpoint"]["dir"])
+    if not ckpt_dir.is_absolute():
+        ckpt_dir = ROOT / ckpt_dir
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     total_batches = len(test_loader)
@@ -785,7 +789,10 @@ def main():
 
     for b_key in args.backbones:
         cfg = load_config_for_backbone(b_key, epochs_override=args.epochs, smoketest=args.smoketest)
-        ckpt_path = Path(cfg["checkpoint"]["dir"]) / "best_model.pt"
+        c_dir = Path(cfg["checkpoint"]["dir"])
+        if not c_dir.is_absolute():
+            c_dir = ROOT / c_dir
+        ckpt_path = c_dir / "best_model.pt"
 
         if args.mode in ("train_and_eval", "train_only"):
             ckpt_path = train_single_backbone(b_key, cfg, df=df, device=args.device, resume=args.resume)

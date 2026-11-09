@@ -1,6 +1,15 @@
 # WavFry: WavLM-based Creaky Voice Detection
 
-WavFry is a sub-project for high-precision creaky voice detection in the CS-Dialogue corpus using fine-tuned WavLM models.
+WavFry is a framework for high-precision, noise-robust creaky voice (vocal fry) detection under complex acoustic degradations using fine-tuned WavLM models.
+
+---
+
+## 🌐 Interactive Demo
+
+Interactive audio examples and model detections across 18 acoustic degradation conditions:  
+👉 [https://mumu233desu.github.io/wavfry-demo/](https://mumu233desu.github.io/wavfry-demo/)
+
+---
 
 ## Quick Start
 

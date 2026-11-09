@@ -211,7 +211,97 @@ def load_ground_truth_and_ignore(
                 continue
 
             agg_data = load_aggregated_annotations(tg_dir, task="creaky")
-            files_dict = agg_data.get("files", {})
+            files_dict = dict(agg_data.get("files", {}))
+
+            # Multi-annotator adjudication for Kappa evaluation batches (e.g. CS-Dialogue batch 4):
+            # 1. Unanimous Creaky -> True Positive GT events (preserving fine-grained exact spans)
+            # 2. Unanimous Modal/Negative -> Negative Ground Truth background (neither GT creak nor ignore mask)
+            # 3. Disagreement / Uncertain -> Ignore Mask (Zero-Leakage protocol, neither FP nor TP)
+            kappa_eval_dir = tg_dir / "_creaky_cache" / "kappa_eval"
+            if kappa_eval_dir.exists():
+                for kb_dir in sorted(kappa_eval_dir.glob("batch_*")):
+                    annotator_dirs = sorted([
+                        d for d in kb_dir.iterdir()
+                        if d.is_dir() and not d.name.startswith((".", "_"))
+                    ])
+                    if len(annotator_dirs) >= 2:
+                        ann_shards = {}
+                        for adir in annotator_dirs:
+                            sdir = adir / "manual_creaky_annotations.json.d"
+                            if sdir.exists():
+                                ann_shards[adir.name] = {
+                                    sf.stem: json.loads(sf.read_text("utf-8"))
+                                    for sf in sdir.glob("*.json")
+                                }
+                        if len(ann_shards) >= 2:
+                            logger.info(
+                                f"Applying multi-annotator adjudication for [{ds_id}] from {kb_dir.name} "
+                                f"({len(ann_shards)} annotators: {list(ann_shards.keys())})..."
+                            )
+                            all_stems = set()
+                            for s_map in ann_shards.values():
+                                all_stems.update(s_map.keys())
+                            anames = list(ann_shards.keys())
+
+                            for stem in sorted(all_stems):
+                                fkey = stem
+                                for aname in anames:
+                                    if stem in ann_shards[aname] and "file_key" in ann_shards[aname][stem]:
+                                        fkey = ann_shards[aname][stem]["file_key"]
+                                        break
+
+                                all_intervals = {}
+                                for aname in anames:
+                                    if stem in ann_shards[aname]:
+                                        for k, v in ann_shards[aname][stem].get("annotations", {}).items():
+                                            if k not in all_intervals:
+                                                all_intervals[k] = {}
+                                            all_intervals[k][aname] = v
+
+                                all_exact_spans = []
+                                for aname in anames:
+                                    if stem in ann_shards[aname]:
+                                        for sp in ann_shards[aname][stem].get("exact_creak_spans", []):
+                                            all_exact_spans.append((float(sp[0]), float(sp[1])))
+
+                                file_exact = []
+                                file_unc = []
+                                for k, votes in all_intervals.items():
+                                    parts = k.split("|")
+                                    s_int, e_int = float(parts[0]), float(parts[1])
+                                    vote_list = [votes.get(aname, "unlabeled") for aname in anames]
+                                    if any(v == "unlabeled" for v in vote_list):
+                                        file_unc.append([s_int, e_int])
+                                        continue
+
+                                    unique_v = set(vote_list)
+                                    if len(unique_v) == 1:
+                                        v = vote_list[0]
+                                        if v == "creaky":
+                                            matched = [
+                                                sp for sp in all_exact_spans
+                                                if max(s_int, sp[0]) < min(e_int, sp[1])
+                                            ]
+                                            if matched:
+                                                for sp in matched:
+                                                    file_exact.append([max(s_int, sp[0]), min(e_int, sp[1])])
+                                            else:
+                                                file_exact.append([s_int, e_int])
+                                        elif v in ("modal", "non_creaky"):
+                                            # Unanimous negative -> modal background GT (neither exact nor uncertain)
+                                            pass
+                                        else:
+                                            file_unc.append([s_int, e_int])
+                                    else:
+                                        # Disagreement -> Ignore Mask
+                                        file_unc.append([s_int, e_int])
+
+                                files_dict[fkey] = {
+                                    "exact_creak_spans": file_exact,
+                                    "uncertain_spans": file_unc,
+                                    "is_frame_verified": True,
+                                }
+
             ds_matched = 0
 
             for fkey, fentry in files_dict.items():
@@ -689,7 +779,8 @@ def generate_reports(
         f.write(f"- **Total Raw Annotated Events**: {stats.get('total_raw_events', stats.get('total_raw_creak_phones', 0))}\n")
         f.write(f"- **Total Evaluated Physical Events**: {stats['total_evaluated_events']} (avg duration: {stats['avg_event_duration_s']}s)\n")
         f.write(f"- **Uncertain Intervals (Disjoint Ignored Mask)**: {stats['total_uncertain_tokens']}\n")
-        f.write(f"- **Generated At**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write(f"- **Adjudication Protocol**: Multi-Annotator Consensus Drop (Unanimous Creaky -> Positive GT, Unanimous Modal/Negative -> Negative GT, Disagreement -> Uncertain Ignore Mask)\n")
+        f.write(f"- **Generated At**: {time.strftime('%Y-%m-%d %H:%M:%S')} (Beijing Time)\n\n")
 
         f.write("## 1. Multi-IoU Average Precision (mAP) Trajectories across Ladders\n\n")
         f.write("| Model | Tier | mAP (Overall) | Macro mAP (α=0.1~0.3) | Micro mAP (α=0.5~0.7) | AP@0.1 | AP@0.2 | AP@0.3 | AP@0.4 | AP@0.5 | AP@0.6 | AP@0.7 |\n")

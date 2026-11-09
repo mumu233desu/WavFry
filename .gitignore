@@ -19,6 +19,7 @@ pretrained/
 artifacts/
 *.wav
 *.flac
+unique_texts.txt
 
 # Environment variables & secrets
 .env
