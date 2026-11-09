@@ -59,7 +59,7 @@ uv run python scripts/review_annotation_quality.py \
 
 Original batch/shard/interval identities are retained; uncertain, machine-prefilled and automatic-silence annotations stay separate. `review_queues.csv` prioritizes low label agreement and unstable predictions, with random/high-agreement controls. `all_scores.csv` includes scores, audio paths and frame traces. Scores guide human review—not label correctness probabilities. This tool neither runs automatically after training nor changes annotations; predictions on training data may reflect memorization.
 
-See [usage and training configuration](docs/weak_breathy_supervision.md).
+See [usage and training configuration](docs/weak_label_training_technical_specification.md).
 
 ## Monitoring
 
