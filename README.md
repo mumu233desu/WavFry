@@ -22,8 +22,6 @@ Pretrained delta checkpoints are available on [GitHub Releases (v1.0.0)](https:/
 | [`wavfry_hubert_base.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_hubert_base.pt) | `facebook/hubert-base-ls960` | Backbone comparison (HuBERT-Base) | 0.9135 | 0.9851 | `creaky: 0.570` |
 | [`wavfry_wav2vec2_base.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_wav2vec2_base.pt) | `facebook/wav2vec2-base` | Backbone comparison (wav2vec 2.0-Base) | 0.9143 | 0.9844 | `creaky: 0.505 / breathy: 0.470` |
 | [`wavfry_weak_off.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_off.pt) | `microsoft/wavlm-base-plus` | Supervised baseline (No weak supervision) | 0.9122 | 0.9844 | `creaky: 0.580 / breathy: 0.500` |
-| [`wavfry_weak_mil_positive_only.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_mil_positive_only.pt) | `microsoft/wavlm-base-plus` | Weak MIL (Positive bags only) | 0.9132 | 0.9839 | `creaky: 0.560 / breathy: 0.480` |
-| [`wavfry_weak_mil_soft_weight.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_mil_soft_weight.pt) | `microsoft/wavlm-base-plus` | Weak MIL (Soft instance weighting) | 0.9133 | 0.9842 | `creaky: 0.555 / breathy: 0.440` |
 
 *Base SSL backbones are automatically downloaded from Hugging Face Hub during inference.*
 

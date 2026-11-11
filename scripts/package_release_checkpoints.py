@@ -80,24 +80,6 @@ CHECKPOINT_REGISTRY = [
         "backbone": "microsoft/wavlm-base-plus",
         "is_primary": False,
     },
-    {
-        "filename": "wavfry_weak_mil_positive_only.pt",
-        "src_rel": "exp_results/checkpoints/ablation_weak_mil_positive_only/best_model.pt",
-        "role": "Ablation Variant (Weak MIL: Positive Bags Only)",
-        "role_zh": "弱监督消融变体（仅正包约束 MIL）",
-        "paper_table": "Table 4",
-        "backbone": "microsoft/wavlm-base-plus",
-        "is_primary": False,
-    },
-    {
-        "filename": "wavfry_weak_mil_soft_weight.pt",
-        "src_rel": "exp_results/checkpoints/ablation_weak_mil_soft_weight/best_model.pt",
-        "role": "Ablation Variant (Weak MIL: Soft Instance Weighting)",
-        "role_zh": "弱监督消融变体（软权重分配 MIL）",
-        "paper_table": "Table 4",
-        "backbone": "microsoft/wavlm-base-plus",
-        "is_primary": False,
-    },
 ]
 
 
@@ -219,7 +201,7 @@ def generate_release_notes(
         "",
         "## 📦 Released Model Weights",
         "",
-        "All weights are stored as lightweight delta checkpoints (~1.9 MB to ~4.4 MB) containing task heads, scalar mixing weights, and VSDC projections. The underlying self-supervised backbones (`WavLM`, `HuBERT`, `wav2vec 2.0`) are automatically loaded from Hugging Face Hub during inference.",
+        "All weights are stored as delta checkpoints. The underlying self-supervised backbones (`WavLM`, `HuBERT`, `wav2vec 2.0`) should be automatically loaded from Hugging Face Hub during inference.",
         "",
         "| File Name | Base Backbone | Role / Architecture Description | Creaky PR-AUC | Creaky ROC-AUC | Optimal Thresholds |",
         "| :--- | :--- | :--- | :---: | :---: | :---: |",
@@ -255,67 +237,7 @@ def generate_release_notes(
         fn = item["filename"]
         h = checksums[fn]
         lines.append(f"{h}  {fn}")
-    lines.extend([
-        "```",
-        "",
-        "---",
-        "",
-        "## 🚀 Quick Start Inference",
-        "",
-        "### 1. Environment Setup",
-        "```bash",
-        "git clone https://github.com/mumu233desu/WavFry.git",
-        "cd WavFry",
-        "uv sync",
-        "```",
-        "",
-        "### 2. Segment-level Vowel In-the-Wild Prediction",
-        "```bash",
-        "# Download the primary checkpoint: wavfry_wavlm_baseplus.pt",
-        "# Predict Creaky Voice with automatically resolved optimal threshold:",
-        "uv run python scripts/predict.py \\",
-        "  --checkpoint deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt \\",
-        "  --audio-dir /path/to/wav_files \\",
-        "  --textgrid-dir /path/to/textgrid_files \\",
-        "  --output-csv predictions_creaky.csv \\",
-        "  --task creaky",
-        "",
-        "# Predict Breathy Voice:",
-        "uv run python scripts/predict.py \\",
-        "  --checkpoint deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt \\",
-        "  --audio-dir /path/to/wav_files \\",
-        "  --textgrid-dir /path/to/textgrid_files \\",
-        "  --output-csv predictions_breathy.csv \\",
-        "  --task breathy",
-        "```",
-        "",
-        "### 3. Python API Direct Loading",
-        "```python",
-        "import torch",
-        "from wavfry.model.wavlm_classifier import WavFryClassifier",
-        "",
-        "# 1. Load checkpoint bundle",
-        "ckpt = torch.load('deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt', map_location='cpu')",
-        "",
-        "# 2. Initialize classifier with bundle config and load delta weights",
-        "model = WavFryClassifier(ckpt['config'])",
-        "model.load_state_dict(ckpt['model_state_dict'], strict=False)",
-        "model.eval()",
-        "",
-        "# 3. Run inference on 16kHz audio waveform",
-        "waveform = torch.randn(1, 16000)  # [1, T]",
-        "with torch.no_grad():",
-        "    outputs = model(waveform)",
-        "    prob_creaky = torch.sigmoid(outputs['creaky']).item()",
-        "    prob_breathy = torch.sigmoid(outputs['breathy']).item()",
-        "    print(f'P(creaky)={prob_creaky:.4f}, P(breathy)={prob_breathy:.4f}')",
-        "```",
-        "",
-        "---",
-        "",
-        "## 📜 License",
-        "These model weights are released for academic and research purposes under the MIT License.",
-    ])
+    lines.append("```\n")
 
     notes_file.write_text("\n".join(lines), encoding="utf-8")
     print(f"  [Docs] Generated Release Notes: {notes_file}", flush=True)
@@ -425,8 +347,8 @@ def main():
     generate_release_notes(out_dir, packaged_items, checksums)
 
     total_mb = sum((out_dir / item["filename"]).stat().st_size for item in packaged_items) / (1024 * 1024)
-    print(f"\n✅ All 7 checkpoints packaged, sanitized, and verified successfully!", flush=True)
-    print(f"Total package size: {total_mb:.2f} MB across 7 models.", flush=True)
+    print(f"\n✅ All {len(packaged_items)} checkpoints packaged, sanitized, and verified successfully!", flush=True)
+    print(f"Total package size: {total_mb:.2f} MB across {len(packaged_items)} models.", flush=True)
     print(f"Artifacts ready in: {out_dir}\n", flush=True)
 
 
