@@ -11,6 +11,35 @@ Interactive audio examples and model detections across 18 acoustic degradation c
 
 ---
 
+## 📦 Pretrained Checkpoints (Release v1.0.0)
+
+Pretrained delta checkpoints and complete ablation suite weights from the paper *WavFry: Noise-Robust Phonation Detection and Functional Representation Auditing in Conversational Speech* are available on [GitHub Releases (v1.0.0)](https://github.com/mumu233desu/WavFry/releases/tag/v1.0.0):
+
+| Model Checkpoint | Underlying SSL Backbone | Architecture Description | Creaky PR-AUC | Creaky ROC-AUC | Optimal Thresholds |
+| :--- | :--- | :--- | :---: | :---: | :---: |
+| [`wavfry_wavlm_baseplus.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_wavlm_baseplus.pt) | `microsoft/wavlm-base-plus` | **Primary Dual-Task Model** (VSDC-Net & Dynamic Masking) | **0.9133** | **0.9841** | `creaky: 0.560 / breathy: 0.440` |
+| [`wavfry_wavlm_base.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_wavlm_base.pt) | `microsoft/wavlm-base` | Cross-Backbone Comparison | 0.9132 | 0.9850 | `creaky: 0.549` |
+| [`wavfry_hubert_base.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_hubert_base.pt) | `facebook/hubert-base-ls960` | Cross-Backbone Comparison | 0.9135 | 0.9851 | `creaky: 0.570` |
+| [`wavfry_wav2vec2_base.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_wav2vec2_base.pt) | `facebook/wav2vec2-base` | Cross-Backbone Comparison | 0.9143 | 0.9844 | `creaky: 0.505 / breathy: 0.470` |
+| [`wavfry_weak_off.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_off.pt) | `microsoft/wavlm-base-plus` | Ablation Baseline (Supervised Only) | 0.9122 | 0.9844 | `creaky: 0.580 / breathy: 0.500` |
+| [`wavfry_weak_mil_positive_only.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_mil_positive_only.pt) | `microsoft/wavlm-base-plus` | Ablation (Positive Bags Only MIL) | 0.9132 | 0.9839 | `creaky: 0.560 / breathy: 0.480` |
+| [`wavfry_weak_mil_soft_weight.pt`](https://github.com/mumu233desu/WavFry/releases/download/v1.0.0/wavfry_weak_mil_soft_weight.pt) | `microsoft/wavlm-base-plus` | Ablation (Soft Instance Weighting MIL) | 0.9133 | 0.9842 | `creaky: 0.555 / breathy: 0.440` |
+
+*Weights are stored as lightweight delta bundles (~1.5 MB to ~4.4 MB); base models are automatically downloaded from Hugging Face Hub on demand.*
+
+### Direct Inference with Pretrained Checkpoints:
+```bash
+# Segment-level evaluation with TextGrid intervals
+uv run python scripts/predict.py \
+  --checkpoint deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt \
+  --audio-dir /path/to/audios \
+  --textgrid-dir /path/to/textgrids \
+  --output-csv predictions.csv \
+  --task creaky
+```
+
+---
+
 ## Quick Start
 
 1. **Build Manifest**:

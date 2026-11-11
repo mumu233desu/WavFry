@@ -1,0 +1,90 @@
+# WavFry v1.0.0: Pretrained Checkpoints & Dual-Task Ablation Suite
+
+This release publishes the official pretrained model checkpoints and ablation variants corresponding to the paper:
+> **WavFry: Noise-Robust Phonation Detection and Functional Representation Auditing in Conversational Speech**
+
+## 📦 Released Model Weights
+
+All weights are stored as lightweight delta checkpoints (~1.9 MB to ~4.4 MB) containing task heads, scalar mixing weights, and VSDC projections. The underlying self-supervised backbones (`WavLM`, `HuBERT`, `wav2vec 2.0`) are automatically loaded from Hugging Face Hub during inference.
+
+| File Name | Base Backbone | Role / Architecture Description | Creaky PR-AUC | Creaky ROC-AUC | Optimal Thresholds |
+| :--- | :--- | :--- | :---: | :---: | :---: |
+| `wavfry_wavlm_baseplus.pt` | `microsoft/wavlm-base-plus` | Primary Dual-Task Model (Weak-On) **(Primary)** | 0.9133 | 0.9841 | `creaky: 0.560 / breathy: 0.440` |
+| `wavfry_wavlm_base.pt` | `microsoft/wavlm-base` | Cross-Backbone Comparison (WavLM-Base) | 0.9132 | 0.9850 | `creaky: 0.549` |
+| `wavfry_hubert_base.pt` | `facebook/hubert-base-ls960` | Cross-Backbone Comparison (HuBERT-Base) | 0.9135 | 0.9851 | `creaky: 0.570` |
+| `wavfry_wav2vec2_base.pt` | `facebook/wav2vec2-base` | Cross-Backbone Comparison (wav2vec 2.0-Base) | 0.9143 | 0.9844 | `creaky: 0.505 / breathy: 0.470` |
+| `wavfry_weak_off.pt` | `microsoft/wavlm-base-plus` | Ablation Baseline (Weak-Off, Supervised Only) | 0.9122 | 0.9844 | `creaky: 0.580 / breathy: 0.500` |
+| `wavfry_weak_mil_positive_only.pt` | `microsoft/wavlm-base-plus` | Ablation Variant (Weak MIL: Positive Bags Only) | 0.9132 | 0.9839 | `creaky: 0.560 / breathy: 0.480` |
+| `wavfry_weak_mil_soft_weight.pt` | `microsoft/wavlm-base-plus` | Ablation Variant (Weak MIL: Soft Instance Weighting) | 0.9133 | 0.9842 | `creaky: 0.555 / breathy: 0.440` |
+
+---
+
+## 🔒 SHA-256 Checksums
+
+```
+1356529f2fac48669165a3e26f68730c5e7adcd2ef20e38d633b0e3d461795fd  wavfry_wavlm_baseplus.pt
+bd4b17b88ead24f45cb57cab33f43ad1ebd77ca94e49847378f0d4f70ec9f609  wavfry_wavlm_base.pt
+b2b30c1b81e40cc7e530c62c48ebb627a8f00d1859a1a6540118eb96a19ddce6  wavfry_hubert_base.pt
+8d808e9ce58900d3dfb8166d3b3c5393782f1eb63c34e6c4dfd06355ddde7814  wavfry_wav2vec2_base.pt
+256d9f042cd33a1ba84d4b953a55400b8f7297fdd24898f935d1ce0021879ae5  wavfry_weak_off.pt
+cf0d0bf5d004fa569e63998227e86515d3a9bacd9a3f33d2234cc20cface9ced  wavfry_weak_mil_positive_only.pt
+a4e693f7070ec99b532a7239922acbe80c3466f2ecdbb0b845bdb5f3ddbece80  wavfry_weak_mil_soft_weight.pt
+```
+
+---
+
+## 🚀 Quick Start Inference
+
+### 1. Environment Setup
+```bash
+git clone https://github.com/mumu233desu/WavFry.git
+cd WavFry
+uv sync
+```
+
+### 2. Segment-level Vowel In-the-Wild Prediction
+```bash
+# Download the primary checkpoint: wavfry_wavlm_baseplus.pt
+# Predict Creaky Voice with automatically resolved optimal threshold:
+uv run python scripts/predict.py \
+  --checkpoint deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt \
+  --audio-dir /path/to/wav_files \
+  --textgrid-dir /path/to/textgrid_files \
+  --output-csv predictions_creaky.csv \
+  --task creaky
+
+# Predict Breathy Voice:
+uv run python scripts/predict.py \
+  --checkpoint deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt \
+  --audio-dir /path/to/wav_files \
+  --textgrid-dir /path/to/textgrid_files \
+  --output-csv predictions_breathy.csv \
+  --task breathy
+```
+
+### 3. Python API Direct Loading
+```python
+import torch
+from wavfry.model.wavlm_classifier import WavFryClassifier
+
+# 1. Load checkpoint bundle
+ckpt = torch.load('deployments/checkpoints_v1.0.0/wavfry_wavlm_baseplus.pt', map_location='cpu')
+
+# 2. Initialize classifier with bundle config and load delta weights
+model = WavFryClassifier(ckpt['config'])
+model.load_state_dict(ckpt['model_state_dict'], strict=False)
+model.eval()
+
+# 3. Run inference on 16kHz audio waveform
+waveform = torch.randn(1, 16000)  # [1, T]
+with torch.no_grad():
+    outputs = model(waveform)
+    prob_creaky = torch.sigmoid(outputs['creaky']).item()
+    prob_breathy = torch.sigmoid(outputs['breathy']).item()
+    print(f'P(creaky)={prob_creaky:.4f}, P(breathy)={prob_breathy:.4f}')
+```
+
+---
+
+## 📜 License
+These model weights are released for academic and research purposes under the MIT License.
